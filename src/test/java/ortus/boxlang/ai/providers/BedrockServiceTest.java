@@ -2184,6 +2184,81 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "Provider-specific options beat a module-global apiKey credentials struct" )
+	public void testProviderOptionsBeatGlobalApiKeyStruct() {
+		// credSource used to switch WHOLESALE to the injected apiKey struct. Even overlaying it, the
+		// global apiKey is the BROADEST configured scope, so it must lose to
+		// settings.providers.Bedrock.options as well as to explicit per-call arguments.
+		IStruct	providers		= Struct.of(
+		    "Bedrock",
+		    Struct.of( "options", Struct.of( "region", "eu-west-2", "awsAccessKeyId", "AKIAPROVIDERPROVIDE", "awsSecretAccessKey", "provider-secret" ) )
+		);
+		Object	priorProviders	= moduleRecord.settings.get( Key.of( "providers" ) );
+		moduleRecord.settings.put( Key.of( "providers" ), providers );
+
+		try {
+			// @formatter:off
+			executeWithTimeoutHandling(
+				"""
+					service = new bxModules.bxai.models.providers.BedrockService()
+					service.configure( {
+						apiKey: {
+							region: "us-east-1",
+							awsAccessKeyId: "AKIAGLOBALGLOBALGLOB",
+							awsSecretAccessKey: "global-secret"
+						}
+					} )
+					creds  = service.resolveAwsCredentials()
+					region = service.getRegion()
+				""",
+				context
+			);
+			// @formatter:on
+
+			@SuppressWarnings( "unchecked" )
+			IStruct creds = ( IStruct ) variables.get( Key.of( "creds" ) );
+			assertWithMessage( "providers.Bedrock.options must beat the module-global apiKey struct" )
+			    .that( creds.get( Key.of( "accessKeyId" ) ) ).isEqualTo( "AKIAPROVIDERPROVIDE" );
+			assertThat( creds.get( Key.of( "secretAccessKey" ) ) ).isEqualTo( "provider-secret" );
+			assertThat( variables.get( Key.of( "region" ) ).toString() ).isEqualTo( "eu-west-2" );
+		} finally {
+			if ( priorProviders == null ) {
+				moduleRecord.settings.remove( Key.of( "providers" ) );
+			} else {
+				moduleRecord.settings.put( Key.of( "providers" ), priorProviders );
+			}
+		}
+	}
+
+	@Test
+	@DisplayName( "isTrustedContainerCredentialUri refuses to send the credential token to an arbitrary HTTP host" )
+	public void testContainerCredentialUriTrust() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService( "bedrock", { awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" } )
+				ecs        = service.isTrustedContainerCredentialUri( "http://169.254.170.2/creds" )
+				eks        = service.isTrustedContainerCredentialUri( "http://169.254.170.23/v1/credentials" )
+				loopback   = service.isTrustedContainerCredentialUri( "http://127.0.0.1:8080/creds" )
+				httpsAny   = service.isTrustedContainerCredentialUri( "https://vault.internal.example/creds" )
+				plainOther = service.isTrustedContainerCredentialUri( "http://evil.example.com/creds" )
+				imdsSpoof  = service.isTrustedContainerCredentialUri( "http://169.254.169.254/creds" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "ecs" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "eks" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "loopback" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "httpsAny" ) ) ).isTrue();
+		assertWithMessage( "an arbitrary plain-HTTP host must never receive the credential token" )
+		    .that( variables.getAsBoolean( Key.of( "plainOther" ) ) ).isFalse();
+		assertWithMessage( "the IMDS address is not a container credential endpoint" )
+		    .that( variables.getAsBoolean( Key.of( "imdsSpoof" ) ) ).isFalse();
+	}
+
+	@Test
 	@DisplayName( "Auto-resolved credential state is shared across service instances, not per-instance" )
 	public void testCredentialCacheIsSharedAcrossInstances() {
 		// aiService() builds a fresh provider per call, so an instance-scoped cache was read exactly

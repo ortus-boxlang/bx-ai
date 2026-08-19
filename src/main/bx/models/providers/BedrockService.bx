@@ -221,10 +221,37 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			var resolvedOptions = duplicate( variables.options );
 			resolvedOptions.append( callerOptions, true );
 
-			// Check if credentials are nested inside apiKey (from aiChat/aiService flow)
-			var credSource = resolvedOptions;
+			// Credentials may be nested inside apiKey (the aiChat()/aiService() flow injects the
+			// module-level apiKey struct there). Overlay it rather than SWITCHING to it wholesale:
+			// replacing credSource discarded the caller's own explicit region and credentials, so an
+			// explicit eu-west-2 key pair silently signed as the module's us-east-1 account.
+			//
+			// Precedence, highest first: explicit per-call arguments, then
+			// settings.providers.Bedrock.options (provider-specific), then the module-global apiKey
+			// struct, then the environment values init() loaded. The global apiKey is the BROADEST
+			// scope of the three configured sources, so it fills only what neither of the narrower
+			// ones stated.
+			var credSource      = duplicate( resolvedOptions );
+			// Read module settings the way BaseService does. `static.` resolves to THIS class's own
+			// static scope, so BaseService's MODULE_SETTINGS is not reachable through it.
+			var providerOptions = {};
+			var moduleSettings  = getModuleInfo( "bxai" ).settings ?: {};
+			if (
+				isStruct( moduleSettings )
+				&& isStruct( moduleSettings.providers ?: "" )
+				&& isStruct( moduleSettings.providers[ variables.name ] ?: "" )
+				&& isStruct( ( moduleSettings.providers[ variables.name ].options ?: "" ) )
+			) {
+				providerOptions = moduleSettings.providers[ variables.name ].options;
+			}
+
 			if ( resolvedOptions.keyExists( "apiKey" ) && isStruct( resolvedOptions.apiKey ) ) {
-				credSource = resolvedOptions.apiKey;
+				for ( var credKey in [ "region", "awsAccessKeyId", "awsSecretAccessKey", "awsSessionToken" ] ) {
+					var statedNarrowly = len( callerOptions[ credKey ] ?: "" ) || len( providerOptions[ credKey ] ?: "" );
+					if ( len( resolvedOptions.apiKey[ credKey ] ?: "" ) && !statedNarrowly ) {
+						credSource[ credKey ] = resolvedOptions.apiKey[ credKey ];
+					}
+				}
 			}
 
 			// Configure with struct of settings - check both top-level and apiKey nested
@@ -565,6 +592,56 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		return getSystemSetting( "AWS_CONTAINER_AUTHORIZATION_TOKEN", "" );
 	}
 
+	/**
+	 * Whether a container credential endpoint may be contacted, per the AWS SDKs' rule for
+	 * AWS_CONTAINER_CREDENTIALS_FULL_URI.
+	 *
+	 * The request carries a bearer authorization token, so the destination cannot be arbitrary: over
+	 * plain HTTP only loopback and the documented ECS/EKS link-local addresses are permitted, and any
+	 * other host must use HTTPS. Without this an environment variable pointing at an attacker-chosen
+	 * plain-HTTP host would be handed the token verbatim. The IMDS address is deliberately absent —
+	 * it is not a container credential endpoint.
+	 *
+	 * @see https://docs.aws.amazon.com/sdkref/latest/guide/feature-container-credentials.html
+	 *
+	 * @uri The configured full URI
+	 *
+	 * @return True if the endpoint is allowed
+	 */
+	public boolean function isTrustedContainerCredentialUri( required string uri ){
+		var normalized = trim( arguments.uri );
+
+		// HTTPS to any host is acceptable — the token is protected in transit.
+		if ( normalized.reFindNoCase( "^https://" ) ) {
+			return true;
+		}
+
+		if ( normalized.reFindNoCase( "^http://" ) ) {
+			// Host is everything after the scheme up to the first /, ? or : (port)
+			var host = normalized.reReplaceNoCase( "^http://", "" ).listFirst( "/?" ).listFirst( ":" );
+
+			var trustedHosts = [ "localhost", "127.0.0.1", "::1", "[::1]", "169.254.170.2", "169.254.170.23", "fd00:ec2::23", "[fd00:ec2::23]" ];
+			if ( trustedHosts.findNoCase( host ) ) {
+				return true;
+			}
+			// Any 127.x.x.x loopback address
+			if ( host.reFind( "^127\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$" ) ) {
+				return true;
+			}
+		}
+
+		if ( len( normalized ) ) {
+			writeLog(
+				text: "Bedrock: refusing to send a container credential token to untrusted endpoint [#normalized#] — "
+					& "plain HTTP is allowed only for loopback and the ECS/EKS link-local addresses; use HTTPS "
+					& "for any other host",
+				type: "warning",
+				log : "ai"
+			);
+		}
+		return false;
+	}
+
 	private any function loadContainerCredentials(){
 		var relativeUri = getSystemSetting( "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI", "" );
 		var fullUri      = getSystemSetting( "AWS_CONTAINER_CREDENTIALS_FULL_URI", "" );
@@ -573,7 +650,19 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			return null;
 		}
 
-		var url       = len( fullUri ) ? fullUri : ( "http://169.254.170.2" & relativeUri );
+		// RELATIVE_URI wins when both are set, per the AWS container credential provider spec — and
+		// credentialCacheKey() keys on that same precedence, so preferring FULL_URI here fetched from
+		// one endpoint and cached the result under the other.
+		var url = "";
+		if ( len( relativeUri ) ) {
+			url = "http://169.254.170.2" & relativeUri;
+		} else if ( isTrustedContainerCredentialUri( fullUri ) ) {
+			url = fullUri;
+		} else {
+			// Refused, not silently unauthenticated: the request would carry a bearer token.
+			return null;
+		}
+
 		var authToken = containerAuthorizationToken();
 
 		try {
