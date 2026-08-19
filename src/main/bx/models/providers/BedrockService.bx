@@ -339,6 +339,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		if ( arguments.cached.isEmpty() || !arguments.cached.keyExists( "expiration" ) ) {
 			return false;
 		}
+		// Key material must actually be present. An expiry alone is not evidence of credentials, and
+		// a container endpoint answering `200 {}` would otherwise read as valid until it "expired".
+		if ( !len( arguments.cached.accessKeyId ?: "" ) || !len( arguments.cached.secretAccessKey ?: "" ) ) {
+			return false;
+		}
 		return dateDiff( "n", now(), arguments.cached.expiration ) > 5;
 	}
 
@@ -416,6 +421,33 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			};
 		}
 
+		// Every failure in the auto-resolution chain degrades to empty credentials, so AWS answers
+		// with its own auth error rather than an exception surfacing from a credential LOOKUP. The
+		// named locks below use throwontimeout="true" (required by convention), so a contended lock
+		// would otherwise be the one failure here that escapes into chat().
+		try {
+			return resolveAutoAwsCredentials();
+		} catch ( any e ) {
+			writeLog(
+				text: "Bedrock: auto credential resolution failed (#e.type#): #e.message#",
+				type: "error",
+				log : "ai"
+			);
+			return {
+				accessKeyId     : variables.awsAccessKeyId,
+				secretAccessKey : variables.awsSecretAccessKey,
+				sessionToken    : variables.awsSessionToken
+			};
+		}
+	}
+
+	/**
+	 * The container/IMDS half of resolveAwsCredentials(), behind the shared cache. Separated so the
+	 * caller can guarantee this never throws — see resolveAwsCredentials().
+	 *
+	 * @return Struct: { accessKeyId, secretAccessKey, sessionToken }
+	 */
+	private struct function resolveAutoAwsCredentials(){
 		var cacheKey  = credentialCacheKey();
 		var lockName  = "bedrock-credentials-#cacheKey#";
 
@@ -427,7 +459,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// ------------------------------------------------------------------------------------
 		var cached = "";
 		lock name="#lockName#" type="readonly" timeout="10" throwontimeout="true" {
-			cached = static.CREDENTIAL_CACHE[ cacheKey ] ?: { "credentials" : {}, "lastFailure" : null };
+			// duplicate() INSIDE the lock: `?:` yields the live entry, and every field read below
+			// happens after the lock releases. Aliasing it let a writer mutate the entry mid-decision
+			// — validate one credentials struct and return another, or (worse) null lastFailure
+			// between the isNull() check and the dateDiff() below, which throws "Can't cast null to
+			// a DateTime" straight out of chat(). Snapshotting is the whole fix.
+			cached = duplicate( static.CREDENTIAL_CACHE[ cacheKey ] ?: { "credentials" : {}, "lastFailure" : null } );
 		}
 
 		if ( isCredentialCacheValid( cached.credentials ) ) {
@@ -473,10 +510,14 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				entry.lastFailure = null;
 				result            = creds;
 			} else {
-				// Nothing resolved — start/refresh the negative-cache window, then fall back to
-				// still-valid cached credentials if any.
-				entry.lastFailure = now();
-				result            = fallbackToCachedOrEmptyCredentials( entry.credentials );
+				// Nothing resolved. Only arm the negative-cache window when there is nothing valid
+				// already cached — a concurrent thread may have just stored good credentials, and
+				// stamping a failure over those is what makes the negative branch serve stale keys
+				// while perfectly usable ones sit in the entry.
+				if ( !isCredentialCacheValid( entry.credentials ) ) {
+					entry.lastFailure = now();
+				}
+				result = fallbackToCachedOrEmptyCredentials( entry.credentials );
 			}
 
 			static.CREDENTIAL_CACHE[ cacheKey ] = entry;
@@ -573,6 +614,16 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		var tokenFile = getSystemSetting( "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE", "" );
 
 		if ( len( tokenFile ) ) {
+			// The file's contents become an Authorization header, so the path is validated before it
+			// is read, per this project's path-traversal rule. AWS supplies an absolute path here.
+			if ( tokenFile.find( ".." ) ) {
+				writeLog(
+					text: "Bedrock: refusing AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE [#tokenFile#] — path traversal is not accepted",
+					type: "warning",
+					log : "ai"
+				);
+				return getSystemSetting( "AWS_CONTAINER_AUTHORIZATION_TOKEN", "" );
+			}
 			try {
 				return fileRead( tokenFile ).trim();
 			} catch ( any e ) {
@@ -696,7 +747,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 			url = "http://169.254.170.2" & relativeUri;
 		} else if ( isTrustedContainerCredentialUri( fullUri ) ) {
-			url = fullUri;
+			// The TRIMMED value, because that is what was validated. Fetching the raw env string
+			// meant a trailing newline (trivial from a k8s env-from-file) passed validation, failed
+			// the HTTP call, was swallowed, and silently fell through to IMDS — signing with the EC2
+			// instance role instead of the ECS task role. A silent privilege swap, not an error.
+			url = trim( fullUri );
 		} else {
 			// Refused, not silently unauthenticated: the request would carry a bearer token.
 			return null;
@@ -705,20 +760,51 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		var authToken = containerAuthorizationToken();
 
 		try {
-			var req = http( url = url ).method( "GET" ).timeout( 2 ).throwOnError( false );
+			// bx:http rather than the fluent http() builder purely because the builder exposes no
+			// redirect control, and following a redirect here defeats the endpoint allowlist above:
+			// verified that the default client follows a 302 from a trusted address to an arbitrary
+			// host and returns that host's body as a 200, which we would then cache as credentials.
+			// AWS SDKs do not follow redirects on this endpoint either.
+			var result = "";
 			if ( len( authToken ) ) {
-				req.header( "Authorization", authToken );
+				bx:http url="#url#" method="GET" timeout="2" redirect="false" throwonerror="false" result="result" {
+					bx:httpparam type="header" name="Authorization" value="#authToken#";
+				}
+			} else {
+				bx:http url="#url#" method="GET" timeout="2" redirect="false" throwonerror="false" result="result" {
+				}
 			}
-			var result     = req.send();
-			var statusCode = val( listFirst( result.statusCode, " " ) );
+
+			var statusCode = val( listFirst( result.statusCode ?: "0", " " ) );
 			if ( statusCode != 200 ) {
+				// Logged, not silent: a 302 (refused redirect), 401 or 403 here is the difference
+				// between "no container credentials configured" and "configured but rejected", and
+				// this whole code path previously failed invisibly.
+				writeLog(
+					text: "Bedrock: container credential endpoint returned status #statusCode#; falling through to IMDS",
+					type: "warning",
+					log : "ai"
+				);
 				return null;
 			}
 
 			var body = jsonDeserialize( result.fileContent );
+
+			// A 200 carrying no key material is a failed resolution, not an empty-but-valid
+			// credential set: returning it would cache empty keys behind the synthesized expiry
+			// below and suppress the IMDS fallback for an hour.
+			if ( !len( body.AccessKeyId ?: "" ) || !len( body.SecretAccessKey ?: "" ) ) {
+				writeLog(
+					text: "Bedrock: container credential endpoint returned no key material; falling through to IMDS",
+					type: "warning",
+					log : "ai"
+				);
+				return null;
+			}
+
 			return {
-				accessKeyId     : body.AccessKeyId ?: "",
-				secretAccessKey : body.SecretAccessKey ?: "",
+				accessKeyId     : body.AccessKeyId,
+				secretAccessKey : body.SecretAccessKey,
 				sessionToken    : body.Token ?: "",
 				expiration      : len( body.Expiration ?: "" ) ? parseDateTime( body.Expiration ) : dateAdd( "n", 60, now() )
 			};
@@ -779,9 +865,16 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 
 			var body = jsonDeserialize( credResult.fileContent );
+
+			// Same rule as the container endpoint: a 200 with no key material is a failed
+			// resolution, not an empty-but-valid credential set to cache behind an expiry.
+			if ( !len( body.AccessKeyId ?: "" ) || !len( body.SecretAccessKey ?: "" ) ) {
+				return null;
+			}
+
 			return {
-				accessKeyId     : body.AccessKeyId ?: "",
-				secretAccessKey : body.SecretAccessKey ?: "",
+				accessKeyId     : body.AccessKeyId,
+				secretAccessKey : body.SecretAccessKey,
 				sessionToken    : body.Token ?: "",
 				expiration      : len( body.Expiration ?: "" ) ? parseDateTime( body.Expiration ) : dateAdd( "n", 60, now() )
 			};

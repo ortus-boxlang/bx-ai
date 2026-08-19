@@ -2231,6 +2231,40 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "isCredentialCacheValid requires key material, not just an unexpired timestamp" )
+	public void testCredentialCacheValidityRequiresKeyMaterial() {
+		// A container endpoint answering `200 {}` produced empty keys plus a synthesized 60-minute
+		// expiry, which read as a valid cache entry — suppressing the IMDS fallback and signing every
+		// request with an empty secret for an hour.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = aiService( "bedrock", { awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" } )
+				emptyButUnexpired = service.isCredentialCacheValid( {
+					"accessKeyId": "", "secretAccessKey": "", "sessionToken": "",
+					"expiration": dateAdd( "n", 60, now() )
+				} )
+				populated = service.isCredentialCacheValid( {
+					"accessKeyId": "AKIAEXAMPLEEXAMPLE12", "secretAccessKey": "s", "sessionToken": "",
+					"expiration": dateAdd( "n", 60, now() )
+				} )
+				expiringSoon = service.isCredentialCacheValid( {
+					"accessKeyId": "AKIAEXAMPLEEXAMPLE12", "secretAccessKey": "s", "sessionToken": "",
+					"expiration": dateAdd( "n", 2, now() )
+				} )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertWithMessage( "an expiry alone is not evidence of credentials" )
+		    .that( variables.getAsBoolean( Key.of( "emptyButUnexpired" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "populated" ) ) ).isTrue();
+		assertWithMessage( "inside the refresh buffer must not count as valid" )
+		    .that( variables.getAsBoolean( Key.of( "expiringSoon" ) ) ).isFalse();
+	}
+
+	@Test
 	@DisplayName( "isTrustedContainerCredentialUri refuses to send the credential token to an arbitrary HTTP host" )
 	public void testContainerCredentialUriTrust() {
 		// @formatter:off
