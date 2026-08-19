@@ -2122,6 +2122,68 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "An access key configured without a secret does NOT blank the environment secret" )
+	public void testPartialExplicitCredentialsKeepEnvironmentSecret() {
+		// The atomic-set fix originally keyed off keyExists( "awsAccessKeyId" ) and assigned the
+		// secret via ?: "", so configuring only an access key id blanked a secret that init() had
+		// loaded from AWS_SECRET_ACCESS_KEY. resolveAwsCredentials() then failed its len(secret)
+		// check, fell through to container/IMDS, and signed with an empty secret. Atomicity must
+		// apply to a COMPLETE explicit pair, not to the presence of one key.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = new bxModules.bxai.models.providers.BedrockService()
+				// Stand in for the environment values init() would have seeded.
+				service.configure( { awsAccessKeyId: "AKIAENVENVENVENVENVE", awsSecretAccessKey: "env-secret", region: "%s" } )
+				// A later partial configure() supplying ONLY an access key id.
+				service.configure( { awsAccessKeyId: "%s" } )
+				creds = service.resolveAwsCredentials()
+			""".formatted( DUMMY_AWS_REGION, DUMMY_AWS_ACCESS_KEY_ID ),
+			context
+		);
+		// @formatter:on
+
+		@SuppressWarnings( "unchecked" )
+		IStruct creds = ( IStruct ) variables.get( Key.of( "creds" ) );
+		assertThat( creds.get( Key.of( "accessKeyId" ) ) ).isEqualTo( DUMMY_AWS_ACCESS_KEY_ID );
+		assertWithMessage( "a partial override must not blank a secret from an earlier source" )
+		    .that( creds.get( Key.of( "secretAccessKey" ) ) ).isEqualTo( "env-secret" );
+	}
+
+	@Test
+	@DisplayName( "Explicit per-call options beat module-level providers.Bedrock.options" )
+	public void testExplicitOptionsBeatModuleProviderOptions() {
+		// super.configure() appends providers.Bedrock.options with override=true, so reading the
+		// merged struct let a module-wide region silently win over an explicit per-call one and
+		// send the request to the wrong region.
+		IStruct	providers		= Struct.of( "Bedrock", Struct.of( "options", Struct.of( "region", "us-east-1" ) ) );
+		Object	priorProviders	= moduleRecord.settings.get( Key.of( "providers" ) );
+		moduleRecord.settings.put( Key.of( "providers" ), providers );
+
+		try {
+			// @formatter:off
+			executeWithTimeoutHandling(
+				"""
+					service = new bxModules.bxai.models.providers.BedrockService()
+					service.configure( { region: "eu-west-2", awsAccessKeyId: "%s", awsSecretAccessKey: "%s" } )
+					resolvedRegion = service.getRegion()
+				""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY ),
+				context
+			);
+			// @formatter:on
+
+			assertWithMessage( "an explicit per-call region must win over settings.providers.Bedrock.options" )
+			    .that( variables.get( Key.of( "resolvedRegion" ) ).toString() ).isEqualTo( "eu-west-2" );
+		} finally {
+			if ( priorProviders == null ) {
+				moduleRecord.settings.remove( Key.of( "providers" ) );
+			} else {
+				moduleRecord.settings.put( Key.of( "providers" ), priorProviders );
+			}
+		}
+	}
+
+	@Test
 	@DisplayName( "Auto-resolved credential state is shared across service instances, not per-instance" )
 	public void testCredentialCacheIsSharedAcrossInstances() {
 		// aiService() builds a fresh provider per call, so an instance-scoped cache was read exactly

@@ -32,7 +32,8 @@
  *      "string = apiKey" contract here).
  *   4. ECS/EKS container credentials (`AWS_CONTAINER_CREDENTIALS_RELATIVE_URI` or `_FULL_URI`)
  *   5. EC2 IMDSv2 instance-role credentials (session-token handshake + role lookup)
- * Steps 4/5 are cached on the instance and refreshed once within 5 minutes of expiry.
+ * Steps 4/5 are cached in a store SHARED across instances (see credentialCacheKey()) and refreshed
+ * once within 5 minutes of expiry.
  *
  * Tool calling and schema-typed structured output are only wired up for Claude-family
  * models on Bedrock (Claude's tool-use API); requesting either on any other family
@@ -125,6 +126,14 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// request pays the ~1-2s IMDS/container timeout again (worst case: once per text in
 		// sendTitanEmbeddings).
 		NEGATIVE_CACHE_SECONDS = 60;
+		// The window above applies only while there are still USABLE cached credentials to serve —
+		// a refresh hiccup, where there is no urgency. When nothing resolved and there is nothing
+		// to fall back on, every request in the runtime would be signed with empty credentials and
+		// get a guaranteed AWS 403, so the window has to be short enough that a pod which started
+		// before its credential endpoint was reachable recovers promptly instead of hard-failing
+		// for a full minute. Short, not zero: zero would re-pay the metadata timeout per request,
+		// which is the cost this cache exists to avoid.
+		NEGATIVE_CACHE_SECONDS_EMPTY = 5;
 		// Auto-resolved (container/IMDS) credentials, cached across INSTANCES rather than on one.
 		// aiService() builds a fresh provider per call (aiService.bx: `new "#targetClass#"()`), so
 		// an instance-scoped cache never survives to be read a second time: every request would
@@ -192,16 +201,25 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			// contract.
 			variables.modelId = arguments.options;
 		} else if ( isStruct( arguments.options ) ) {
+			// Snapshot the caller's own options BEFORE delegating: BaseService.configure() does
+			// `variables.options = arguments.options` and then appends providers.Bedrock.options
+			// with override=true, which mutates the caller's struct IN PLACE — so after the call
+			// there is no longer any record of what the caller actually asked for.
+			var callerOptions = duplicate( arguments.options );
+
 			// Delegate to BaseService for the module-settings merges (defaultParams,
 			// providers.Bedrock.{params,options}) that struct-based configure() must not skip.
 			super.configure( arguments.options );
 
-			// Read from variables.options, not arguments.options: super.configure() merges
-			// providers.Bedrock.options into it, so this is what makes module-level provider
-			// options (region, baseURL, bearerToken, credentials) take effect. The two happen to
-			// alias the same struct today, but relying on that would silently break if
-			// BaseService ever copied instead of assigning.
-			var resolvedOptions = variables.options;
+			// Start from the merged struct so module-level provider options (region, baseURL,
+			// bearerToken, credentials) take effect at all, then re-apply the caller's OWN struct
+			// on top. BaseService.configure() appends providers.Bedrock.options with override=true,
+			// which otherwise lets a module-wide region silently beat an explicit per-call one and
+			// send the request to the wrong region. Explicit arguments win; module settings fill
+			// the gaps. Copied rather than mutated in place because BaseService appends into the
+			// caller's own struct by reference.
+			var resolvedOptions = duplicate( variables.options );
+			resolvedOptions.append( callerOptions, true );
 
 			// Check if credentials are nested inside apiKey (from aiChat/aiService flow)
 			var credSource = resolvedOptions;
@@ -213,21 +231,33 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			if ( credSource.keyExists( "region" ) ) {
 				variables.region = credSource.region;
 			}
-			// Credentials resolve as an ATOMIC SET. init() already seeded the instance from the
-			// environment, so assigning the keys individually here let an explicit long-term key
-			// pair keep AWS_SESSION_TOKEN from the environment — a token that belongs to different
-			// credentials. SigV4 then signs with the mismatched triple and AWS rejects it. An
-			// explicit access key therefore defines the whole set: the secret and the session
-			// token come from that same source, or not at all.
-			if ( credSource.keyExists( "awsAccessKeyId" ) ) {
-				variables.awsAccessKeyId     = credSource.awsAccessKeyId;
-				variables.awsSecretAccessKey = credSource.awsSecretAccessKey ?: "";
+			// Credentials resolve as an ATOMIC SET, but only when this source actually supplies a
+			// COMPLETE long-term pair. init() already seeded the instance from the environment, so
+			// assigning the keys individually let an explicit pair keep AWS_SESSION_TOKEN from the
+			// environment — a token belonging to different credentials, which SigV4 then signs with
+			// and AWS rejects. Gating on a complete pair rather than on the access key alone
+			// matters just as much in the other direction: keying off keyExists() blanked an
+			// environment-supplied secret whenever only an access key id was configured (or one was
+			// declared present-but-empty), which turned a working setup into requests signed with
+			// an empty secret.
+			var explicitKeyId  = credSource.awsAccessKeyId ?: "";
+			var explicitSecret = credSource.awsSecretAccessKey ?: "";
+
+			if ( len( explicitKeyId ) && len( explicitSecret ) ) {
+				// A complete set: the session token comes from this same source, or not at all.
+				variables.awsAccessKeyId     = explicitKeyId;
+				variables.awsSecretAccessKey = explicitSecret;
 				variables.awsSessionToken    = credSource.awsSessionToken ?: "";
 			} else {
-				if ( credSource.keyExists( "awsSecretAccessKey" ) ) {
-					variables.awsSecretAccessKey = credSource.awsSecretAccessKey;
+				// Partial: override only what was actually given, leaving the rest of the chain
+				// (environment values loaded in init()) intact, as it behaved before.
+				if ( len( explicitKeyId ) ) {
+					variables.awsAccessKeyId = explicitKeyId;
 				}
-				if ( credSource.keyExists( "awsSessionToken" ) ) {
+				if ( len( explicitSecret ) ) {
+					variables.awsSecretAccessKey = explicitSecret;
+				}
+				if ( len( credSource.awsSessionToken ?: "" ) ) {
 					variables.awsSessionToken = credSource.awsSessionToken;
 				}
 			}
@@ -291,6 +321,34 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
+	 * The subset of variables.params that module settings actually configured — what belongs on the
+	 * request, as opposed to this service's own built-in defaults.
+	 *
+	 * Two keys must not be merged blindly. "model" has dedicated resolution here (variables.modelId
+	 * → request → params) and merging it would make AiBaseRequest.getModel() report the default
+	 * Claude id for a request routed to another family. And DEFAULT_CHAT_PARAMS.max_tokens is
+	 * Claude-shaped (4096): imposing it on every family overrides each transform's own fallback —
+	 * Llama's max_gen_len tops out at 2048, so a merged 4096 makes AWS reject every Llama call. A
+	 * value equal to the built-in default is therefore treated as "not configured"; one that
+	 * differs came from settings and is forwarded.
+	 */
+	private struct function configuredServiceParams(){
+		var configured = {};
+
+		for ( var key in variables.params ) {
+			if ( key == "model" ) {
+				continue;
+			}
+			if ( static.DEFAULT_CHAT_PARAMS.keyExists( key ) && static.DEFAULT_CHAT_PARAMS[ key ] == variables.params[ key ] ) {
+				continue;
+			}
+			configured[ key ] = variables.params[ key ];
+		}
+
+		return configured;
+	}
+
+	/**
 	 * Resolve the AWS credentials to sign this request with, following (a subset of) the standard
 	 * AWS default credential provider chain:
 	 *   1. Explicit struct credentials passed to configure() (variables.awsAccessKeyId/SecretAccessKey)
@@ -326,34 +384,6 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 *
 	 * @return Struct: { accessKeyId, secretAccessKey, sessionToken }
 	 */
-	/**
-	 * The subset of variables.params that module settings actually configured — what belongs on the
-	 * request, as opposed to this service's own built-in defaults.
-	 *
-	 * Two keys must not be merged blindly. "model" has dedicated resolution here (variables.modelId
-	 * → request → params) and merging it would make AiBaseRequest.getModel() report the default
-	 * Claude id for a request routed to another family. And DEFAULT_CHAT_PARAMS.max_tokens is
-	 * Claude-shaped (4096): imposing it on every family overrides each transform's own fallback —
-	 * Llama's max_gen_len tops out at 2048, so a merged 4096 makes AWS reject every Llama call. A
-	 * value equal to the built-in default is therefore treated as "not configured"; one that
-	 * differs came from settings and is forwarded.
-	 */
-	private struct function configuredServiceParams(){
-		var configured = {};
-
-		for ( var key in variables.params ) {
-			if ( key == "model" ) {
-				continue;
-			}
-			if ( static.DEFAULT_CHAT_PARAMS.keyExists( key ) && static.DEFAULT_CHAT_PARAMS[ key ] == variables.params[ key ] ) {
-				continue;
-			}
-			configured[ key ] = variables.params[ key ];
-		}
-
-		return configured;
-	}
-
 	public struct function resolveAwsCredentials(){
 		// 1 + 2: explicit struct / environment credentials, already resolved onto the instance.
 		if ( len( variables.awsAccessKeyId ) && len( variables.awsSecretAccessKey ) ) {
@@ -364,64 +394,86 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			};
 		}
 
-		var result   = {};
-		var cacheKey = credentialCacheKey();
+		var cacheKey  = credentialCacheKey();
+		var lockName  = "bedrock-credentials-#cacheKey#";
 
-		// Lock name is derived from the cache key, not from instance identity: concurrent refreshes
-		// for the SAME credential source serialize (one metadata round-trip, not one per thread),
-		// while different sources proceed independently.
-		lock
-			name="bedrock-credentials-#cacheKey#"
-			type="exclusive"
-			timeout="10"
-			throwontimeout="true" {
+		// ------------------------------------------------------------------------------------
+		// Fast path: a readonly lock, no network I/O. This is the overwhelmingly common case and
+		// must not serialize behind the exclusive lock below — BoxLang's lock registry is
+		// JVM-static, so an exclusive lock here would funnel every Bedrock request in the runtime
+		// through one gate for what is a pure read.
+		// ------------------------------------------------------------------------------------
+		var cached = "";
+		lock name="#lockName#" type="readonly" timeout="10" throwontimeout="true" {
+			cached = static.CREDENTIAL_CACHE[ cacheKey ] ?: { "credentials" : {}, "lastFailure" : null };
+		}
 
+		if ( isCredentialCacheValid( cached.credentials ) ) {
+			// Copied, never handed out by reference: this struct lives in a cache shared across
+			// every instance and thread, and a caller mutating it would corrupt what everyone else
+			// signs with, outside any lock.
+			return duplicate( cached.credentials );
+		}
+
+		// Negative cache. The window depends on whether there is anything usable to serve: with
+		// good cached credentials this is just refresh suppression, but with nothing to fall back
+		// on it is suppressing requests that will all 403, so it expires quickly.
+		if ( !isNull( cached.lastFailure ) ) {
+			var negativeWindow = len( cached.credentials.secretAccessKey ?: "" )
+				? static.NEGATIVE_CACHE_SECONDS
+				: static.NEGATIVE_CACHE_SECONDS_EMPTY;
+
+			if ( dateDiff( "s", cached.lastFailure, now() ) < negativeWindow ) {
+				return duplicate( fallbackToCachedOrEmptyCredentials( cached.credentials ) );
+			}
+		}
+
+		// ------------------------------------------------------------------------------------
+		// Slow path: resolve OUTSIDE any lock. Two threads racing here may each pay one metadata
+		// round-trip, which is strictly better than holding an exclusive JVM-wide lock across
+		// ~5s of HTTP (container endpoint + three sequential IMDS calls) and an untimed token-file
+		// read — that queues every other Bedrock request behind it and, past the lock timeout,
+		// throws type="lock", which RetryMiddleware does not treat as non-retryable and would
+		// re-queue onto the same congested lock.
+		// ------------------------------------------------------------------------------------
+		var creds = loadContainerCredentials();
+		if ( isNull( creds ) ) {
+			creds = loadImdsCredentials();
+		}
+
+		var result = {};
+
+		lock name="#lockName#" type="exclusive" timeout="10" throwontimeout="true" {
 			var entry = static.CREDENTIAL_CACHE[ cacheKey ] ?: { "credentials" : {}, "lastFailure" : null };
 
-			// Cached auto-resolved (container/IMDS) credentials, still valid.
-			if ( isCredentialCacheValid( entry.credentials ) ) {
-				result = entry.credentials;
-			} else if (
-				!isNull( entry.lastFailure )
-				&& dateDiff( "s", entry.lastFailure, now() ) < static.NEGATIVE_CACHE_SECONDS
-			) {
-				// Negative cache: a resolution attempt recently found nothing — skip the
-				// container/IMDS round-trips for a while rather than paying that timeout again.
-				result = fallbackToCachedOrEmptyCredentials( entry.credentials );
+			if ( !isNull( creds ) ) {
+				entry.credentials = creds;
+				entry.lastFailure = null;
+				result            = creds;
 			} else {
-				// 4: ECS/EKS container credentials
-				var creds = loadContainerCredentials();
-
-				// 5: EC2 IMDSv2 instance-role credentials
-				if ( isNull( creds ) ) {
-					creds = loadImdsCredentials();
-				}
-
-				if ( !isNull( creds ) ) {
-					entry.credentials = creds;
-					entry.lastFailure = null;
-					result            = creds;
-				} else {
-					// Nothing resolved this attempt — start/refresh the negative-cache window,
-					// then fall back to still-valid cached credentials if any.
-					entry.lastFailure = now();
-					result            = fallbackToCachedOrEmptyCredentials( entry.credentials );
-				}
+				// Nothing resolved — start/refresh the negative-cache window, then fall back to
+				// still-valid cached credentials if any.
+				entry.lastFailure = now();
+				result            = fallbackToCachedOrEmptyCredentials( entry.credentials );
 			}
 
 			static.CREDENTIAL_CACHE[ cacheKey ] = entry;
 		}
 
-		return result;
+		return duplicate( result );
 	}
 
 	/**
 	 * Key under which auto-resolved credentials are shared across instances.
 	 *
-	 * Built from what actually determines the credential values — the container endpoint in use, or
-	 * EC2 IMDS otherwise — plus the region. Region does not change what the metadata service hands
-	 * back, but including it keeps two differently-configured services from sharing an entry, at
-	 * the negligible cost of one extra entry per region in a process that targets several.
+	 * Built ONLY from what actually determines the credential values — the container endpoint in
+	 * use, or EC2 IMDS otherwise. Region is deliberately NOT part of the key: the metadata service
+	 * returns the same instance/pod credentials regardless of which region they are later used to
+	 * sign for, so including it bounded nothing and cost real money — it made an app targeting M
+	 * regions pay M cold metadata probes and keep M independent negative-cache windows, and it let
+	 * caller-supplied region strings (unvalidated, straight off the options struct) mint unbounded
+	 * cache entries each retaining a live secret. Keyed on the source alone the cardinality is at
+	 * most one entry per configured endpoint.
 	 *
 	 * @return The cache key
 	 */
@@ -431,7 +483,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		var source      = len( relativeUri ) ? "container-relative:" & relativeUri
 			: ( len( fullUri ) ? "container-full:" & fullUri : "ec2-imds" );
 
-		return hash( lCase( variables.region & "|" & source ), "MD5" );
+		// Hashed so an endpoint URI cannot inject characters into a lock name or struct key.
+		return hash( lCase( source ), "MD5" );
 	}
 
 	/**
@@ -1892,23 +1945,6 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
-	 * Normalize a response header value that may come back as an array (some HTTP clients return
-	 * multi-valued headers as an array instead of a single delimited string) into a single plain
-	 * string, so val()-parsing the X-Amzn-Bedrock-*-Token-Count headers doesn't choke on an array.
-	 *
-	 * @headerValue A response header value: a string, an array, or empty/absent (already elvis'd
-	 *              to "" by the caller when the header key doesn't exist)
-	 *
-	 * @return The first value as a string, or "" when empty/absent
-	 */
-	private string function firstHeaderValue( required any headerValue ){
-		if ( isArray( arguments.headerValue ) ) {
-			return arguments.headerValue.len() ? toString( arguments.headerValue[ 1 ] ) : "";
-		}
-		return toString( arguments.headerValue );
-	}
-
-	/**
 	 * Detect a Bedrock Guardrails intervention on a response and log it. Bedrock reports this
 	 * via the `x-amzn-bedrock-guardrailaction` response header on InvokeModel, or (per some
 	 * model/response shapes) an `amazon-bedrock-guardrailAction` field in the response body.
@@ -2370,7 +2406,14 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				bedrockUsage.totalTokens  = bedrockUsage.inputTokens + bedrockUsage.outputTokens;
 				bedrockUsage.raw          = chunk.usage;
 			}
-			bedrockContent &= ( chunk.choices?.first()?.delta?.content ?: "" );
+			// Guard on len(): the final amazon-bedrock-invocationMetrics event arrives as a
+			// usage-only chunk with `choices: []`, and first() on an EMPTY array throws ("Cannot
+			// return first element of array") — safe navigation only short-circuits a null. The
+			// throw was swallowed by processBedrockEvent's catch at debug level, so the caller's
+			// stream callback silently never received that final usage chunk.
+			if ( isArray( chunk.choices ?: "" ) && chunk.choices.len() ) {
+				bedrockContent &= ( chunk.choices.first().delta?.content ?: "" );
+			}
 			userStreamCallback( chunk );
 		};
 
