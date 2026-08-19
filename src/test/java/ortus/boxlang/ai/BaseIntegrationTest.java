@@ -96,7 +96,11 @@ public abstract class BaseIntegrationTest {
 	 */
 	protected boolean isTimeoutException( Throwable e ) {
 		String message = e.getMessage();
-		return message != null && ( message.contains( "request timed out" ) || message.contains( "timeout" ) );
+		if ( message == null ) {
+			return false;
+		}
+		String lowerMessage = message.toLowerCase();
+		return lowerMessage.contains( "request timed out" ) || lowerMessage.contains( "timeout" ) || lowerMessage.contains( "timed out" );
 	}
 
 	/**
@@ -106,19 +110,24 @@ public abstract class BaseIntegrationTest {
 	 *
 	 * @param source  The BoxLang source code to execute
 	 * @param context The execution context
+	 *
+	 * @return true if the source executed without a timeout (assertions relying on its output
+	 *         are safe to run); false if a timeout was caught and swallowed (callers should skip
+	 *         any assertions that depend on variables the source would have set)
 	 */
-	protected void executeWithTimeoutHandling( String source, IBoxContext context ) {
+	protected boolean executeWithTimeoutHandling( String source, IBoxContext context ) {
 		try {
 			runtime.executeSource( source, context );
+			return true;
 		} catch ( Exception e ) {
 			System.out.println( "Exception during execution: " + e.getMessage() );
 			if ( isTimeoutException( e ) ) {
 				System.out.println( "⚠️  Test passed with timeout - LLM request timed out (acceptable in CI): " + e.getMessage() );
 				// Test passes - timeout is acceptable in CI environments
-			} else {
-				// Re-throw other exceptions
-				throw e;
+				return false;
 			}
+			// Re-throw other exceptions
+			throw e;
 		}
 	}
 
