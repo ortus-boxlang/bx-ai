@@ -19,7 +19,6 @@ package ortus.boxlang.ai.providers;
 
 import static com.google.common.truth.Truth.assertThat;
 import static com.google.common.truth.Truth.assertWithMessage;
-import static org.junit.jupiter.api.Assumptions.abort;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import org.junit.jupiter.api.AfterEach;
@@ -28,7 +27,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
-import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.IStruct;
 import ortus.boxlang.runtime.types.Struct;
@@ -101,31 +99,6 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		return !awsAccessKeyId.isEmpty() && !awsSecretAccessKey.isEmpty();
 	}
 
-	/**
-	 * executeWithTimeoutHandling() tolerates only timeouts and re-throws everything else, so a
-	 * model this account has not enabled — or a role without bedrock:InvokeModel — turns a live
-	 * smoke test into a hard build failure. Those are environment facts, not regressions: skip.
-	 */
-	private void executeLiveBedrockCall( String source, IBoxContext context ) {
-		try {
-			executeWithTimeoutHandling( source, context );
-		} catch ( Exception e ) {
-			String message = String.valueOf( e.getMessage() );
-			// Tolerated markers describe the ENVIRONMENT: this account/role cannot make the call.
-			// Deliberately NOT tolerated: "InvalidSignatureException" (SigV4 canonicalization
-			// regressed) and "ValidationException" — Bedrock returns the latter for a malformed
-			// request body, bad parameters, or an unknown model id, which is exactly what a
-			// regression in the request transform looks like. Those must fail the build.
-			for ( String marker : new String[] { "AccessDenied", "AccessDeniedException", "UnrecognizedClient", "don't have access",
-			    "not authorized", "security token included in the request is invalid" } ) {
-				if ( message.contains( marker ) ) {
-					abort( "Bedrock live call unavailable for these credentials: " + message );
-				}
-			}
-			throw e;
-		}
-	}
-
 	@Test
 	@DisplayName( "Can instantiate Bedrock service via aiService BIF" )
 	public void testInstantiateBedrock() {
@@ -180,13 +153,13 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		assumeTrue( hasAwsCredentials(), "AWS credentials not configured in .env" );
 
 		// @formatter:off
-		executeLiveBedrockCall(
+		assumeTrue( executeLiveBedrockCall(
 			"""
 				// aiChat signature: invoke(messages, params, options, headers)
 				response = aiChat(
 					aiMessage().user( "Say 'Bedrock test successful' and nothing else" ),
 					{
-						model: "anthropic.claude-3-5-sonnet-20241022-v2:0",
+						model: "%s",
 						max_tokens: 100
 					},
 					{
@@ -196,9 +169,9 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 				)
 
 				hasContent = !isNull( response )
-			""",
+			""".formatted( BEDROCK_MODEL ),
 			context
-		);
+		), "live Bedrock call timed out" );
 		// @formatter:on
 
 		assertThat( variables.get( Key.of( "hasContent" ) ) ).isEqualTo( true );
@@ -1489,7 +1462,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		// configure(string) keeps its original, non-breaking meaning: set modelId. See
 		// BedrockService.configure()'s docblock for why Bedrock deliberately deviates from
 		// BaseService's "string = apiKey" contract here.
-		assumeTrue( System.getenv( "AWS_BEARER_TOKEN_BEDROCK" ) == null, "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
+		assumeTrue( !hasAmbientSetting( "AWS_BEARER_TOKEN_BEDROCK" ), "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
 
 		// @formatter:off
 		executeWithTimeoutHandling(
@@ -1518,7 +1491,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		// no AWS credentials configured must NOT have that string silently selected as a Bedrock
 		// bearer token. Bearer auth only activates via the explicit bearerToken key or the
 		// AWS_BEARER_TOKEN_BEDROCK env var (guarded below).
-		assumeTrue( System.getenv( "AWS_BEARER_TOKEN_BEDROCK" ) == null, "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
+		assumeTrue( !hasAmbientSetting( "AWS_BEARER_TOKEN_BEDROCK" ), "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
 
 		// @formatter:off
 		executeWithTimeoutHandling(
@@ -1537,7 +1510,10 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "useBearerAuth() is true when an explicit bearerToken is configured and no AWS access key is available" )
 	public void testExplicitBearerTokenUsesBearerAuth() {
-		assumeTrue( System.getenv( "AWS_BEARER_TOKEN_BEDROCK" ) == null, "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
+		assumeTrue( !hasAmbientSetting( "AWS_BEARER_TOKEN_BEDROCK" ), "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
+		// loadAwsCredentialsFromEnvironment() picks up an ambient AWS_ACCESS_KEY_ID, and useBearerAuth()
+		// short-circuits to false on any access key — so this assertion only holds without one.
+		assumeTrue( !hasAmbientSetting( "AWS_ACCESS_KEY_ID" ), "AWS_ACCESS_KEY_ID is set in the ambient environment" );
 
 		// @formatter:off
 		executeWithTimeoutHandling(
@@ -1562,7 +1538,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		// the explicit awsAccessKeyId passed below, variables.awsAccessKeyId can end up empty if
 		// dotenv has no real AWS creds — at that point this assertion depends solely on the
 		// ambient AWS_BEARER_TOKEN_BEDROCK env var being unset.
-		assumeTrue( System.getenv( "AWS_BEARER_TOKEN_BEDROCK" ) == null, "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
+		assumeTrue( !hasAmbientSetting( "AWS_BEARER_TOKEN_BEDROCK" ), "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
 
 		// @formatter:off
 		executeWithTimeoutHandling(
@@ -1589,7 +1565,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		// the struct-credentials flow doesn't accidentally end up in bearer mode. When dotenv has
 		// no real AWS creds, variables.awsAccessKeyId ends up empty too, so this assertion falls
 		// through to depending on the ambient AWS_BEARER_TOKEN_BEDROCK env var being unset.
-		assumeTrue( System.getenv( "AWS_BEARER_TOKEN_BEDROCK" ) == null, "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
+		assumeTrue( !hasAmbientSetting( "AWS_BEARER_TOKEN_BEDROCK" ), "AWS_BEARER_TOKEN_BEDROCK is set in the ambient environment" );
 
 		// @formatter:off
 		executeWithTimeoutHandling(
