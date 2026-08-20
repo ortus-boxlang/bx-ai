@@ -367,7 +367,7 @@ class {
 	 * Handle CORS preflight requests
 	 *
 	 * @response The response struct to populate
-	 * @mcpServer The MCP server instance for CORS configuration
+	 * @targetServer The MCP server instance for CORS configuration
 	 *
 	 * @return The populated response struct
 	 */
@@ -388,19 +388,19 @@ class {
 	/**
 	 * Handle GET requests for server discovery
 	 *
-	 * @mcpServer The MCP server instance
+	 * @targetServer The MCP server instance
 	 * @response The response struct to populate
 	 * @urlParams URL parameters
 	 *
 	 * @return The populated response struct
 	 */
-	private static  struct function handleDiscovery( required any mcpServer, required struct response, struct urlParams = {} ) {
+	private static  struct function handleDiscovery( required any targetServer, required struct response, struct urlParams = {} ) {
 		arguments.response.content = {
 			"jsonrpc": "2.0",
 			"result": {
 				"protocolVersion": static.DEFAULT_MCP_PROTOCOL_VERSION,
-				"capabilities": arguments.mcpServer.getCapabilities(),
-				"serverInfo": arguments.mcpServer.getServerInfo()
+				"capabilities": arguments.targetServer.getCapabilities(),
+				"serverInfo": arguments.targetServer.getServerInfo()
 			},
 			"id": arguments.urlParams.id ?: javacast( "null", "" )
 		}.toJson()
@@ -411,7 +411,7 @@ class {
 	/**
 	 * Handle POST requests for JSON-RPC
 	 *
-	 * @mcpServer The MCP server instance
+	 * @targetServer The MCP server instance
 	 * @response The response struct to populate
 	 * @requestBody The request body
 	 * @acceptHeader The Accept header value
@@ -419,7 +419,7 @@ class {
 	 * @return The populated response struct
 	 */
 	private static  struct function handleJSONRPC(
-		required any mcpServer,
+		required any targetServer,
 		required struct response,
 		required string requestBody,
 		string acceptHeader = "application/json"
@@ -429,7 +429,7 @@ class {
 			var useSSE = arguments.acceptHeader contains "text/event-stream";
 
 			// Process the MCP request
-			var mcpResponse = arguments.mcpServer.handleRequest( arguments.requestBody );
+			var mcpResponse = arguments.targetServer.handleRequest( arguments.requestBody );
 
 			// Format response
 			if ( useSSE ) {
