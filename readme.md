@@ -123,7 +123,7 @@ Below is the full reference of every setting you can place under `settings` in `
                     }
                 },
 
-                "timeout": 45,
+                "timeout": 90,
 
                 "logRequest": false,
                 "logRequestToConsole": false,
@@ -149,7 +149,7 @@ Below is the full reference of every setting you can place under `settings` in `
 | `memory.provider` | `string` | `"window"` | Default memory type: `window`, `cache`, `file`, `session`, `summary`, `jdbc`, `hybrid`, or any vector provider |
 | `memory.config` | `struct` | `{}` | Provider-specific memory configuration (e.g. `maxMessages`, `cacheName`) |
 | `providers` | `struct` | `{}` | Per-provider overrides — keys are provider names, values have `params` and `options` structs |
-| `timeout` | `numeric` | `45` | Default HTTP request timeout in seconds |
+| `timeout` | `numeric` | `90` | Default HTTP request timeout in seconds |
 | `logRequest` | `boolean` | `false` | Log outgoing AI requests to `ai.log` |
 | `logRequestToConsole` | `boolean` | `false` | Print outgoing AI requests to the console (useful for debugging) |
 | `logResponse` | `boolean` | `false` | Log AI responses to `ai.log` |
