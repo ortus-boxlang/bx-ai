@@ -930,6 +930,141 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "OutputGuard redacts a secret that appears ONLY in Claude-on-Bedrock reasoning" )
+	public void testOutputGuardRedactsReasoningOnly() {
+		// The answer is clean; the secret is confined to the thinking. Before reasoning was
+		// surfaced this leaked untouched, and the guard's empty-content bail meant a thinking-only
+		// turn was never even scanned.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				guard = new bxModules.bxai.models.middleware.security.OutputGuardMiddleware( action: "redact" )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Think, then answer" ),
+					{ model: "anthropic.claude-3-5-sonnet-20241022-v2:0" },
+					{ provider: "bedrock", returnFormat: "raw" }
+				)
+				chatRequest.addMiddleware( guard )
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						return {
+							"content": [
+								{ "type": "thinking", "thinking": "operator is leaked.person@example.com", "signature": "sig-abc" },
+								{ "type": "text", "text": "All done" }
+							],
+							"stop_reason": "end_turn",
+							"usage": { "input_tokens": 5, "output_tokens": 8 }
+						}
+					}
+				} )
+				result    = provider.chat( chatRequest )
+				reasoning = result.choices[ 1 ].message.reasoning ?: ""
+				content   = result.choices[ 1 ].message.content ?: ""
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		String reasoning = variables.get( Key.of( "reasoning" ) ).toString();
+		assertWithMessage( "reasoning must not carry the raw secret" ).that( reasoning ).doesNotContain( "leaked.person@example.com" );
+		assertThat( reasoning ).isNotEmpty();
+		// The clean answer is untouched.
+		assertThat( variables.get( Key.of( "content" ) ).toString() ).isEqualTo( "All done" );
+	}
+
+	@Test
+	@DisplayName( "OutputGuard redaction of reasoning leaves the native thinking block unmodified for the provider round trip" )
+	public void testOutputGuardLeavesThinkingBlockIntact() {
+		// Bedrock rejects a modified thinking block on the next tool-use turn ("thinking or
+		// redacted_thinking blocks in the latest assistant message cannot be modified"), so the
+		// scrub must land on the derived copy only. Captures the raw body the middleware saw.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				guard   = new bxModules.bxai.models.middleware.security.OutputGuardMiddleware( action: "redact" )
+				rawBody = {
+					"content": [
+						{ "type": "thinking", "thinking": "operator is leaked.person@example.com", "signature": "sig-abc" },
+						{ "type": "text", "text": "All done" }
+					],
+					"stop_reason": "end_turn",
+					"usage": { "input_tokens": 5, "output_tokens": 8 }
+				}
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Think, then answer" ),
+					{ model: "anthropic.claude-3-5-sonnet-20241022-v2:0" },
+					{ provider: "bedrock", returnFormat: "raw" }
+				)
+				chatRequest.addMiddleware( guard )
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => rawBody } )
+				result = provider.chat( chatRequest )
+
+				thinkingBlock = rawBody.content[ 1 ]
+				thinkingText  = thinkingBlock.thinking
+				signature     = thinkingBlock.signature
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertWithMessage( "the native thinking block must go back to Bedrock byte-identical" )
+		    .that( variables.get( Key.of( "thinkingText" ) ).toString() )
+		    .contains( "leaked.person@example.com" );
+		assertThat( variables.get( Key.of( "signature" ) ).toString() ).isEqualTo( "sig-abc" );
+	}
+
+	@Test
+	@DisplayName( "OutputGuard action=block fires on a secret found only in reasoning" )
+	public void testOutputGuardBlocksOnReasoningOnly() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				guard = new bxModules.bxai.models.middleware.security.OutputGuardMiddleware( action: "block" )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Think, then answer" ),
+					{ model: "anthropic.claude-3-5-sonnet-20241022-v2:0" },
+					{ provider: "bedrock", returnFormat: "raw" }
+				)
+				chatRequest.addMiddleware( guard )
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						return {
+							"content": [
+								{ "type": "thinking", "thinking": "operator is leaked.person@example.com", "signature": "sig-abc" },
+								{ "type": "text", "text": "All done" }
+							],
+							"stop_reason": "end_turn",
+							"usage": { "input_tokens": 5, "output_tokens": 8 }
+						}
+					}
+				} )
+				blocked = false
+				try {
+					provider.chat( chatRequest )
+				} catch( any e ) {
+					blocked = true
+				}
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "blocked" ) ) ).isTrue();
+	}
+
+	@Test
 	@DisplayName( "configure() applies BaseService's module-settings merge (defaultParams + providers.Bedrock)" )
 	public void testConfigureMergesModuleSettings() {
 		// item-5 fix: struct-based configure() must call super.configure() so
@@ -1254,6 +1389,286 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 			System.clearProperty( "AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE" );
 			java.nio.file.Files.deleteIfExists( tokenFile );
 		}
+	}
+
+	@Test
+	@DisplayName( "Cohere-on-Bedrock responses are transformed by their own shape, not Claude's" )
+	public void testCohereResponseTransform() {
+		// detectModelFamily() routes cohere.* to family "cohere", but the response switch fell
+		// through to transformResponseFromClaude, which looks for a content[] array. Cohere returns
+		// neither shape, so every Command R reply normalized to content = "" and the whole response
+		// was silently dropped.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				// Command R / R+ chat shape. usage is the header backfill sendBedrockRequest
+				// writes onto the body when Cohere omits it — it must be read back, not zeroed.
+				commandR = provider.transformResponseFromModel(
+					{
+						"text": "Hello from Command R",
+						"finish_reason": "COMPLETE",
+						"usage": { "prompt_tokens": 812, "completion_tokens": 45, "total_tokens": 857 }
+					},
+					"cohere",
+					"cohere.command-r-plus-v1:0"
+				)
+				commandRContent = commandR.choices[ 1 ].message.content
+				commandRFinish  = commandR.choices[ 1 ].finish_reason
+				commandRRole    = commandR.choices[ 1 ].message.role
+				commandRPrompt  = commandR.usage.prompt_tokens
+				commandRTotal   = commandR.usage.total_tokens
+
+				// Legacy Command generate shape
+				legacy = provider.transformResponseFromModel(
+					{ "generations": [ { "text": "Hello from Command", "finish_reason": "MAX_TOKENS" } ] },
+					"cohere",
+					"cohere.command-text-v14"
+				)
+				legacyContent = legacy.choices[ 1 ].message.content
+				legacyFinish  = legacy.choices[ 1 ].finish_reason
+
+				// An empty finish_reason must fall back to "stop", not pass "" through
+				emptyFinish = provider.transformResponseFromModel(
+					{ "text": "hi", "finish_reason": "" },
+					"cohere",
+					"cohere.command-r-v1:0"
+				).choices[ 1 ].finish_reason
+
+				// Only ERROR_TOXIC is a content-filter signal; a bare ERROR is a generic failure
+				// and must not tell callers their content was moderated.
+				toxicFinish = provider.transformResponseFromModel(
+					{ "text": "", "finish_reason": "ERROR_TOXIC" },
+					"cohere",
+					"cohere.command-r-v1:0"
+				).choices[ 1 ].finish_reason
+
+				// error_limit is a context-length outcome, not a moderation one
+				limitFinish = provider.transformResponseFromModel(
+					{ "text": "", "finish_reason": "error_limit" },
+					"cohere",
+					"cohere.command-r-v1:0"
+				).choices[ 1 ].finish_reason
+
+				// user_cancel has no OpenAI equivalent — normalizes to stop
+				cancelFinish = provider.transformResponseFromModel(
+					{ "text": "partial", "finish_reason": "user_cancel" },
+					"cohere",
+					"cohere.command-r-v1:0"
+				).choices[ 1 ].finish_reason
+
+				// finish_reason "error" is a provider failure and must NOT normalize to a
+				// successful empty completion — callers need to see it to retry or report.
+				errorThrew = false
+				try {
+					provider.transformResponseFromModel(
+						{ "text": "", "finish_reason": "error" },
+						"cohere",
+						"cohere.command-r-v1:0"
+					)
+				} catch ( ProviderError e ) {
+					errorThrew = true
+				}
+
+				// Neither shape: must return empty content rather than throwing
+				unmatched        = provider.transformResponseFromModel(
+					{ "something_else": true },
+					"cohere",
+					"cohere.command-r-v1:0"
+				)
+				unmatchedContent = unmatched.choices[ 1 ].message.content
+				unmatchedTokens  = unmatched.usage.total_tokens
+
+				// Claude must be unaffected by the switch split
+				claude = provider.transformResponseFromModel(
+					{ "content": [ { "type": "text", "text": "Hello from Claude" } ] },
+					"claude",
+					"anthropic.claude-3-sonnet-20240229-v1:0"
+				)
+				claudeContent = claude.choices[ 1 ].message.content
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "commandRContent" ) ) ).isEqualTo( "Hello from Command R" );
+		// Cohere's vocabulary is mapped onto OpenAI's, which the struct claims to speak
+		assertThat( variables.get( Key.of( "commandRFinish" ) ) ).isEqualTo( "stop" );
+		assertThat( variables.get( Key.of( "commandRRole" ) ) ).isEqualTo( "assistant" );
+		assertThat( variables.getAsInteger( Key.of( "commandRPrompt" ) ) ).isEqualTo( 812 );
+		assertThat( variables.getAsInteger( Key.of( "commandRTotal" ) ) ).isEqualTo( 857 );
+		assertThat( variables.get( Key.of( "legacyContent" ) ) ).isEqualTo( "Hello from Command" );
+		assertThat( variables.get( Key.of( "legacyFinish" ) ) ).isEqualTo( "length" );
+		assertThat( variables.get( Key.of( "emptyFinish" ) ) ).isEqualTo( "stop" );
+		assertThat( variables.get( Key.of( "toxicFinish" ) ) ).isEqualTo( "content_filter" );
+		assertThat( variables.get( Key.of( "limitFinish" ) ) ).isEqualTo( "length" );
+		assertThat( variables.get( Key.of( "cancelFinish" ) ) ).isEqualTo( "stop" );
+		// a provider failure must surface, not normalize to a successful empty completion
+		assertThat( variables.getAsBoolean( Key.of( "errorThrew" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "unmatchedContent" ) ) ).isEqualTo( "" );
+		assertThat( variables.getAsInteger( Key.of( "unmatchedTokens" ) ) ).isEqualTo( 0 );
+		assertThat( variables.get( Key.of( "claudeContent" ) ) ).isEqualTo( "Hello from Claude" );
+	}
+
+	@Test
+	@DisplayName( "OutputGuard can resolve and redact Bedrock's native Titan/Llama/Mistral bodies in place" )
+	public void testPromptSecurityResolvesBedrockNativeShapes() {
+		// afterLLMCall hands middleware the raw provider body (as Claude/Cohere/Gemini do), but
+		// PromptSecurity only knew the OpenAI/Claude/Gemini/Cohere shapes — so it resolved "" for
+		// Bedrock's titan/llama/mistral bodies and OutputGuardMiddleware silently no-op'd,
+		// action:"block" included. The resolver now knows those shapes; redaction must also write
+		// back IN PLACE, because the Claude tool-call path reuses that same struct as the assistant
+		// turn appended to message history.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				titan    = { "results": [ { "outputText": "titan secret" } ] }
+				llama    = { "generation": "llama secret" }
+				mistral  = { "outputs": [ { "text": "mistral secret" } ] }
+				cohereLg = { "generations": [ { "text": "cohere secret" } ] }
+
+				titanRead    = src.main.bx.models.security.PromptSecurity::getResponseText( { "result": titan } )
+				llamaRead    = src.main.bx.models.security.PromptSecurity::getResponseText( { "result": llama } )
+				mistralRead  = src.main.bx.models.security.PromptSecurity::getResponseText( { "result": mistral } )
+				cohereLgRead = src.main.bx.models.security.PromptSecurity::getResponseText( { "result": cohereLg } )
+
+				titanWrote   = src.main.bx.models.security.PromptSecurity::setResponseText( { "result": titan }, "[REDACTED]" )
+				llamaWrote   = src.main.bx.models.security.PromptSecurity::setResponseText( { "result": llama }, "[REDACTED]" )
+				mistralWrote = src.main.bx.models.security.PromptSecurity::setResponseText( { "result": mistral }, "[REDACTED]" )
+
+				// in-place: the original structs must now carry the redacted text
+				titanAfter   = titan.results[ 1 ].outputText
+				llamaAfter   = llama.generation
+				mistralAfter = mistral.outputs[ 1 ].text
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "titanRead" ) ) ).isEqualTo( "titan secret" );
+		assertThat( variables.get( Key.of( "llamaRead" ) ) ).isEqualTo( "llama secret" );
+		assertThat( variables.get( Key.of( "mistralRead" ) ) ).isEqualTo( "mistral secret" );
+		assertThat( variables.get( Key.of( "cohereLgRead" ) ) ).isEqualTo( "cohere secret" );
+
+		assertThat( variables.getAsBoolean( Key.of( "titanWrote" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "llamaWrote" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "mistralWrote" ) ) ).isTrue();
+
+		assertThat( variables.get( Key.of( "titanAfter" ) ) ).isEqualTo( "[REDACTED]" );
+		assertThat( variables.get( Key.of( "llamaAfter" ) ) ).isEqualTo( "[REDACTED]" );
+		assertThat( variables.get( Key.of( "mistralAfter" ) ) ).isEqualTo( "[REDACTED]" );
+	}
+
+	@Test
+	@DisplayName( "OutputGuard sees and rewrites EVERY Claude text block, not just the first" )
+	public void testPromptSecurityCoversAllClaudeTextBlocks() {
+		// transformResponseFromClaude joins every text block into the returned content, but the
+		// resolver used to read only the first — so a safe opening block followed by one carrying a
+		// secret was returned completely unguarded. Redaction had the mirror bug: it rewrote block
+		// one and left the secret in block two, which the transform then joined back in.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				// a tool_use block is interleaved deliberately: it must survive untouched
+				claudeBody = {
+					"content": [
+						{ "type": "text",     "text": "Here you go." },
+						{ "type": "tool_use", "id": "tu_1", "name": "lookup", "input": {} },
+						{ "type": "text",     "text": "key is AKIAIOSFODNN7EXAMPLE" }
+					]
+				}
+
+				// the guard must SEE the later block
+				seenText = src.main.bx.models.security.PromptSecurity::getResponseText( { "result": claudeBody } )
+
+				wrote = src.main.bx.models.security.PromptSecurity::setResponseText( { "result": claudeBody }, "[REDACTED]" )
+
+				// and the rewrite must leave nothing unredacted behind for the transform to re-join
+				remainingTextBlocks = claudeBody.content.filter( b -> ( b.type ?: "" ) == "text" )
+				textBlockCount      = remainingTextBlocks.len()
+				firstBlockText      = remainingTextBlocks[ 1 ].text
+				joinedAfter         = src.main.bx.models.security.PromptSecurity::getResponseText( { "result": claudeBody } )
+				toolBlockSurvived   = claudeBody.content.filter( b -> ( b.type ?: "" ) == "tool_use" ).len()
+			""",
+			context
+		);
+		// @formatter:on
+
+		// the secret in block two must be visible to the guard
+		assertThat( variables.get( Key.of( "seenText" ) ).toString() ).contains( "AKIAIOSFODNN7EXAMPLE" );
+		assertThat( variables.get( Key.of( "seenText" ) ).toString() ).contains( "Here you go." );
+
+		assertThat( variables.getAsBoolean( Key.of( "wrote" ) ) ).isTrue();
+		// collapsed into a single text block carrying the redacted text
+		assertThat( variables.getAsInteger( Key.of( "textBlockCount" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "firstBlockText" ) ) ).isEqualTo( "[REDACTED]" );
+		// nothing unredacted survives anywhere in the struct
+		assertThat( variables.get( Key.of( "joinedAfter" ) ).toString() ).doesNotContain( "AKIAIOSFODNN7EXAMPLE" );
+		// the interleaved tool_use block is untouched
+		assertThat( variables.getAsInteger( Key.of( "toolBlockSurvived" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "afterLLMCall receives the RAW Bedrock body, so in-place redaction reaches the tool-call history" )
+	public void testAfterLLMCallReceivesRawBody() {
+		// Regression guard. Firing this hook with the NORMALIZED response instead breaks
+		// Claude-on-Bedrock: PromptSecurity mutates in place, and the tool-call path reuses the raw
+		// body as the assistant turn appended to message history — so redacting a normalized copy
+		// leaves the secret in what is re-sent to AWS. A wrapLLMCall middleware substitutes a
+		// Titan body without touching the network.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{
+						awsAccessKeyId: "%s",
+						awsSecretAccessKey: "%s",
+						region: "%s"
+					}
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Hello" ),
+					{ model: "amazon.titan-text-express-v1" },
+					{ provider: "bedrock" }
+				)
+
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, next ) => {
+						return { "results": [ { "outputText": "titan secret", "completionReason": "FINISH" } ] }
+					},
+					"afterLLMCall": ( ctx ) => {
+						captured.result = ctx.result
+						// redact in place, exactly as OutputGuardMiddleware does
+						src.main.bx.models.security.PromptSecurity::setResponseText( ctx, "[REDACTED]" )
+					}
+				} )
+
+				response = provider.chat( chatRequest )
+
+				seen          = captured.result
+				sawRawShape   = seen.keyExists( "results" )
+				sawNormalized = seen.keyExists( "choices" )
+				// the redaction must have landed on the raw struct the provider still holds
+				rawAfter      = seen.results[ 1 ].outputText
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sawRawShape" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawNormalized" ) ) ).isFalse();
+		assertThat( variables.get( Key.of( "rawAfter" ) ) ).isEqualTo( "[REDACTED]" );
 	}
 
 	// -----------------------------------------------------------------------
@@ -2160,11 +2575,46 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "Explicit caller credentials and region beat a nested apiKey credentials struct" )
+	public void testExplicitCredentialsBeatNestedApiKeyStruct() {
+		// credSource used to switch WHOLESALE to resolvedOptions.apiKey whenever aiService() had
+		// injected the module-level apiKey struct, discarding the caller's own region and key pair —
+		// so an explicit eu-west-2 pair silently signed as the module's us-east-1 account.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				service = new bxModules.bxai.models.providers.BedrockService()
+				service.configure( {
+					region: "eu-west-2",
+					awsAccessKeyId: "%s",
+					awsSecretAccessKey: "%s",
+					apiKey: {
+						region: "us-east-1",
+						awsAccessKeyId: "AKIAMODULEMODULEMODU",
+						awsSecretAccessKey: "module-secret"
+					}
+				} )
+				creds  = service.resolveAwsCredentials()
+				region = service.getRegion()
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY ),
+			context
+		);
+		// @formatter:on
+
+		@SuppressWarnings( "unchecked" )
+		IStruct creds = ( IStruct ) variables.get( Key.of( "creds" ) );
+		assertWithMessage( "an explicit caller key pair must not be replaced by the nested apiKey struct" )
+		    .that( creds.get( Key.of( "accessKeyId" ) ) ).isEqualTo( DUMMY_AWS_ACCESS_KEY_ID );
+		assertThat( creds.get( Key.of( "secretAccessKey" ) ) ).isEqualTo( DUMMY_AWS_SECRET_ACCESS_KEY );
+		assertThat( variables.get( Key.of( "region" ) ).toString() ).isEqualTo( "eu-west-2" );
+	}
+
+	@Test
 	@DisplayName( "Provider-specific options beat a module-global apiKey credentials struct" )
 	public void testProviderOptionsBeatGlobalApiKeyStruct() {
-		// credSource used to switch WHOLESALE to the injected apiKey struct. Even overlaying it, the
-		// global apiKey is the BROADEST configured scope, so it must lose to
-		// settings.providers.Bedrock.options as well as to explicit per-call arguments.
+		// Even overlaying the injected apiKey struct rather than switching to it, the global apiKey is
+		// the BROADEST configured scope, so it must lose to settings.providers.Bedrock.options as
+		// well as to explicit per-call arguments.
 		IStruct	providers		= Struct.of(
 		    "Bedrock",
 		    Struct.of( "options", Struct.of( "region", "eu-west-2", "awsAccessKeyId", "AKIAPROVIDERPROVIDE", "awsSecretAccessKey", "provider-secret" ) )

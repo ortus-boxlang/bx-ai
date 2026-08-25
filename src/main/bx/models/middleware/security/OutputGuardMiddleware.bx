@@ -36,6 +36,19 @@
  *     warning there while block still throws.
  *   - Response content is resolved through PromptSecurity::getResponseText / setResponseText, the
  *     single source of truth across OpenAI/compat, Claude, Gemini, Cohere, and streaming shapes.
+ *     Reasoning is resolved separately through getResponseReasoning / setResponseReasoning, and is
+ *     scanned even when the answer is empty — a model can name a secret while thinking and never
+ *     repeat it. Native `thinking` blocks are never rewritten: providers must echo them back
+ *     unmodified within a tool-use turn, so providers attach a derived copy for guards instead.
+ *   - ON A STREAM, TREAT THIS AS DETECTION ONLY. afterLLMCall fires once the stream has ended, by
+ *     which point every chunk has reached the caller's callback, so `block` throws after disclosure
+ *     and no redaction can un-send what the reader already saw. Nor does redaction reliably clean
+ *     what is KEPT: AiAgent accumulates its own string from the chunks as they arrive and persists
+ *     that to memory before any agent-level hook runs, so it never observes the scrubbed
+ *     streamState. Providers should still hand the hook their live streamState rather than a
+ *     throwaway literal (a discarded rewrite reports success while changing nothing), and callers
+ *     reading the returned aggregate do get the scrubbed text — but agent memory does not.
+ *     Withholding mid-stream, and scrubbing what memory keeps, both need a per-chunk seam: #257.
  */
 import bxModules.bxai.models.middleware.BaseAiMiddleware;
 import bxModules.bxai.models.middleware.AiMiddlewareResult;
@@ -150,28 +163,56 @@ class extends="BaseAiMiddleware" {
 	 */
 	AiMiddlewareResult function afterLLMCall( required struct context ){
 		var content = PromptSecurity::getResponseText( arguments.context )
-		if( !len( content ) ){
+		// Reasoning is scanned independently of the answer. A model can name a secret while
+		// thinking and never repeat it in the answer, so bailing on empty content would skip the
+		// scan entirely on a thinking-only turn.
+		// Scrubbed part-by-part, not as one joined string: each OpenAI-envelope choice carries its
+		// own reasoning, and writing a joined value back would replace distinct per-choice reasoning
+		// with the same combined text.
+		var reasoningParts = PromptSecurity::getResponseReasoningParts( arguments.context )
+		if( !len( content ) && reasoningParts.isEmpty() ){
 			return AiMiddlewareResult.continue()
 		}
 
-		var scrubbed = scrub( content )
-		if( scrubbed.findings.isEmpty() ){
+		var scrubbed         = len( content ) ? scrub( content ) : { text: content, findings: [] }
+		var contentHit       = !scrubbed.findings.isEmpty()
+		var scrubbedParts    = []
+		var reasoningFindings = []
+		for( var part in reasoningParts ){
+			var scrubbedPart = len( part ) ? scrub( part ) : { text: part, findings: [] }
+			scrubbedParts.append( scrubbedPart.text )
+			reasoningFindings.append( scrubbedPart.findings, true )
+		}
+		var reasoningHit = !reasoningFindings.isEmpty()
+
+		if( !contentHit && !reasoningHit ){
 			return AiMiddlewareResult.continue()
 		}
+
+		var findings = []
+		findings.append( scrubbed.findings, true )
+		findings.append( reasoningFindings, true )
 
 		switch( variables.action ){
 			case "block":
-				logFindings( scrubbed.findings, "afterLLMCall" )
-				throwViolation( scrubbed.findings )
+				logFindings( findings, "afterLLMCall" )
+				throwViolation( findings )
 				break
 			case "flag":
-				stampFindings( arguments.context.chatRequest ?: nullValue(), scrubbed.findings )
-				logFindings( scrubbed.findings, "afterLLMCall" )
+				stampFindings( arguments.context.chatRequest ?: nullValue(), findings )
+				logFindings( findings, "afterLLMCall" )
 				break
 			default: // redact
-				PromptSecurity::setResponseText( arguments.context, scrubbed.text )
-				stampFindings( arguments.context.chatRequest ?: nullValue(), scrubbed.findings )
-				logFindings( scrubbed.findings, "afterLLMCall" )
+				if( contentHit ){
+					PromptSecurity::setResponseText( arguments.context, scrubbed.text )
+				}
+				// Writes to the provider-attached derived copy, never to a native `thinking`
+				// block - those must go back to the provider unmodified.
+				if( reasoningHit ){
+					PromptSecurity::setResponseReasoningParts( arguments.context, scrubbedParts )
+				}
+				stampFindings( arguments.context.chatRequest ?: nullValue(), findings )
+				logFindings( findings, "afterLLMCall" )
 		}
 
 		return AiMiddlewareResult.continue()
@@ -195,34 +236,57 @@ class extends="BaseAiMiddleware" {
 		// Resolve the text: simple string vs. a provider struct
 		var isSimple = isSimpleValue( response )
 		var content  = isSimple ? toString( response ) : PromptSecurity::getResponseText( { "result": response } )
-		if( !len( content ) ){
+		// Reasoning is scanned here too, for the same reason as in afterLLMCall: a struct agent
+		// response carries the provider's derived reasoning, and bailing on empty content left the
+		// agent-level guard strictly weaker than the model-level one for the same payload.
+		var reasoningParts = isSimple ? [] : PromptSecurity::getResponseReasoningParts( { "result": response } )
+		if( !len( content ) && reasoningParts.isEmpty() ){
 			return AiMiddlewareResult.continue()
 		}
 
-		var scrubbed = scrub( content )
-		if( scrubbed.findings.isEmpty() ){
+		var scrubbed          = len( content ) ? scrub( content ) : { text: content, findings: [] }
+		var contentHit        = !scrubbed.findings.isEmpty()
+		var scrubbedParts     = []
+		var reasoningFindings = []
+		for( var part in reasoningParts ){
+			var scrubbedPart = len( part ) ? scrub( part ) : { text: part, findings: [] }
+			scrubbedParts.append( scrubbedPart.text )
+			reasoningFindings.append( scrubbedPart.findings, true )
+		}
+		var reasoningHit = !reasoningFindings.isEmpty()
+
+		if( !contentHit && !reasoningHit ){
 			return AiMiddlewareResult.continue()
 		}
+
+		var findings = []
+		findings.append( scrubbed.findings, true )
+		findings.append( reasoningFindings, true )
 
 		switch( variables.action ){
 			case "block":
-				logFindings( scrubbed.findings, "afterAgentRun" )
-				throwViolation( scrubbed.findings )
+				logFindings( findings, "afterAgentRun" )
+				throwViolation( findings )
 				break
 			case "flag":
-				logFindings( scrubbed.findings, "afterAgentRun" )
+				logFindings( findings, "afterAgentRun" )
 				break
 			default: // redact
 				if( isSimple ){
 					writeLog(
 						text: "OutputGuardMiddleware [afterAgentRun]: findings detected in a string agent response, which cannot be rewritten in place; "
-							& "use afterLLMCall redaction (attach on the model) for reliable scrubbing. Findings: " & summarize( scrubbed.findings ),
+							& "use afterLLMCall redaction (attach on the model) for reliable scrubbing. Findings: " & summarize( findings ),
 						type: "warning",
 						log : "ai"
 					)
 				} else {
-					PromptSecurity::setResponseText( { "result": response }, scrubbed.text )
-					logFindings( scrubbed.findings, "afterAgentRun" )
+					if( contentHit ){
+						PromptSecurity::setResponseText( { "result": response }, scrubbed.text )
+					}
+					if( reasoningHit ){
+						PromptSecurity::setResponseReasoningParts( { "result": response }, scrubbedParts )
+					}
+					logFindings( findings, "afterAgentRun" )
 				}
 		}
 

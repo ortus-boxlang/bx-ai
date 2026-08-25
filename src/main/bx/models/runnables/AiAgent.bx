@@ -509,7 +509,13 @@ class extends="AiBaseRunnable" {
 			// message persisted to memory, so folding reasoning in here would replay the
 			// model's private thinking back to it as if it had said it. Reasoning still
 			// reaches the caller below, on the chunk itself.
-			var content = arguments.chunk.choices?.first()?.delta?.content ?: ""
+			// Guard on len(): a provider's final usage-only chunk carries `choices: []`, and
+			// first() on an EMPTY array throws — safe navigation only short-circuits a null. This
+			// used to be masked because the provider threw before delivering that chunk.
+			var content = ""
+			if ( isArray( arguments.chunk.choices ?: "" ) && arguments.chunk.choices.len() ) {
+				content = arguments.chunk.choices.first().delta?.content ?: ""
+			}
 			accumulated &= content;
 			// Call user callback with the chunk (content AND reasoning deltas alike)
 			userOnChunk( arguments.chunk )

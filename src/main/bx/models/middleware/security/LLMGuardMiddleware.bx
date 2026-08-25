@@ -411,6 +411,16 @@ judgeOptions[ "timeout" ] = variables.timeout
 		// Delegate to the shared resolver (single source of truth across provider shapes
 		// and streaming). Returns "" for unknown shapes → fail-open.
 		var content = PromptSecurity::getResponseText( arguments.context )
+
+		// Judge the model's reasoning too. An extended-thinking turn that returns thinking blocks
+		// plus tool_use and NO text block resolves to empty content, so judging content alone
+		// fail-opened on exactly the turns where the model may have stated the harmful reasoning
+		// out loud. Appended rather than substituted so the answer is still judged when both exist.
+		var reasoning = PromptSecurity::getResponseReasoning( arguments.context )
+		if( len( reasoning ) ){
+			content = len( content ) ? ( content & char( 10 ) & reasoning ) : reasoning
+		}
+
 		if( !len( content ) ){
 			writeLog(
 				text: "LLMGuardMiddleware: could not resolve response content shape for output judging; skipping (fail-open).",
