@@ -75,6 +75,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🧠 Updated
 
+- Default AI request timeout (`settings.timeout`) bumped from 45 to 90 seconds. A timed-out HTTP call surfaces as a confusing `JsonDeserializationError` ("Failed to parse JSON... Request Timeout") rather than a clear timeout error, and 45s was too tight for slower providers/models under load; raising the default reduces intermittent failures for CLI/`.bxs` usage. Still overridable per-request via `options.timeout` or per-provider via `settings.providers.<name>.options.timeout`.
 - OpenAI provider's default chat model bumped from `gpt-5-nano` to `gpt-5.6-luna`.
 - Claude provider's default chat model bumped from `claude-sonnet-4-5` to `claude-sonnet-5`.
 - `SummaryMemory`: `maxMessages` now triggers compression and `summaryThreshold` is the keep-window (previously threshold did both and `maxMessages` was unused).
