@@ -1,0 +1,102 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * A normalized event emitted by the agent layer and delivered by a gateway.
+ *
+ * This is the vocabulary the agent speaks to any gateway — it never calls a
+ * platform-specific method directly. Gateways translate these into whatever
+ * platform-native presentation makes sense (a Slack message update, a CLI print,
+ * an SSE chunk, etc.).
+ *
+ * Use the TYPES constants for the well-known event type strings rather than
+ * hardcoding them, e.g. `GatewayEvent.TYPES.EXECUTION_SUSPENDED`.
+ */
+class {
+
+	/**
+	 * Unique identifier for this event
+	 */
+	property name="id" type="string" default="";
+
+	/**
+	 * The normalized event type — prefer GatewayEvent.TYPES.* constants
+	 */
+	property name="type" type="string" default="";
+
+	/**
+	 * The agent execution/run this event correlates to — matches AiAgent's runId
+	 */
+	property name="executionID" type="string" default="";
+
+	/**
+	 * Event-specific payload. Shape depends on `type` (e.g. suspendData for
+	 * execution.suspended, a text delta for response.delta)
+	 */
+	property name="data" type="struct" default={};
+
+	/**
+	 * The GatewayContext identifying who/where this event belongs to
+	 */
+	property name="context" type="GatewayContext";
+
+	/**
+	 * When this event was created
+	 */
+	property name="createdAt" type="date";
+
+	/**
+	 * Well-known normalized event type constants
+	 */
+	static {
+		TYPES = {
+			MESSAGE_REQUESTED    : "message.requested",
+			APPROVAL_REQUESTED   : "approval.requested",
+			INPUT_REQUESTED      : "input.requested",
+			EXECUTION_SUSPENDED  : "execution.suspended",
+			EXECUTION_RESUMED    : "execution.resumed",
+			RESPONSE_STARTED     : "response.started",
+			RESPONSE_DELTA       : "response.delta",
+			RESPONSE_COMPLETED   : "response.completed",
+			EXECUTION_FAILED     : "execution.failed"
+		}
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @id          Unique identifier for this event (auto-generated if omitted)
+	 * @type        The normalized event type — prefer GatewayEvent.TYPES.* constants
+	 * @executionID The agent execution/run this event correlates to
+	 * @data        Event-specific payload
+	 * @context     The GatewayContext identifying who/where this event belongs to
+	 * @createdAt   When this event was created (defaults to now)
+	 */
+	function init(
+		string id          = createUUID(),
+		string type        = "",
+		string executionID = "",
+		struct data         = {},
+		any    context,
+		date   createdAt    = now()
+	) {
+		variables.id          = arguments.id
+		variables.type        = arguments.type
+		variables.executionID = arguments.executionID
+		variables.data        = arguments.data
+		variables.context     = arguments.context ?: new GatewayContext()
+		variables.createdAt   = arguments.createdAt
+		return this;
+	}
+
+}

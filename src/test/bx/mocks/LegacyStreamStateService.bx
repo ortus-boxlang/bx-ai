@@ -1,0 +1,29 @@
+/**
+ * Test double for the "provider builds its OWN streamState" case.
+ *
+ * Most providers let `BaseService.sendStreamRequest()` build the accumulator struct, so it
+ * always carries every key BaseService expects. A provider that overrides the stream loop
+ * (Ollama does) builds its own, and that struct is whatever THAT provider declared - it is
+ * not guaranteed to carry a key a later BaseService change starts writing to.
+ *
+ * This exposes the otherwise-private accumulator so the tolerance is asserted directly,
+ * without needing a live provider server in CI.
+ */
+class extends="bxModules.bxai.models.providers.BaseService" {
+
+	function init(){
+		variables.name = "legacy-stream-state"
+		return this
+	}
+
+	/**
+	 * Public passthrough to the protected accumulator.
+	 *
+	 * @streamState The caller-owned accumulator struct
+	 * @parsedChunk A normalized chat.completion.chunk
+	 */
+	public void function applyChunk( required struct streamState, required struct parsedChunk ){
+		updateStreamState( arguments.streamState, arguments.parsedChunk )
+	}
+
+}

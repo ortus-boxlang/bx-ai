@@ -297,6 +297,24 @@ class extends="BaseMemory" {
 	}
 
 	/**
+	 * AI-summarize older messages and persist the result to file.
+	 *
+	 * @config Optional struct with keys: keepRecent, model, provider
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
+		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
+			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
+			var filePath = getFilePath( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
+			saveMessagesToFile( filePath, variables.messages )
+		}
+		return this
+	}
+
+	/**
 	 * --------------------------------------------------------------------------
 	 * Private Helpers
 	 * --------------------------------------------------------------------------

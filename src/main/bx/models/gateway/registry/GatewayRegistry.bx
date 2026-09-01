@@ -1,0 +1,109 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Singleton registry for configured, instantiated Gateway objects.
+ *
+ * Access via aiGatewayRegistry() BIF
+ *
+ * Key convention: gatewayName or gatewayName@moduleName
+ *
+ * Registration:
+ *   aiGatewayRegistry().register( myGatewayInstance )
+ *   aiGatewayRegistry().register( myGatewayInstance, "my-module" )
+ *
+ * This registry holds already-instantiated, configured IGateway objects a module wants
+ * discoverable/reusable at runtime — it is distinct from aiGateway(name), which resolves
+ * *which class* backs a gateway name (see bifs/aiGateway.bx) so external modules can
+ * plug in new gateway implementations without this registry needing to know about them
+ * up front.
+ */
+import bxModules.bxai.models.registry.BaseRegistry;
+
+class extends="BaseRegistry" {
+
+	// -------------------------------------------------------------------------
+	// Registry Methods
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Register an IGateway instance in the registry.
+	 *
+	 * @gateway The IGateway instance to register
+	 * @module  Module name for namespacing (optional)
+	 *
+	 * @throws InvalidArgument if the item is not an IGateway instance
+	 */
+	GatewayRegistry function register( required any gateway, string module = "" ) {
+		if ( isNull( arguments.gateway ) || !isInstanceOf( arguments.gateway, "IGateway" ) ) {
+			throw(
+				type    : "InvalidArgument",
+				message : "register() requires an IGateway instance."
+			)
+		}
+
+		super.register( arguments.gateway.getName(), arguments.gateway, arguments.module )
+		BoxAnnounce( "onGatewayRegistryRegister", {
+			gateway : arguments.gateway,
+			key     : buildKey( arguments.gateway.getName(), arguments.module ),
+			module  : arguments.module
+		} )
+		return this
+	}
+
+	/**
+	 * Unregister by exact key and fire the onGatewayRegistryUnregister event.
+	 *
+	 * @key The exact registry key to remove
+	 *
+	 * @returns The registry instance for chaining
+	 */
+	GatewayRegistry function unregister( required string key ) {
+		super.unregister( arguments.key )
+		BoxAnnounce( "onGatewayRegistryUnregister", {
+			key    : arguments.key,
+			module : extractModule( arguments.key )
+		} )
+		return this
+	}
+
+	/**
+	 * Unregister all gateways registered under a specific module and fire per-item events.
+	 *
+	 * @module The module name whose gateways should be removed
+	 */
+	GatewayRegistry function unregisterByModule( required string module ) {
+		getKeys()
+			.filter( key => extractModule( key ) == module )
+			.each( key => unregister( key ) )
+		return this
+	}
+
+	/**
+	 * List all registered gateways with their keys, names, and capabilities.
+	 * This is the primary analytics/observability surface for the registry.
+	 *
+	 * @return Struct of all registered gateways, keyed by registry key, with name,
+	 *         capabilities, and module.
+	 */
+	struct function listGateways() {
+		return variables.registry.map( ( key, gateway ) => {
+			return {
+				name         : gateway.getName(),
+				capabilities : gateway.getCapabilities(),
+				module       : extractModule( key )
+			}
+		} )
+	}
+
+}

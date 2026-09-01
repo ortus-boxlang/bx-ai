@@ -18,6 +18,7 @@
  * @see https://docs.cohere.com/reference/chat
  */
 import bxModules.bxai.models.util.SchemaBuilder
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 
@@ -147,6 +148,17 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 */
 	@override
 	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
+		// -------------------------------------------------------------------------------------------
+		// --- Resume short-circuit ---
+		// A batch tool-call suspension (see afterToolBatch()) was resolved via AiAgent.resume()
+		// with a finalized resume ledger — finish that same tool batch directly instead of
+		// calling the LLM again (no replay, nothing that already ran re-runs).
+		// -------------------------------------------------------------------------------------------
+		var resumeCtx = arguments.chatRequest.getResumeContext() ?: {}
+		if ( !resumeCtx.isEmpty() && resumeCtx.keyExists( "assistantMessage" ) ) {
+			return resumeToolBatch( arguments.chatRequest, resumeCtx, arguments.interactionCount )
+		}
+
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 		// Cohere has a different message format
@@ -295,20 +307,145 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				);
 			}
 
-			// Execute each tool call
+			// ── Pass 1: decide ────────────────────────────────────────────────────────────────
+			// Fire beforeToolCall for EVERY tool call in this turn before invoking any of them —
+			// see OpenAIService.chat() for the full rationale (this mirrors it exactly).
 			var thisChatRequest = arguments.chatRequest;
-			var toolResults = result.tool_calls.map( toolCall => {
+			var batch = [];
+			var terminalToolResult = "";
+			for( var toolCall in result.tool_calls ){
 				// Find the tool in our original tools list
 				var tool = tools.filter( t => t.getSchema().function.name == toolCall.name ).first();
 
-				// Invoke the tool with the parameters
-				var toolOutput = tool.invoke( toolCall.parameters, thisChatRequest );
+				if ( isNull( tool ) ) {
+					batch.append( {
+						tool    : javacast( "null", "" ),
+						toolCall: toolCall,
+						toolName: toolCall.name ?: "",
+						toolArgs: {},
+						result  : AiMiddlewareResult.reject( "Tool ['#toolCall.name#'] not found in chat request" )
+					} )
+					continue
+				}
 
-				return {
-					"call": toolCall,
+				var toolContext = {
+					tool       : tool,
+					toolCall   : toolCall,
+					chatRequest: thisChatRequest,
+					// Normalized keys so shape-agnostic middleware (GuardrailMiddleware argPatterns,
+					// FlightRecorderMiddleware, etc.) can inspect the real arguments — Cohere's
+					// toolCall carries them in `.parameters` (already a struct), not OpenAI's
+					// `.function.arguments`.
+					toolName   : toolCall.name ?: tool.getName(),
+					toolArgs   : toolCall.parameters ?: {}
+				}
+				var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
+
+				// Cancel (e.g. MaxToolCallsMiddleware's limit, or a human choosing to quit in
+				// HITL's CLI mode) means abort the run outright — hard-stop immediately, exactly
+				// as before. Unlike suspend, a cancelled run is never resumed, so there is
+				// nothing to batch here.
+				if ( toolBeforeResult.isCancelled() ) {
+					terminalToolResult = toolBeforeResult
+					break
+				}
+
+				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+			}
+
+			if ( isObject( terminalToolResult ) ) {
+				return terminalToolResult
+			}
+
+			// The replay data resumeToolBatch() needs — Cohere has no shared `messages` array to
+			// append an assistant turn to (unlike the other providers); everything it needs to
+			// rebuild the follow-up request is captured here instead.
+			var assistantMessage = {
+				toolCalls    : result.tool_calls,
+				followUpTools: dataPacket.tools ?: [],
+				chatHistory  : dataPacket.chat_history ?: [],
+				preamble     : dataPacket.preamble ?: "",
+				tempParams   : tempParams
+			}
+
+			// ── Suspend the whole batch at once, if anything needs a human decision ────────────
+			if ( batch.some( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() ) ) {
+				var batchResult = thisChatRequest.fireMiddleware(
+					"afterToolBatch",
+					{ chatRequest: thisChatRequest, assistantMessage: assistantMessage, batch: batch }
+				)
+
+				// No attached middleware's afterToolBatch() converted the pending entries into
+				// anything (the default is continue()) — e.g. a custom middleware suspended a
+				// tool call directly from beforeToolCall() without participating in the
+				// defer()/afterToolBatch() protocol at all. Fall back to a generic combined
+				// suspend so a tool call ANY middleware said needs a decision is never silently
+				// executed.
+				if ( !batchResult.isSuspended() && !batchResult.isCancelled() ) {
+					var pending = batch.filter( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() )
+					var pendingActions = pending.map( ( entry ) => {
+						var data = entry.result.getData()
+						return {
+							toolName    : entry.toolName,
+							toolArgs    : ( isStruct( entry.toolArgs ) ) ? entry.toolArgs : {},
+							suspensionID: data.suspensionID ?: ""
+						}
+					} )
+					batchResult = AiMiddlewareResult.suspend( { pendingActions: pendingActions } )
+				}
+
+				if ( batchResult.isTerminal() ) {
+					if ( !batchResult.isSuspended() ) {
+						return batchResult
+					}
+					var resumeLedger = batch.map( ( entry ) => {
+						if ( entry.result.isDeferred() || entry.result.isSuspended() ) {
+							return { toolName: entry.toolName, status: "pending" }
+						}
+						if ( entry.result.isRejected() ) {
+							return { toolName: entry.toolName, status: "blocked", reason: entry.result.getReason() }
+						}
+						return { toolName: entry.toolName, status: "execute" }
+					} )
+					var mergedData = duplicate( batchResult.getData() )
+					mergedData[ "assistantMessage" ] = assistantMessage
+					mergedData[ "resumeLedger" ]     = resumeLedger
+					return AiMiddlewareResult.suspend( mergedData )
+				}
+			}
+
+			// ── Pass 2: execute ───────────────────────────────────────────────────────────────
+			var toolResults = [];
+			for ( var entry in batch ) {
+				if ( entry.result.isRejected() ) {
+					toolResults.append( {
+						"call": entry.toolCall,
+						"outputs": [ { "result": "[Tool call blocked: #entry.result.getReason()#]" } ]
+					} );
+					continue;
+				}
+
+				// Invoke the tool with the parameters, wrapped in wrapToolCall middleware
+				var capturedTool     = entry.tool;
+				var capturedToolCall = entry.toolCall;
+				var toolOutput = thisChatRequest.fireWrapMiddleware(
+					"wrapToolCall",
+					{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: entry.toolArgs },
+					() => capturedTool.invoke( capturedToolCall.parameters, thisChatRequest )
+				);
+
+				// Fire afterToolCall middleware
+				thisChatRequest.fireMiddleware(
+					hook   : "afterToolCall",
+					context: { tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, result: toolOutput },
+					reverse: true
+				);
+
+				toolResults.append( {
+					"call": entry.toolCall,
 					"outputs": [ { "result": toolOutput } ]
-				};
-			} );
+				} );
+			}
 
 			// Make a follow-up request with tool results
 			// NOTE: Cohere requires EITHER message OR tool_results, not both (unless force_single_step=true)
@@ -365,11 +502,134 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			case "raw":
 				return result;
 			case "json":
-				return jsonDeserialize( extractFromCodeBlock( result.text, "json" ) );
+				return extractJSONContent( result.text );
 			case "xml":
 				return xmlParse( extractFromCodeBlock( result.text, "xml" ) );
              case "structuredOutput":
                 return populateStructuredOutput( result.text, arguments.chatRequest );
+			case "single": default:
+				return result.text ?: result.message ?: ""
+		}
+	}
+
+	/**
+	 * Finish processing a tool-call batch that was suspended for human approval (see
+	 * afterToolBatch()), using the finalized resume ledger AiAgent.resume() built. No LLM call —
+	 * and nothing that already executed (or was already blocked) during the original attempt
+	 * runs again, since pass 1 never actually invokes a tool while any part of the batch could
+	 * still suspend (see chat()'s "Pass 1: decide" / "Pass 2: execute" split).
+	 *
+	 * Cohere has no shared `messages` array to replay an assistant turn into (unlike the other
+	 * providers) — everything needed to rebuild the follow-up request (the tool calls, and the
+	 * tools/chat_history/preamble/params the original attempt's follow-up would have used) was
+	 * captured directly on `resumeCtx.assistantMessage` by chat() when it suspended.
+	 *
+	 * @chatRequest      The chat request to continue
+	 * @resumeCtx         The resume context AiAgent.resume() built: { assistantMessage, resumeLedger }
+	 * @interactionCount Current tool call interaction count (used internally)
+	 */
+	private any function resumeToolBatch( required AiChatRequest chatRequest, required struct resumeCtx, required numeric interactionCount ) {
+		// Consume the resume context immediately — chat() recurses for the NEXT turn below, and
+		// that recursive call must not re-detect this same resume context and loop forever.
+		arguments.chatRequest.setResumeContext( {} )
+
+		var thisChatRequest  = arguments.chatRequest
+		var assistantMessage = arguments.resumeCtx.assistantMessage
+		var ledger            = arguments.resumeCtx.resumeLedger ?: []
+		var toolCalls          = assistantMessage.toolCalls ?: []
+		var tools              = thisChatRequest.getParams()?.tools ?: []
+
+		var toolResults = []
+
+		for ( var i = 1; i <= toolCalls.len(); i++ ) {
+			var toolCall    = toolCalls[ i ]
+			var ledgerEntry = ( i <= ledger.len() )
+				? ledger[ i ]
+				: { status: "blocked", reason: "No resume decision was recorded for this tool call." }
+
+			if ( ledgerEntry.status == "cancel" ) {
+				return AiMiddlewareResult.cancel( ledgerEntry.reason ?: "Cancelled by human operator during resume." )
+			}
+
+			if ( ledgerEntry.status == "blocked" ) {
+				toolResults.append( {
+					"call"   : toolCall,
+					"outputs": [ { "result": "[Tool call blocked: #ledgerEntry.reason ?: ""#]" } ]
+				} )
+				continue
+			}
+
+			// "execute"
+			var tool = tools.filter( t => t.getSchema().function.name == toolCall.name ).first()
+			if ( isNull( tool ) ) {
+				toolResults.append( {
+					"call"   : toolCall,
+					"outputs": [ { "result": "Tool ['#toolCall.name#'] not found in chat request" } ]
+				} )
+				continue
+			}
+
+			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs : ( toolCall.parameters ?: {} )
+			var capturedTool = tool
+			var capturedArgs = toolArgs
+			var toolOutput = thisChatRequest.fireWrapMiddleware(
+				"wrapToolCall",
+				{ tool: tool, toolCall: toolCall, chatRequest: thisChatRequest, toolName: toolCall.name ?: tool.getName(), toolArgs: toolArgs },
+				() => capturedTool.invoke( capturedArgs, thisChatRequest )
+			)
+
+			thisChatRequest.fireMiddleware(
+				hook   : "afterToolCall",
+				context: { tool: tool, toolCall: toolCall, chatRequest: thisChatRequest, result: toolOutput },
+				reverse: true
+			)
+
+			toolResults.append( { "call": toolCall, "outputs": [ { "result": toolOutput } ] } )
+		}
+
+		// Rebuild the follow-up request from what chat() captured before suspending
+		var followUpPacket = {
+			"model"       : thisChatRequest.getModel(),
+			"tool_results": toolResults
+		};
+		if ( ( assistantMessage.followUpTools ?: [] ).len() ) {
+			followUpPacket.tools = assistantMessage.followUpTools;
+		}
+		if ( ( assistantMessage.chatHistory ?: [] ).len() ) {
+			followUpPacket.chat_history = assistantMessage.chatHistory;
+		}
+		if ( len( assistantMessage.preamble ?: "" ) ) {
+			followUpPacket.preamble = assistantMessage.preamble;
+		}
+		followUpPacket.append( assistantMessage.tempParams ?: {} );
+
+		var followUpContext = { chatRequest: thisChatRequest, dataPacket: followUpPacket }
+		var result = thisChatRequest.fireWrapMiddleware(
+			hook         : "wrapLLMCall",
+			context      : followUpContext,
+			innerFunction: () => sendChatRequest( thisChatRequest, followUpPacket )
+		)
+		thisChatRequest.fireMiddleware(
+			hook   : "afterLLMCall",
+			context: { chatRequest: thisChatRequest, result: result },
+			reverse: true
+		)
+
+		if ( result.keyExists( "tool_calls" ) && result.tool_calls.len() > 0 ) {
+			return chat( thisChatRequest, arguments.interactionCount + 1 )
+		}
+
+		switch( thisChatRequest.getReturnFormat() ){
+			case "all":
+				return result;
+			case "raw":
+				return result;
+			case "json":
+				return jsonDeserialize( extractFromCodeBlock( result.text, "json" ) );
+			case "xml":
+				return xmlParse( extractFromCodeBlock( result.text, "xml" ) );
+			case "structuredOutput":
+				return populateStructuredOutput( result.text, thisChatRequest );
 			case "single": default:
 				return result.text ?: result.message ?: ""
 		}
@@ -392,9 +652,12 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		var thisChatRequest = arguments.chatRequest;
 		var requestedModel = arguments.chatRequest.getModel();
 		var cohereUsage = { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "raw": {} };
+		// Accumulate the streamed assistant text so afterLLMCall middleware can inspect it
+		var cohereContent = "";
 		var emitNormalizedChunk = ( parsedChunk ) => {
 			var content = parsedChunk.text ?: ""
 			var finishReason = ""
+			cohereContent &= content;
 
 			if( parsedChunk.event_type == "stream-end" ){
 				finishReason = "stop"
@@ -507,6 +770,15 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			println( dataPacket )
 		}
 
+		// -------------------------------------------------------------------------------------------
+		// --- Fire beforeLLMCall middleware (streaming) ---
+		// -------------------------------------------------------------------------------------------
+		var streamLlmBefore = arguments.chatRequest.fireMiddleware( "beforeLLMCall", { chatRequest: arguments.chatRequest, dataPacket: dataPacket } );
+		if( streamLlmBefore.isTerminal() ){
+			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
+			return
+		}
+
 		// Build HTTP request with fluent API
 		var httpRequest = http( getChatURL() )
 			.method( "POST" )
@@ -616,6 +888,15 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				timestamp        : now()
 			} )
 		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterLLMCall middleware (streaming), in reverse order ---
+		// -------------------------------------------------------------------------------------------
+		arguments.chatRequest.fireMiddleware(
+			hook   : "afterLLMCall",
+			context: { chatRequest: arguments.chatRequest, streamState: { "reasoning": "", "content": cohereContent, "finishReason": "", "toolCalls": [], "usage": cohereUsage.raw } },
+			reverse: true
+		)
 	}
 
 	/**

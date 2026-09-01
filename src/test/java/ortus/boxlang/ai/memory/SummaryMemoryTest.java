@@ -43,7 +43,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 		    memory = aiMemory( "summary" )
 		    maxMessages = memory.getMaxMessages()
 		    summaryThreshold = memory.getSummaryThreshold()
-		    summaryModel = memory.getSummaryModelName()
+		    summaryModel = memory.getSummaryModel()
 		    summaryProvider = memory.getSummaryProvider()
 		    hasSummary = memory.getHasSummary()
 		    """,
@@ -71,7 +71,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 
 		    maxMessages = memory.getMaxMessages()
 		    summaryThreshold = memory.getSummaryThreshold()
-		    summaryModel = memory.getSummaryModelName()
+		    summaryModel = memory.getSummaryModel()
 		    summaryProvider = memory.getSummaryProvider()
 		    """,
 		    context
@@ -282,7 +282,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 
 		    maxMessages = memory.getMaxMessages()
 		    summaryThreshold = memory.getSummaryThreshold()
-		    summaryModel = memory.getSummaryModelName()
+		    summaryModel = memory.getSummaryModel()
 		    summaryProvider = memory.getSummaryProvider()
 		    currentSummary = memory.getCurrentSummary()
 		    hasSummary = memory.getHasSummary()
@@ -315,7 +315,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 
 		    maxMessages = memory.getMaxMessages()
 		    summaryThreshold = memory.getSummaryThreshold()
-		    summaryModel = memory.getSummaryModelName()
+		    summaryModel = memory.getSummaryModel()
 		    summaryProvider = memory.getSummaryProvider()
 		    """,
 		    context
@@ -342,7 +342,7 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 
 		    maxMessages = memory.getMaxMessages()
 		    summaryThreshold = memory.getSummaryThreshold()
-		    summaryModel = memory.getSummaryModelName()
+		    summaryModel = memory.getSummaryModel()
 		    summaryProvider = memory.getSummaryProvider()
 		    """,
 		    context
@@ -367,6 +367,156 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 		);
 
 		assertThat( variables.getAsString( Key.of( "memoryType" ) ) ).isEqualTo( "SummaryMemory" );
+	}
+
+	@Test
+	@DisplayName( "Test trigger fires at maxMessages, not 2×summaryThreshold" )
+	public void testTriggerAtMaxMessages() {
+		// maxMessages=10, summaryThreshold=4 → old broken trigger=8 (2×4), correct trigger=10
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "summary", key: "trigger-test", config: {
+		        maxMessages: 10,
+		        summaryThreshold: 4
+		    } )
+
+		    // Add 9 messages — below maxMessages=10, so NO summarization should fire
+		    for( i = 1; i <= 9; i++ ) {
+		        memory.add( "Message " & i )
+		    }
+
+		    count = memory.count()
+		    hasSummary = memory.getHasSummary()
+		    """,
+		    context
+		);
+
+		// 9 < maxMessages(10) → no summarization yet
+		assertThat( variables.getAsInteger( Key.of( "count" ) ) ).isEqualTo( 9 );
+		assertThat( variables.getAsBoolean( Key.of( "hasSummary" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "Test summaryThreshold >= maxMessages throws InvalidConfiguration" )
+	public void testInvalidThresholdConfiguration() {
+		try {
+			runtime.executeSource(
+			    """
+			    memory = aiMemory( memory: "summary", config: {
+			        maxMessages: 5,
+			        summaryThreshold: 5
+			    } )
+			    """,
+			    context
+			);
+			// Should have thrown
+			assertThat( false ).isTrue();
+		} catch ( Exception e ) {
+			assertThat( e.getMessage() ).contains( "summaryThreshold" );
+		}
+	}
+
+	@Test
+	@DisplayName( "Test SummaryMemory token-mode instantiation" )
+	public void testTokenModeInstantiation() {
+		runtime.executeSource(
+		    """
+		    memory = new bxModules.bxai.models.memory.SummaryMemory(
+		        key: "token-mode-test",
+		        maxMessages: 0,
+		        maxTokens: 1000,
+		        summaryThreshold: 5,
+		        summaryModel: "gpt-4o-mini",
+		        summaryProvider: "openai"
+		    )
+
+		    maxMessages = memory.getMaxMessages()
+		    maxTokens = memory.getMaxTokens()
+		    summaryThreshold = memory.getSummaryThreshold()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "maxMessages" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "maxTokens" ) ) ).isEqualTo( 1000 );
+		assertThat( variables.getAsInteger( Key.of( "summaryThreshold" ) ) ).isEqualTo( 5 );
+	}
+
+	@Test
+	@DisplayName( "Test SummaryMemory throws when both maxTokens and maxMessages are set" )
+	public void testMutexGuard() {
+		try {
+			runtime.executeSource(
+			    """
+			    memory = aiMemory( memory: "summary", config: {
+			        maxMessages: 20,
+			        maxTokens: 1000,
+			        summaryThreshold: 5
+			    } )
+			    """,
+			    context
+			);
+			// Should have thrown
+			assertThat( false ).isTrue();
+		} catch ( Exception e ) {
+			assertThat( e.getMessage() ).contains( "maxTokens" );
+			assertThat( e.getMessage() ).contains( "maxMessages" );
+		}
+	}
+
+	@Test
+	@DisplayName( "Test SummaryMemory token-mode export includes maxTokens; import restores it" )
+	public void testTokenModeExportImport() {
+		runtime.executeSource(
+		    """
+		    memory = new bxModules.bxai.models.memory.SummaryMemory(
+		        key: "token-export-test",
+		        maxMessages: 0,
+		        maxTokens: 2000,
+		        summaryThreshold: 8,
+		        summaryModel: "gpt-4o-mini",
+		        summaryProvider: "openai"
+		    )
+		        .add( "Hello world" )
+
+		    exported = memory.export()
+		    exportedMaxTokens = exported.maxTokens
+		    exportedMaxMessages = exported.maxMessages
+
+		    memory2 = aiMemory( "summary" )
+		        .import( exported )
+
+		    importedMaxTokens = memory2.getMaxTokens()
+		    importedMaxMessages = memory2.getMaxMessages()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "exportedMaxTokens" ) ) ).isEqualTo( 2000 );
+		assertThat( variables.getAsInteger( Key.of( "exportedMaxMessages" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "importedMaxTokens" ) ) ).isEqualTo( 2000 );
+		assertThat( variables.getAsInteger( Key.of( "importedMaxMessages" ) ) ).isEqualTo( 0 );
+	}
+
+	@Test
+	@DisplayName( "Test SummaryMemory default message-count mode is unchanged" )
+	public void testMessageCountModeUnchanged() {
+		// Regression guard: default behavior (maxMessages=20, summaryThreshold=10) must be unaffected
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( "summary" )
+		    maxMessages = memory.getMaxMessages()
+		    maxTokens = memory.getMaxTokens()
+		    summaryThreshold = memory.getSummaryThreshold()
+		    hasSummary = memory.getHasSummary()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "maxMessages" ) ) ).isEqualTo( 20 );
+		assertThat( variables.getAsInteger( Key.of( "maxTokens" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "summaryThreshold" ) ) ).isEqualTo( 10 );
+		assertThat( variables.getAsBoolean( Key.of( "hasSummary" ) ) ).isFalse();
 	}
 
 	@Test

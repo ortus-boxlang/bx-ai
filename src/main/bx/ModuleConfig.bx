@@ -126,7 +126,7 @@ class {
 				// }
 			},
 			// The default timeout of the ai requests
-			timeout : 45,
+			timeout : 90,
 			// If true, the AI request will be logged into the ai.log
 			logRequest : false,
 			// If true, the AI request will be logged to the console
@@ -205,6 +205,60 @@ class {
 			},
 
 			// --------------------------------------------------------------------------
+			// Security Settings — Prompt-injection guardrails
+			// --------------------------------------------------------------------------
+			// When `enabled` is true, the configured security middleware is automatically
+			// attached to EVERY chat request (aiChat, aiModel, aiAgent). Individual
+			// middleware can also be attached per-request without the global switch.
+			//
+			// NOTE: unicode hygiene (normalizeUnicode + stripZeroWidth) applies to inbound
+			// user messages even when `enabled` is false — it neutralizes invisible-character
+			// injection attacks and is virtually risk-free. Set the flags to false to opt out.
+			// A request can skip ALL security processing with the option `secure: false`.
+			security : {
+				// Master switch: auto-attach the security middleware below to every chat request
+				enabled : false,
+				// Input sanitizer (InputSanitizerMiddleware) — heuristic prompt-injection scanning
+				input : {
+					// Include the input sanitizer when security.enabled is true
+					enabled : true,
+					// What to do when findings are detected: block | strip | flag | log
+					// - block : throw BXAI.SecurityViolation before any tokens are spent
+					// - strip : remove the offending fragments and continue
+					// - flag  : continue, stamp findings on chatRequest.providerOptions.securityFindings + log
+					// - log   : continue and log only
+					action : "flag",
+					// Detectors to run. Empty array = all built-in detectors.
+					// Available: instructionOverride, roleImpersonation, jailbreak,
+					//            invisibleUnicode, base64Blob, exfilUrl
+					detectors : [],
+					// Custom patterns: [ { name: "myPattern", regex: "(?i)..." } ]
+					customPatterns : [],
+					// Unicode NFKC normalization of inbound user messages (DEFAULT ON)
+					normalizeUnicode : true,
+					// Strip zero-width/invisible characters from inbound user messages (DEFAULT ON)
+					stripZeroWidth : true,
+					// Also scan tool/MCP results for indirect injection (when sanitizer is attached)
+					scanToolResults : true
+				},
+				// Fencing (spotlighting) — wrap untrusted RAG/context content in delimiters so
+				// the model treats it as DATA, not instructions.
+				fencing : {
+					// DEFAULT ON: the ${context} render path is auto-fenced for every request.
+					// This only affects requests that actually pass context (options.context /
+					// ${context}); requests without context are unchanged. Set to false to opt out.
+					enabled : true,
+					// When enabled, wrap the ${context} value in fence markers
+					fenceContext : true,
+					// DEFAULT ON: neutralize ${ in binding VALUES before stringBind
+					// (defense-in-depth against template confusion; applies even when fencing is off)
+					escapeBindings : true,
+					// "" = built-in security preamble; non-empty overrides it
+					preamble : ""
+				}
+			},
+
+			// --------------------------------------------------------------------------
 			// Web Search Settings — Defaults for aiWebSearch()/aiWebSearchAsync() BIFs and WebSearchTools
 			// --------------------------------------------------------------------------
 			webSearch : {
@@ -223,6 +277,31 @@ class {
 				// Logging
 				logRequest : false,
 				logResponse : false
+			},
+
+			// --------------------------------------------------------------------------
+			// Gateway Settings — per-gateway configuration for aiGateway( name )
+			// --------------------------------------------------------------------------
+			// The name of the key is the gateway name, each gateway can have its own
+			// configuration options.
+			// Ex: { slack: { botToken: "...", signingSecret: "..." } }
+			gateways : {
+			},
+
+			// --------------------------------------------------------------------------
+			// HITL Settings — default decision store for HumanInTheLoopMiddleware
+			// --------------------------------------------------------------------------
+			// The default IDecisionStore backend used for "approve_always" durable grants
+			// when a HumanInTheLoopMiddleware isn't given one explicitly. Mirrors the
+			// `memory` setting above — resolved by aiDecisionStore() when called with no
+			// arguments. There is deliberately no per-agent override: every
+			// HumanInTheLoopMiddleware in an application shares this one store, since an
+			// application never attaches more than one HITL middleware at a time.
+			hitl : {
+				decisionStore : {
+					provider : "cache",
+					config : {}
+				}
 			}
 		}
 
@@ -241,6 +320,8 @@ class {
 			"beforeAIAgentRun",
 			"afterAIAgentRun",
 			"onAIAgentCreate",
+			"onAIAgentRunCancel",
+			"onAIAgentRunSteer",
 
 			// Model & Provider Events
 			"beforeAIModelInvoke",
@@ -324,7 +405,23 @@ class {
 			"afterAIWebSearch",
 			"onAIWebSearchRequest",
 			"onAIWebSearchResponse",
-			"onAIWebSearchError"
+			"onAIWebSearchError",
+
+			// Memory Summarization Event
+			"onAIMemorySummarize",
+
+			// Gateway Events
+			"onGatewayRegistryRegister",
+			"onGatewayRegistryUnregister",
+			"onGatewayCreate",
+			"onGatewaySessionCreate",
+			"onGatewayConnect",
+			"onGatewayDisconnect",
+			"onGatewayMessageReceived",
+			"onGatewayMessageSent",
+
+			// Decision Store Events
+			"onAiDecisionStoreCreate"
 		 ]
 	}
 

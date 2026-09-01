@@ -1,0 +1,163 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * A request for a human decision, presented by a gateway.
+ *
+ * Covers more than tool approval — gateways can also surface clarification requests,
+ * confirmations, credential prompts, selections, freeform input, and review requests.
+ * Use the TYPES constants for the well-known interactionType strings.
+ */
+class {
+
+	/**
+	 * Unique identifier for this request — the correlation token a decision refers back to
+	 */
+	property name="id" type="string" default="";
+
+	/**
+	 * The agent execution/run this request correlates to — matches AiAgent's runId
+	 */
+	property name="executionID" type="string" default="";
+
+	/**
+	 * The kind of interaction being requested — prefer HumanInteractionRequest.TYPES.* constants
+	 */
+	property name="interactionType" type="string" default="tool_approval";
+
+	/**
+	 * Short title for the request (e.g. a CLI banner or a Slack message header)
+	 */
+	property name="title" type="string" default="";
+
+	/**
+	 * Human-readable description of what's being requested and why
+	 */
+	property name="message" type="string" default="";
+
+	/**
+	 * Decisions the human may choose from for this request
+	 */
+	property name="allowedDecisions" type="array" default=[ "approve", "reject" ];
+
+	/**
+	 * The pending action awaiting the decision (e.g. { toolName, toolArgs })
+	 */
+	property name="pendingAction" type="struct" default={};
+
+	/**
+	 * JSON-schema-shaped struct describing expected input, for freeform_input/selection types
+	 */
+	property name="inputSchema" type="struct" default={};
+
+	/**
+	 * Free-form metadata for gateway-specific extensions
+	 */
+	property name="metadata" type="struct" default={};
+
+	/**
+	 * When this request was created
+	 */
+	property name="createdAt" type="date";
+
+	/**
+	 * When this request expires and can no longer be decided
+	 */
+	property name="expiresAt";
+
+	/**
+	 * Well-known interactionType constants
+	 */
+	static {
+		TYPES = {
+			TOOL_APPROVAL       : "tool_approval",
+			CONFIRMATION        : "confirmation",
+			CLARIFICATION       : "clarification",
+			CREDENTIAL_REQUIRED : "credential_required",
+			SELECTION           : "selection",
+			FREEFORM_INPUT      : "freeform_input",
+			REVIEW              : "review"
+		}
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @id               Unique identifier for this request (auto-generated if omitted)
+	 * @executionID      The agent execution/run this request correlates to
+	 * @interactionType  The kind of interaction being requested
+	 * @title            Short title for the request
+	 * @message          Human-readable description of what's being requested and why
+	 * @allowedDecisions Decisions the human may choose from for this request
+	 * @pendingAction    The pending action awaiting the decision
+	 * @inputSchema      JSON-schema-shaped struct describing expected input
+	 * @metadata         Free-form metadata for gateway-specific extensions
+	 * @createdAt        When this request was created (defaults to now)
+	 * @expiresAt        When this request expires and can no longer be decided
+	 */
+	function init(
+		string id               = createUUID(),
+		string executionID      = "",
+		string interactionType  = "tool_approval",
+		string title            = "",
+		string message          = "",
+		array  allowedDecisions = [ "approve", "reject" ],
+		struct pendingAction    = {},
+		struct inputSchema      = {},
+		struct metadata         = {},
+		date   createdAt        = now(),
+		any    expiresAt
+	) {
+		variables.id               = arguments.id
+		variables.executionID      = arguments.executionID
+		variables.interactionType  = arguments.interactionType
+		variables.title            = arguments.title
+		variables.message          = arguments.message
+		variables.allowedDecisions = arguments.allowedDecisions
+		variables.pendingAction    = arguments.pendingAction
+		variables.inputSchema      = arguments.inputSchema
+		variables.metadata         = arguments.metadata
+		variables.createdAt        = arguments.createdAt
+		variables.expiresAt        = arguments.expiresAt ?: javacast( "null", "" )
+		return this;
+	}
+
+	/**
+	 * Whether this request has expired
+	 */
+	boolean function isExpired() {
+		return !isNull( variables.expiresAt ) && now() > variables.expiresAt
+	}
+
+	/**
+	 * Serialize to a plain struct (useful for logging, persistence, or transport). Keys
+	 * match this class's constructor named args 1:1, so `new HumanInteractionRequest(
+	 * argumentCollection: savedStruct )` round-trips it cleanly.
+	 */
+	struct function toStruct() {
+		return {
+			"id"              : variables.id,
+			"executionID"     : variables.executionID,
+			"interactionType" : variables.interactionType,
+			"title"           : variables.title,
+			"message"         : variables.message,
+			"allowedDecisions": variables.allowedDecisions,
+			"pendingAction"   : variables.pendingAction,
+			"inputSchema"     : variables.inputSchema,
+			"metadata"        : variables.metadata,
+			"createdAt"       : variables.createdAt,
+			"expiresAt"       : isNull( variables.expiresAt ) ? javacast( "null", "" ) : variables.expiresAt
+		}
+	}
+
+}

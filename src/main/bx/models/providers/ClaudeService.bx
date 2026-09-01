@@ -15,6 +15,7 @@
  */
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.util.SchemaBuilder;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
 
 class extends="BaseService" implements="IAiChatService" {
 
@@ -26,7 +27,7 @@ class extends="BaseService" implements="IAiChatService" {
 		DEFAULT_CHAT_PARAMS = {
 			// according to the docs, this is the default model and tokens
 			// https://docs.anthropic.com/en/docs/about-claude/models/overview#model-aliases
-			"model" : "claude-sonnet-4-5",
+			"model" : "claude-sonnet-5",
 			"max_tokens": 1024
 		};
 		DEFAULT_HEADERS = {
@@ -95,6 +96,18 @@ class extends="BaseService" implements="IAiChatService" {
 			.mergeServiceParams( variables.params )
 			.mergeServiceHeaders( variables.headers );
 
+		// -------------------------------------------------------------------------------------------
+		// --- Resume short-circuit ---
+		// A batch tool-call suspension (see afterToolBatch()) was resolved via AiAgent.resumeStream()
+		// with a finalized resume ledger — finish that same tool batch directly instead of
+		// calling the LLM again (no replay, nothing that already ran re-runs).
+		// -------------------------------------------------------------------------------------------
+		var resumeCtx = arguments.chatRequest.getResumeContext() ?: {}
+		if ( !resumeCtx.isEmpty() && resumeCtx.keyExists( "assistantMessage" ) ) {
+			resumeToolBatchStream( arguments.chatRequest, arguments.callback, resumeCtx, arguments.interactionCount )
+			return
+		}
+
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
 
@@ -137,6 +150,8 @@ class extends="BaseService" implements="IAiChatService" {
 		var streamState = {
 			"messageId": "",
 			"model": arguments.chatRequest.getModel(),
+			"content": "",
+			"reasoning": "",
 			"toolCalls": [],
 			"toolInputBuffers": {},
 			"toolCallIndexMap": {},
@@ -144,6 +159,15 @@ class extends="BaseService" implements="IAiChatService" {
 			"emittedAnyText": false,
 			"usage": { "input_tokens": 0, "output_tokens": 0 }
 		};
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire beforeLLMCall middleware (streaming) ---
+		// -------------------------------------------------------------------------------------------
+		var streamLlmBefore = arguments.chatRequest.fireMiddleware( "beforeLLMCall", { chatRequest: arguments.chatRequest, dataPacket: dataPacket } );
+		if( streamLlmBefore.isTerminal() ){
+			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
+			return
+		}
 
 		var httpRequest = http( getChatURL() )
 			.method( "POST" )
@@ -202,9 +226,43 @@ class extends="BaseService" implements="IAiChatService" {
 						return;
 					}
 
+					// Extended thinking: Anthropic streams the model's reasoning as its own
+					// content-block type, BEFORE any text. Normalize it onto the standard
+					// `delta.reasoning` key so consumers read reasoning identically here and
+					// on every OpenAI-shaped provider — never merged into `content`, which
+					// is the answer and is what gets persisted to memory.
+					// `signature_delta` (Anthropic's verification signature) and redacted
+					// thinking blocks have no cross-provider equivalent and are deliberately
+					// not surfaced on the normalized envelope.
+					if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "thinking_delta" ){
+						var thinkingChunk = parsedChunk.delta.thinking ?: "";
+						if( !thinkingChunk.len() ){
+							return;
+						}
+						streamState.reasoning &= thinkingChunk;
+
+						userCallback({
+							"id": streamState.messageId,
+							"provider": "Claude",
+							"model": streamState.model,
+							"object": "chat.completion.chunk",
+							"choices": [
+								{
+									"index": 0,
+									"delta": {
+										"role": "assistant",
+										"reasoning": thinkingChunk
+									}
+								}
+							]
+						});
+						return;
+					}
+
 					if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "text_delta" ){
 						var textChunk = parsedChunk.delta.text ?: "";
 						streamState.emittedAnyText = streamState.emittedAnyText || textChunk.len();
+						streamState.content &= textChunk;
 
 						userCallback({
 							"id": streamState.messageId,
@@ -347,12 +405,142 @@ class extends="BaseService" implements="IAiChatService" {
 				return;
 			}
 
-			runtimeChatRequest.getMessages().append({
-				"role"    : "assistant",
-				"content" : sanitizedToolCalls
-			});
+			var assistantMessage = { "role": "assistant", "content": sanitizedToolCalls }
+			var messages         = runtimeChatRequest.getMessages()
+			messages.append( assistantMessage );
 
-			sanitizedToolCalls.each( toolCall => executeClaudeTool( toolCall, runtimeChatRequest ) );
+			// ── Pass 1: decide ──────────────────────────────────────────────────────────────
+			// Fire beforeToolCall for EVERY tool call in this turn before invoking any of them —
+			// see chat() for the full rationale (this mirrors it exactly).
+			var batch = []
+			var claudeStreamTerminalResult = "";
+
+			for( var toolCall in sanitizedToolCalls ) {
+				var toolAttempt = runtimeChatRequest.getTool( toolCall.name )
+				if ( !toolAttempt.isPresent() ) {
+					writeLog(
+						text: "Unable to find tool named: [#toolCall.name#]",
+						type: "warning",
+						log : "ai"
+					)
+					batch.append( {
+						tool    : javacast( "null", "" ),
+						toolCall: toolCall,
+						toolName: toolCall.name,
+						toolArgs: {},
+						result  : AiMiddlewareResult.reject( "Tool ['#toolCall.name#'] not found in chat request" )
+					} )
+					continue
+				}
+
+				var tool        = toolAttempt.get()
+				var toolContext = {
+					tool       : tool,
+					toolCall   : toolCall,
+					chatRequest: runtimeChatRequest,
+					toolName   : toolCall.name ?: tool.getName(),
+					toolArgs   : toolCall.input ?: {}
+				}
+				var toolBeforeResult = runtimeChatRequest.fireMiddleware( "beforeToolCall", toolContext )
+
+				// Cancel means abort the run outright — hard-stop immediately, exactly as before.
+				// Unlike suspend, a cancelled run is never resumed, so there is nothing to batch.
+				if ( toolBeforeResult.isCancelled() ) {
+					claudeStreamTerminalResult = toolBeforeResult
+					break
+				}
+
+				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+			}
+
+			if ( isObject( claudeStreamTerminalResult ) ) {
+				userCallback( { type: "middleware_stop", result: claudeStreamTerminalResult } )
+				return
+			}
+
+			// ── Suspend the whole batch at once, if anything needs a human decision ──────────
+			if ( batch.some( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() ) ) {
+				var batchResult = runtimeChatRequest.fireMiddleware(
+					"afterToolBatch",
+					{ chatRequest: runtimeChatRequest, assistantMessage: assistantMessage, batch: batch }
+				)
+
+				// See chat() — no attached middleware's afterToolBatch() converted the pending
+				// entries into anything, fall back to a generic combined suspend.
+				if ( !batchResult.isSuspended() && !batchResult.isCancelled() ) {
+					var pending = batch.filter( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() )
+					var pendingActions = pending.map( ( entry ) => {
+						var data = entry.result.getData()
+						return {
+							toolName    : entry.toolName,
+							toolArgs    : ( isStruct( entry.toolArgs ) ) ? entry.toolArgs : {},
+							suspensionID: data.suspensionID ?: ""
+						}
+					} )
+					batchResult = AiMiddlewareResult.suspend( { pendingActions: pendingActions } )
+				}
+
+				if ( batchResult.isTerminal() ) {
+					if ( !batchResult.isSuspended() ) {
+						userCallback( { type: "middleware_stop", result: batchResult } )
+						return
+					}
+					var resumeLedger = batch.map( ( entry ) => {
+						if ( entry.result.isDeferred() || entry.result.isSuspended() ) {
+							return { toolName: entry.toolName, status: "pending" }
+						}
+						if ( entry.result.isRejected() ) {
+							return { toolName: entry.toolName, status: "blocked", reason: entry.result.getReason() }
+						}
+						return { toolName: entry.toolName, status: "execute" }
+					} )
+					var mergedData = duplicate( batchResult.getData() )
+					mergedData[ "assistantMessage" ] = assistantMessage
+					mergedData[ "resumeLedger" ]     = resumeLedger
+					userCallback( { type: "middleware_stop", result: AiMiddlewareResult.suspend( mergedData ) } )
+					return
+				}
+				// continue: afterToolBatch() decided nothing needs to stay pending after all —
+				// fall through to pass 2 below.
+			}
+
+			// ── Pass 2: execute ───────────────────────────────────────────────────────────────
+			for ( var entry in batch ) {
+				if ( entry.result.isRejected() ) {
+					messages.append({
+						"role" : "user",
+						"content" : [{
+							"type"        : "tool_result",
+							"tool_use_id" : entry.toolCall.id,
+							"content"     : "[Tool call blocked: #entry.result.getReason()#]"
+						}]
+					});
+					continue
+				}
+
+				var capturedTool     = entry.tool
+				var capturedToolCall = entry.toolCall
+				var toolResult = runtimeChatRequest.fireWrapMiddleware(
+					"wrapToolCall",
+					{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: runtimeChatRequest, toolName: entry.toolName, toolArgs: entry.toolCall.input ?: {} },
+					() => capturedTool.invoke( args: capturedToolCall.input, chatRequest: runtimeChatRequest )
+				);
+
+				runtimeChatRequest.fireMiddleware(
+					hook   : "afterToolCall",
+					context: { tool: entry.tool, toolCall: entry.toolCall, chatRequest: runtimeChatRequest, result: toolResult },
+					reverse: true
+				);
+
+				messages.append({
+					"role" : "user",
+					"content" : [{
+						"type"        : "tool_result",
+						"tool_use_id" : entry.toolCall.id,
+						"content"     : toolResult
+					}]
+				});
+			}
 
 			var finalResponse = chat( runtimeChatRequest );
 			var finalText = isSimpleValue( finalResponse ) ? toString( finalResponse ) : "";
@@ -397,6 +585,28 @@ class extends="BaseService" implements="IAiChatService" {
 				});
 			}
 		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterLLMCall middleware (streaming), in reverse order ---
+		// -------------------------------------------------------------------------------------------
+		// Only fire on the pure-text path. The tool_use and no-text-fallback branches above call
+		// chat(), which already fires afterLLMCall — firing again here would double-fire.
+		if( streamState.emittedAnyText && streamState.stopReason != "tool_use" ){
+			arguments.chatRequest.fireMiddleware(
+				hook   : "afterLLMCall",
+				context: {
+					chatRequest: arguments.chatRequest,
+					streamState: {
+						"content"     : streamState.content,
+						"reasoning"   : streamState.reasoning ?: "",
+						"finishReason": streamState.stopReason,
+						"toolCalls"   : streamState.toolCalls,
+						"usage"       : streamState.usage
+					}
+				},
+				reverse: true
+			)
+		}
 	}
 
 	/**
@@ -419,6 +629,17 @@ class extends="BaseService" implements="IAiChatService" {
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceParams( variables.params )
 			.mergeServiceHeaders( variables.headers );
+
+		// -------------------------------------------------------------------------------------------
+		// --- Resume short-circuit ---
+		// A batch tool-call suspension (see afterToolBatch()) was resolved via AiAgent.resume()
+		// with a finalized resume ledger — finish that same tool batch directly instead of
+		// calling the LLM again (no replay, nothing that already ran re-runs).
+		// -------------------------------------------------------------------------------------------
+		var resumeCtx = arguments.chatRequest.getResumeContext() ?: {}
+		if ( !resumeCtx.isEmpty() && resumeCtx.keyExists( "assistantMessage" ) ) {
+			return resumeToolBatch( arguments.chatRequest, resumeCtx, arguments.interactionCount )
+		}
 
 		// No auth header, claude uses x-api-key
 		arguments.chatRequest
@@ -480,6 +701,28 @@ class extends="BaseService" implements="IAiChatService" {
 			context      : llmContext,
 			innerFunction: () => sendChatRequest( capturedChatRequest, capturedDataPacket )
 		)
+
+		// Surface the model's thinking on the standard `reasoning` key BEFORE afterLLMCall runs,
+		// so an OutputGuard can inspect and scrub it — attaching it further down (just before the
+		// returnFormat switch, where this used to live) meant reasoning reached the caller having
+		// never been scanned. Claude's sync `raw` format returns Anthropic's own native envelope
+		// (pre-existing behavior, not an OpenAI `choices[]` shape), so reasoning is attached at the
+		// top level here; the streaming path uses the normalized `delta.reasoning` like everyone
+		// else. Never merged into `content` — that is the answer, and what memory keeps.
+		//
+		// The native `thinking` blocks are deliberately left untouched: they must be echoed back to
+		// Anthropic complete and unmodified within a tool-use turn, so this derived string is the
+		// only copy a guard may rewrite.
+		var nativeReasoning = ""
+		if( isStruct( result ) && result.keyExists( "content" ) && isArray( result.content ) ){
+			var thinkingBlocks = result.content.filter( block -> ( block?.type ?: "" ) == "thinking" )
+			if( thinkingBlocks.len() ){
+				nativeReasoning = thinkingBlocks
+					.map( block -> block.thinking ?: "" )
+					.toList( "" )
+				result[ "reasoning" ] = nativeReasoning
+			}
+		}
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire afterLLMCall middleware, in reverse order ---
@@ -574,30 +817,175 @@ class extends="BaseService" implements="IAiChatService" {
 			var toolCalls = result.content.filter( contentBlock -> contentBlock?.type == "tool_use" );
 
 			// Add the role assistant message with tool calls
-			arguments.chatRequest.getMessages().append({
-				"role"    : "assistant",
-				"content" : result.content
-			});
+			var assistantMessage = { "role": "assistant", "content": result.content }
+			var thisChatRequest = arguments.chatRequest
+			var messages = thisChatRequest.getMessages()
+			messages.append( assistantMessage )
 
-			// Create a new chat request for each tool call
+			// ── Pass 1: decide ────────────────────────────────────────────────────────────────
+			// Fire beforeToolCall for EVERY tool call in this turn before invoking any of them —
+			// see OpenAIService.chat() for the full rationale (this mirrors it exactly).
+			var batch = []
+			var terminalToolResult = ""
+
 			for( var toolCall in toolCalls ) {
-				// Execute the tool call
-				executeClaudeTool( toolCall, arguments.chatRequest );
+				var toolAttempt = thisChatRequest.getTool( toolCall.name )
+				if ( !toolAttempt.isPresent() ) {
+					writeLog(
+						text: "Unable to find tool named: [#toolCall.name#]",
+						type: "warning",
+						log : "ai"
+					)
+					batch.append( {
+						tool    : javacast( "null", "" ),
+						toolCall: toolCall,
+						toolName: toolCall.name,
+						toolArgs: {},
+						result  : AiMiddlewareResult.reject( "Tool ['#toolCall.name#'] not found in chat request" )
+					} )
+					continue
+				}
+
+				var tool = toolAttempt.get()
+				var toolContext = {
+					tool       : tool,
+					toolCall   : toolCall,
+					chatRequest: thisChatRequest,
+					toolName   : toolCall.name ?: tool.getName(),
+					toolArgs   : toolCall.input ?: {}
+				}
+				var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
+
+				if ( toolBeforeResult.isCancelled() ) {
+					messages.append({
+						"role" : "user",
+						"content" : [{
+							"type"        : "tool_result",
+							"tool_use_id" : toolCall.id,
+							"content"     : "[Tool call blocked: #toolBeforeResult.getReason()#]"
+						}]
+					});
+					terminalToolResult = toolBeforeResult
+					break
+				}
+
+				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+			}
+
+			if ( isObject( terminalToolResult ) ) {
+				return terminalToolResult
+			}
+
+			// ── Suspend the whole batch at once, if anything needs a human decision ────────────
+			if ( batch.some( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() ) ) {
+				var batchResult = thisChatRequest.fireMiddleware(
+					"afterToolBatch",
+					{ chatRequest: thisChatRequest, assistantMessage: assistantMessage, batch: batch }
+				)
+
+				// No attached middleware's afterToolBatch() converted the pending entries into
+				// anything (the default is continue()) — e.g. a custom middleware suspended a
+				// tool call directly from beforeToolCall() without participating in the
+				// defer()/afterToolBatch() protocol at all. Fall back to a generic combined
+				// suspend so a tool call ANY middleware said needs a decision is never silently
+				// executed.
+				if ( !batchResult.isSuspended() && !batchResult.isCancelled() ) {
+					var pending = batch.filter( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() )
+					var pendingActions = pending.map( ( entry ) => {
+						var data = entry.result.getData()
+						return {
+							toolName    : entry.toolName,
+							toolArgs    : ( isStruct( entry.toolArgs ) ) ? entry.toolArgs : {},
+							suspensionID: data.suspensionID ?: ""
+						}
+					} )
+					batchResult = AiMiddlewareResult.suspend( { pendingActions: pendingActions } )
+				}
+
+				if ( batchResult.isTerminal() ) {
+					if ( !batchResult.isSuspended() ) {
+						return batchResult
+					}
+					var resumeLedger = batch.map( ( entry ) => {
+						if ( entry.result.isDeferred() || entry.result.isSuspended() ) {
+							return { toolName: entry.toolName, status: "pending" }
+						}
+						if ( entry.result.isRejected() ) {
+							return { toolName: entry.toolName, status: "blocked", reason: entry.result.getReason() }
+						}
+						return { toolName: entry.toolName, status: "execute" }
+					} )
+					var mergedData = duplicate( batchResult.getData() )
+					mergedData[ "assistantMessage" ] = assistantMessage
+					mergedData[ "resumeLedger" ]     = resumeLedger
+					return AiMiddlewareResult.suspend( mergedData )
+				}
+			}
+
+			// ── Pass 2: execute ─────────────────────────────────────────────────────────────────
+			for ( var entry in batch ) {
+				if ( entry.result.isRejected() ) {
+					messages.append({
+						"role" : "user",
+						"content" : [{
+							"type"        : "tool_result",
+							"tool_use_id" : entry.toolCall.id,
+							"content"     : "[Tool call blocked: #entry.result.getReason()#]"
+						}]
+					});
+					continue
+				}
+
+				var capturedTool     = entry.tool
+				var capturedToolCall = entry.toolCall
+				var toolResult = thisChatRequest.fireWrapMiddleware(
+					"wrapToolCall",
+					{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: entry.toolCall.input ?: {} },
+					() => capturedTool.invoke( args: capturedToolCall.input, chatRequest: thisChatRequest )
+				);
+
+				thisChatRequest.fireMiddleware(
+					hook   : "afterToolCall",
+					context: { tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, result: toolResult },
+					reverse: true
+				);
+
+				messages.append({
+					"role" : "user",
+					"content" : [{
+						"type"        : "tool_result",
+						"tool_use_id" : entry.toolCall.id,
+						"content"     : toolResult
+					}]
+				});
 			}
 
 			// Recursively call chat with the updated chat request and incremented interaction count
-			return chat( arguments.chatRequest, arguments.interactionCount + 1 );
+			return chat( thisChatRequest, arguments.interactionCount + 1 );
 		}
 
-		// Determine return formats
-		var content = result.content.first().text
+		// Determine return formats.
+		//
+		// Take the first TEXT block rather than blindly the first block: with extended
+		// thinking enabled (`params: { thinking: {...} }`) Anthropic puts one or more
+		// `thinking` blocks BEFORE the answer, so `content.first().text` was null and
+		// every sync return format silently produced an empty answer — enabling the
+		// feature broke the provider outright.
+		// Join ALL text blocks, matching PromptSecurity::getResponseText and
+		// BedrockService.transformResponseFromClaude. Reading only the first made the answer depend
+		// on whether a guard had run: setResponseText collapses the text blocks into the first one,
+		// so attaching an OutputGuard changed the returned content rather than just masking it, and
+		// returnFormat "all" silently returned fewer blocks than before.
+		var textBlocks = result.content.filter( block -> ( block?.type ?: "" ) == "text" )
+		var content    = textBlocks.map( block -> block.text ?: "" ).toList( char( 10 ) )
+
 		switch( arguments.chatRequest.getReturnFormat() ){
 			case "all":
-				return result.content;
+				return sanitizedNativeEnvelope( result, nativeReasoning ).content;
 			case "raw":
-				return result;
+				return sanitizedNativeEnvelope( result, nativeReasoning );
 			case "json":
-				return JSONDeserialize( extractFromCodeBlock( content, "json" ) );
+				return extractJSONContent( content );
 			case "xml" :
 				return xmlParse( extractFromCodeBlock( content, "xml" ) );
 			case  "structuredOutput":
@@ -665,42 +1053,265 @@ class extends="BaseService" implements="IAiChatService" {
 	}
 
 	/**
-	 * Execute Claude tool calls
+	 * Streaming mirror of resumeToolBatch(): finish processing a tool-call batch that was
+	 * suspended for human approval during chatStream(), using the finalized resume ledger
+	 * AiAgent.resumeStream() built. No LLM call, and nothing that already ran (or was already
+	 * blocked) runs again — see resumeToolBatch()'s docs, this is the same mechanics adapted to
+	 * emit through the streaming callback instead of returning a value. Once the batch is
+	 * finished, delegates the follow-up turn to chat() — chatStream() does the same for its own
+	 * first-round tool calls (Claude only streams the initial turn; a follow-up after tool
+	 * results is a single blocking call, emitted as one synthetic chunk).
 	 *
-	 * @toolCall The tool call object from Claude: { type:"tool_use", id: "", name: "toolName", input: {} }
-	 * @chatRequest The original chat request containing the tool
+	 * @chatRequest      The chat request to continue — its messages are the pre-LLM-call
+	 *                    messages from the original (suspended) attempt
+	 * @callback          The streaming callback to emit chunks (and the middleware_stop sentinel) through
+	 * @resumeCtx         The resume context AiAgent.resumeStream() built: { assistantMessage, resumeLedger }
+	 * @interactionCount Current tool call interaction count (used internally)
 	 */
-	private function executeClaudeTool( required struct toolCall, required AiChatRequest chatRequest ) {
-		var messages = arguments.chatRequest.getMessages();
+	private void function resumeToolBatchStream(
+		required AiChatRequest chatRequest,
+		required function callback,
+		required struct resumeCtx,
+		required numeric interactionCount
+	) {
+		// Consume the resume context immediately — a suspended-again batch further down this
+		// same turn must not re-detect this same resume context and loop.
+		arguments.chatRequest.setResumeContext( {} )
 
-		// Get the tool from the chat request
-		var toolAttempt = arguments.chatRequest.getTool( toolCall.name );
+		var thisChatRequest  = arguments.chatRequest
+		var userCallback     = arguments.callback
+		var assistantMessage = arguments.resumeCtx.assistantMessage
+		var ledger            = arguments.resumeCtx.resumeLedger ?: []
+		var toolCalls          = ( assistantMessage.content ?: [] ).filter( contentBlock -> contentBlock?.type == "tool_use" )
 
-		if( toolAttempt.isPresent() ){
-			var tool = toolAttempt.get();
-			messages.append({
-				"role" : "user",
-				"content" : [{
-					"type"        : "tool_result",
-					"tool_use_id" : toolCall.id,
-					"content"     : tool.invoke( args: toolCall.input, chatRequest: arguments.chatRequest )
-				}]
-			});
-		} else {
-			writeLog(
-				text: "Unable to find tool named: [#toolCall.name#]",
-				type: "warning",
-				log : "ai"
+		var messages = thisChatRequest.getMessages()
+		messages.append( assistantMessage )
+
+		for ( var i = 1; i <= toolCalls.len(); i++ ) {
+			var toolCall    = toolCalls[ i ]
+			var ledgerEntry = ( i <= ledger.len() )
+				? ledger[ i ]
+				: { status: "blocked", reason: "No resume decision was recorded for this tool call." }
+
+			if ( ledgerEntry.status == "cancel" ) {
+				var cancelReason = ledgerEntry.reason ?: "Cancelled by human operator during resume."
+				messages.append( {
+					"role"   : "user",
+					"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "[Tool call blocked: #cancelReason#]" } ]
+				} )
+				thisChatRequest.setMessages( messages )
+				userCallback( { type: "middleware_stop", result: AiMiddlewareResult.cancel( cancelReason ) } )
+				return
+			}
+
+			if ( ledgerEntry.status == "blocked" ) {
+				messages.append( {
+					"role"   : "user",
+					"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "[Tool call blocked: #ledgerEntry.reason ?: ""#]" } ]
+				} )
+				continue
+			}
+
+			// "execute"
+			var toolAttempt = thisChatRequest.getTool( toolCall.name )
+			if ( !toolAttempt.isPresent() ) {
+				writeLog(
+					text: "Unable to find tool named: [#toolCall.name#]",
+					type: "warning",
+					log : "ai"
+				)
+				messages.append( {
+					"role"   : "user",
+					"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "Tool ['#toolCall.name#'] not found in chat request" } ]
+				} )
+				continue
+			}
+
+			var tool     = toolAttempt.get()
+			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs : ( toolCall.input ?: {} )
+			var capturedTool = tool
+			var capturedArgs = toolArgs
+			var toolResult = thisChatRequest.fireWrapMiddleware(
+				"wrapToolCall",
+				{ tool: tool, toolCall: toolCall, chatRequest: thisChatRequest, toolName: toolCall.name ?: tool.getName(), toolArgs: toolArgs },
+				() => capturedTool.invoke( args: capturedArgs, chatRequest: thisChatRequest )
 			)
-			messages.append({
-				"role" : "user",
-				"content" : [{
-					"type"        : "tool_result",
-					"tool_use_id" : toolCall.id,
-					"content"     : "Tool ['#toolCall.name#'] not found in chat request"
-				}]
-			});
+
+			thisChatRequest.fireMiddleware(
+				hook   : "afterToolCall",
+				context: { tool: tool, toolCall: toolCall, chatRequest: thisChatRequest, result: toolResult },
+				reverse: true
+			)
+
+			messages.append( {
+				"role"   : "user",
+				"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": toolResult } ]
+			} )
 		}
+
+		thisChatRequest.setMessages( messages )
+
+		var finalResponse = chat( thisChatRequest )
+		if ( isObject( finalResponse ) && finalResponse instanceof "AiMiddlewareResult" ) {
+			userCallback( { type: "middleware_stop", result: finalResponse } )
+			return
+		}
+		var finalText = isSimpleValue( finalResponse ) ? toString( finalResponse ) : ""
+		if ( finalText.len() ) {
+			userCallback( {
+				"id"      : "",
+				"provider": "Claude",
+				"model"   : thisChatRequest.getModel(),
+				"object"  : "chat.completion.chunk",
+				"choices" : [ { "index": 0, "delta": { "role": "assistant", "content": finalText } } ]
+			} )
+		}
+	}
+
+	/**
+	 * Finish processing a tool-call batch that was suspended for human approval (see
+	 * afterToolBatch()), using the finalized resume ledger AiAgent.resume() built. No LLM call —
+	 * and nothing that already executed (or was already blocked) during the original attempt
+	 * runs again, since pass 1 never actually invokes a tool while any part of the batch could
+	 * still suspend (see chat()'s "Pass 1: decide" / "Pass 2: execute" split).
+	 *
+	 * @chatRequest      The chat request to continue — its messages are the pre-LLM-call
+	 *                    messages from the original (suspended) attempt
+	 * @resumeCtx         The resume context AiAgent.resume() built: { assistantMessage, resumeLedger }
+	 * @interactionCount Current tool call interaction count (used internally)
+	 */
+	private any function resumeToolBatch( required AiChatRequest chatRequest, required struct resumeCtx, required numeric interactionCount ) {
+		// Consume the resume context immediately — chat() recurses for the NEXT turn below, and
+		// that recursive call must not re-detect this same resume context and loop forever.
+		arguments.chatRequest.setResumeContext( {} )
+
+		var thisChatRequest  = arguments.chatRequest
+		var assistantMessage = arguments.resumeCtx.assistantMessage
+		var ledger            = arguments.resumeCtx.resumeLedger ?: []
+		var toolCalls          = ( assistantMessage.content ?: [] ).filter( contentBlock -> contentBlock?.type == "tool_use" )
+
+		var messages = thisChatRequest.getMessages()
+		messages.append( assistantMessage )
+
+		for ( var i = 1; i <= toolCalls.len(); i++ ) {
+			var toolCall    = toolCalls[ i ]
+			var ledgerEntry = ( i <= ledger.len() )
+				? ledger[ i ]
+				: { status: "blocked", reason: "No resume decision was recorded for this tool call." }
+
+			if ( ledgerEntry.status == "cancel" ) {
+				var cancelReason = ledgerEntry.reason ?: "Cancelled by human operator during resume."
+				messages.append( {
+					"role"   : "user",
+					"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "[Tool call blocked: #cancelReason#]" } ]
+				} )
+				thisChatRequest.setMessages( messages )
+				return AiMiddlewareResult.cancel( cancelReason )
+			}
+
+			if ( ledgerEntry.status == "blocked" ) {
+				messages.append( {
+					"role"   : "user",
+					"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "[Tool call blocked: #ledgerEntry.reason ?: ""#]" } ]
+				} )
+				continue
+			}
+
+			// "execute"
+			var toolAttempt = thisChatRequest.getTool( toolCall.name )
+			if ( !toolAttempt.isPresent() ) {
+				writeLog(
+					text: "Unable to find tool named: [#toolCall.name#]",
+					type: "warning",
+					log : "ai"
+				)
+				messages.append( {
+					"role"   : "user",
+					"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": "Tool ['#toolCall.name#'] not found in chat request" } ]
+				} )
+				continue
+			}
+
+			var tool     = toolAttempt.get()
+			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs : ( toolCall.input ?: {} )
+			var capturedTool = tool
+			var capturedArgs = toolArgs
+			var toolResult = thisChatRequest.fireWrapMiddleware(
+				"wrapToolCall",
+				{ tool: tool, toolCall: toolCall, chatRequest: thisChatRequest, toolName: toolCall.name ?: tool.getName(), toolArgs: toolArgs },
+				() => capturedTool.invoke( args: capturedArgs, chatRequest: thisChatRequest )
+			)
+
+			thisChatRequest.fireMiddleware(
+				hook   : "afterToolCall",
+				context: { tool: tool, toolCall: toolCall, chatRequest: thisChatRequest, result: toolResult },
+				reverse: true
+			)
+
+			messages.append( {
+				"role"   : "user",
+				"content": [ { "type": "tool_result", "tool_use_id": toolCall.id, "content": toolResult } ]
+			} )
+		}
+
+		thisChatRequest.setMessages( messages )
+		return chat( thisChatRequest, arguments.interactionCount + 1 )
+	}
+
+
+	/**
+	 * The native Anthropic envelope as it should be RETURNED to the caller, which is not always the
+	 * one sent back to Anthropic.
+	 *
+	 * A guard may have scrubbed the derived `result.reasoning`, but the native `thinking` blocks it
+	 * was derived from are deliberately never rewritten — Anthropic requires them echoed back
+	 * complete and unmodified within a tool-use turn. So `returnFormat: "raw"`/`"all"` would hand
+	 * the caller the untouched thinking text, defeating the redaction. When the derived copy no
+	 * longer matches the native blocks, a COPY is returned with the scrubbed text collapsed into the
+	 * first thinking block and the rest dropped (mirroring how PromptSecurity collapses text
+	 * blocks). The original struct is left intact for the message history and the provider round
+	 * trip.
+	 *
+	 * @result          The native envelope
+	 * @nativeReasoning The thinking text as it arrived, before any guard ran
+	 *
+	 * @return The envelope safe to return to the caller
+	 */
+	private struct function sanitizedNativeEnvelope( required struct result, required string nativeReasoning ){
+		var derived = arguments.result.reasoning ?: ""
+
+		// Nothing scrubbed it, or there was never any thinking to scrub.
+		if( !len( arguments.nativeReasoning ) || derived == arguments.nativeReasoning ){
+			return arguments.result
+		}
+
+		var safe = duplicate( arguments.result )
+		if( !isArray( safe.content ?: "" ) ){
+			return safe
+		}
+
+		var thinkingIndexes = []
+		for( var i = 1; i <= safe.content.len(); i++ ){
+			var block = safe.content[ i ]
+			if( isStruct( block ) && ( block.type ?: "" ) == "thinking" ){
+				thinkingIndexes.append( i )
+			}
+		}
+		if( thinkingIndexes.isEmpty() ){
+			return safe
+		}
+
+		// delete back-to-front so the earlier indexes stay valid
+		for( var i = thinkingIndexes.len(); i > 1; i-- ){
+			safe.content.deleteAt( thinkingIndexes[ i ] )
+		}
+		if( len( derived ) ){
+			safe.content[ thinkingIndexes.first() ].thinking = derived
+		} else {
+			safe.content.deleteAt( thinkingIndexes.first() )
+		}
+
+		return safe
 	}
 
 }

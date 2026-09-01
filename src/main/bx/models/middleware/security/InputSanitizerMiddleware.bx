@@ -1,0 +1,299 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Middleware that scans inbound user messages (and tool/MCP results) for
+ * prompt-injection patterns and applies unicode hygiene before the LLM call.
+ *
+ * Detection is heuristic, powered by PromptSecurity::scan(). Four actions are available:
+ *   - block : throw a BXAI.SecurityViolation exception — no tokens are spent
+ *   - strip : remove the offending fragments and continue
+ *   - flag  : continue, but stamp findings on chatRequest.providerOptions.securityFindings
+ *             and log a warning to the `ai` log (default — observe before you enforce)
+ *   - log   : continue and log a warning only
+ *
+ * Unicode hygiene (NFKC normalization + zero-width/invisible character stripping) is
+ * applied to scanned user content whenever enabled, regardless of the action.
+ *
+ * Tool and MCP results are untrusted, model-visible content (indirect injection).
+ * When scanToolResults is true, results are scanned via wrapToolCall — the same
+ * actions apply, except `block` replaces the tool result with a blocked notice
+ * (throwing mid tool-loop would kill the whole conversation).
+ *
+ * Usage:
+ *   var sanitizer = new InputSanitizerMiddleware(
+ *       action         : "block",
+ *       detectors      : [ "instructionOverride", "jailbreak" ],
+ *       customPatterns : [ { name: "internalCodes", regex: "(?i)PROJ-\d{4}-SECRET" } ]
+ *   );
+ *   aiAgent( middleware: [ sanitizer ] )
+ *
+ * Or enable globally for every request via module settings:
+ *   security: { enabled: true, input: { action: "block" } }
+ */
+import bxModules.bxai.models.middleware.BaseAiMiddleware;
+import bxModules.bxai.models.middleware.AiMiddlewareResult;
+import bxModules.bxai.models.security.PromptSecurity;
+
+class extends="BaseAiMiddleware" {
+
+	/**
+	 * What to do when findings are detected: block | strip | flag | log
+	 */
+	property name="action" type="string" default="flag";
+
+	/**
+	 * Detector names to run. Empty = all built-in detectors.
+	 */
+	property name="detectors" type="array" default=[];
+
+	/**
+	 * Custom patterns: [ { name: "myPattern", regex: "(?i)..." } ]
+	 */
+	property name="customPatterns" type="array" default=[];
+
+	/**
+	 * Apply unicode NFKC normalization to scanned content
+	 */
+	property name="normalizeUnicode" type="boolean" default=true;
+
+	/**
+	 * Strip zero-width/invisible characters from scanned content
+	 */
+	property name="stripZeroWidth" type="boolean" default=true;
+
+	/**
+	 * Also scan tool/MCP results (indirect injection channel)
+	 */
+	property name="scanToolResults" type="boolean" default=true;
+
+	/**
+	 * Constants
+	 */
+	static {
+		final VALID_ACTIONS = [ "block", "strip", "flag", "log" ]
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @action           What to do on findings: block | strip | flag | log (default flag)
+	 * @detectors        Detector names to run (default: all built-in detectors)
+	 * @customPatterns   Custom patterns: [ { name, regex } ]
+	 * @normalizeUnicode Apply unicode NFKC normalization (default true)
+	 * @stripZeroWidth   Strip zero-width/invisible characters (default true)
+	 * @scanToolResults  Also scan tool/MCP results (default true)
+	 */
+	function init(
+		string action = "flag",
+		array detectors = [],
+		array customPatterns = [],
+		boolean normalizeUnicode = true,
+		boolean stripZeroWidth = true,
+		boolean scanToolResults = true
+	){
+		if( !static.VALID_ACTIONS.findNoCase( arguments.action ) ){
+			throw(
+				type   : "InvalidAction",
+				message: "InputSanitizerMiddleware action [#arguments.action#] is not valid. Valid actions are: [#static.VALID_ACTIONS.toList()#]"
+			)
+		}
+
+		variables.action           = arguments.action.lcase()
+		variables.detectors        = arguments.detectors
+		variables.customPatterns   = arguments.customPatterns
+		variables.normalizeUnicode = arguments.normalizeUnicode
+		variables.stripZeroWidth   = arguments.stripZeroWidth
+		variables.scanToolResults  = arguments.scanToolResults
+		variables.name             = "Input Sanitizer Middleware"
+		variables.description      = "Scans inbound user messages and tool results for prompt-injection patterns " &
+			"and applies unicode hygiene. Actions: block | strip | flag | log."
+		return this
+	}
+
+	// ==================== Hooks ====================
+
+	/**
+	 * Scan all user-role messages before the LLM call.
+	 * Message content is mutated in place (hygiene and strip), which also updates the
+	 * outgoing dataPacket since both share the same message struct references.
+	 *
+	 * Supports the production context form { chatRequest, dataPacket } and the flat
+	 * test form { messages: [ { role, content } ] }.
+	 */
+	AiMiddlewareResult function beforeLLMCall( required struct context ){
+		var messages = []
+		if( context.keyExists( "chatRequest" ) && isObject( context.chatRequest ) ){
+			messages = context.chatRequest.getMessages()
+		} else if( context.keyExists( "messages" ) && isArray( context.messages ) ){
+			messages = context.messages
+		}
+
+		var allFindings = []
+
+		for( var message in messages ){
+			if( ( message.role ?: "" ) != "user" ){
+				continue
+			}
+
+			// Simple string content
+			if( isSimpleValue( message.content ?: "" ) && len( message.content ?: "" ) ){
+				var processed   = processText( message.content )
+				message.content = processed.text
+				allFindings.append( processed.findings, true )
+			}
+			// Multipart content: scan the text parts
+			else if( isArray( message.content ?: "" ) ){
+				for( var part in message.content ){
+					if( isStruct( part ) && ( part.type ?: "" ) == "text" && len( part.text ?: "" ) ){
+						var processedPart = processText( part.text )
+						part.text         = processedPart.text
+						allFindings.append( processedPart.findings, true )
+					}
+				}
+			}
+		}
+
+		if( allFindings.isEmpty() ){
+			return AiMiddlewareResult.continue()
+		}
+
+		var summary = summarize( allFindings )
+
+		switch( variables.action ){
+			case "block":
+				logFindings( summary, "beforeLLMCall", "warn" )
+				throw(
+					type   : "BXAI.SecurityViolation",
+					message: "InputSanitizer blocked the request: #summary#",
+					detail : jsonSerialize( allFindings )
+				)
+			case "strip":
+				// Content already stripped in processText()
+				logFindings( summary & " (stripped)", "beforeLLMCall", "warn" )
+				break
+			case "flag":
+				stampFindings( context.chatRequest ?: nullValue(), allFindings )
+				logFindings( summary & " (flagged)", "beforeLLMCall", "warn" )
+				break
+			case "log":
+				logFindings( summary, "beforeLLMCall", "warn" )
+				break
+		}
+
+		return AiMiddlewareResult.continue()
+	}
+
+	/**
+	 * Scan tool/MCP results as they return — the wrap result IS the tool result that
+	 * gets appended to the conversation, so sanitization here is effective without
+	 * any provider changes.
+	 *
+	 * @context The tool context: { tool, toolCall, chatRequest }
+	 * @handler The next handler in the chain (ultimately the tool invocation)
+	 */
+	any function wrapToolCall( required struct context, required function handler ){
+		var result = arguments.handler()
+
+		if( !variables.scanToolResults || isNull( result ) || !isSimpleValue( result ) || !len( result ) ){
+			return result
+		}
+
+		var processed = processText( result )
+		if( processed.findings.isEmpty() ){
+			return processed.text
+		}
+
+		var toolName = context.tool?.getName() ?: ( context.toolName ?: "unknown" )
+		var summary  = "tool [#toolName#] result: " & summarize( processed.findings )
+
+		switch( variables.action ){
+			case "block":
+				logFindings( summary & " (blocked)", "wrapToolCall", "warn" )
+				return "[Tool result blocked by InputSanitizer: suspicious content detected — #summarize( processed.findings )#]"
+			case "strip":
+				logFindings( summary & " (stripped)", "wrapToolCall", "warn" )
+				break
+			case "flag":
+				stampFindings( context.chatRequest ?: nullValue(), processed.findings )
+				logFindings( summary & " (flagged)", "wrapToolCall", "warn" )
+				break
+			case "log":
+				logFindings( summary, "wrapToolCall", "warn" )
+				break
+		}
+
+		// strip returns the stripped text; flag/log return the hygiened original
+		return variables.action == "strip"
+			? PromptSecurity::strip( processed.text, processed.findings )
+			: processed.text
+	}
+
+	// ==================== Private Helpers ====================
+
+	/**
+	 * Apply hygiene + scan a single text value. Returns the (possibly mutated) text and findings.
+	 * When action is "strip", detected fragments are removed here as well.
+	 */
+	private struct function processText( required string text ){
+		var working = arguments.text
+
+		// Unicode hygiene: applied to the real content whenever enabled
+		if( variables.normalizeUnicode || variables.stripZeroWidth ){
+			working = PromptSecurity::normalize( working, variables.normalizeUnicode, variables.stripZeroWidth )
+		}
+
+		var report = PromptSecurity::scan( working, variables.detectors, variables.customPatterns )
+
+		if( !report.safe && variables.action == "strip" ){
+			working = PromptSecurity::strip( working, report.findings )
+		}
+
+		return { "text": working, "findings": report.findings }
+	}
+
+	/**
+	 * Build a short human-readable summary of the findings
+	 */
+	private string function summarize( required array findings ){
+		return arguments.findings
+			.map( finding -> "detector '#finding.detector#' matched" & ( len( finding.match ?: "" ) ? " [#left( finding.match, 60 )#]" : "" ) )
+			.toList( "; " )
+	}
+
+	/**
+	 * Stamp findings on the chatRequest's providerOptions for downstream inspection
+	 */
+	private void function stampFindings( any chatRequest, required array findings ){
+		if( isNull( arguments.chatRequest ) || !isObject( arguments.chatRequest ) ){
+			return
+		}
+		var providerOptions = arguments.chatRequest.getProviderOptions()
+		if( !providerOptions.keyExists( "securityFindings" ) ){
+			providerOptions[ "securityFindings" ] = []
+		}
+		providerOptions.securityFindings.append( arguments.findings, true )
+	}
+
+	/**
+	 * Log findings to the ai log
+	 */
+	private void function logFindings( required string summary, required string phase, string level = "warn" ){
+		writeLog(
+			text: "InputSanitizerMiddleware [#arguments.phase#]: #arguments.summary#",
+			type: arguments.level == "warn" ? "warning" : "info",
+			log : "ai"
+		)
+	}
+
+}

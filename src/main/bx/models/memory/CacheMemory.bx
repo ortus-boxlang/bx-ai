@@ -524,6 +524,26 @@ class extends="BaseMemory" {
 	}
 
 	/**
+	 * AI-summarize older messages and persist the result to cache.
+	 *
+	 * @config Optional struct with keys: keepRecent, model, provider
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
+		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
+			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
+			var cacheKey = buildCacheKey( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
+			// Preserve the target scope's own metadata - variables.metadata only tracks the instance-default scope
+			var existingMetadata = getCacheData( cacheKey ).metadata
+			setCacheData( cacheKey, variables.messages, existingMetadata )
+		}
+		return this
+	}
+
+	/**
 	 * --------------------------------------------------------------------------
 	 * Private Helpers
 	 * --------------------------------------------------------------------------

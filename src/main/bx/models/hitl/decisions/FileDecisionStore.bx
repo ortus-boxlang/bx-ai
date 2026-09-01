@@ -1,0 +1,137 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * File-backed IDecisionStore. Mirrors FileMemory's directory-of-JSON-files pattern — one JSON
+ * file per identity, containing all of that identity's grants. Suitable for durable
+ * single-node storage without an external database dependency.
+ *
+ * @since 4.0.0
+ */
+class implements="IDecisionStore" {
+
+	/**
+	 * The directory path where grant files are stored
+	 */
+	property name="directoryPath" type="string";
+
+	static {
+		final DEFAULT_DIRECTORY_PATH = getTempDirectory() & "/bx-ai-decision-grants"
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @directoryPath Path to the directory for storing grant files (optional)
+	 */
+	function init( string directoryPath = static.DEFAULT_DIRECTORY_PATH ) {
+		variables.directoryPath = arguments.directoryPath
+		if ( !directoryExists( variables.directoryPath ) ) {
+			directoryCreate( variables.directoryPath, true, true )
+		}
+		return this;
+	}
+
+	void function grant(
+		required string identity,
+		required string toolName,
+		string scope = "",
+		date expiresAt
+	) {
+		var grants = loadGrants( arguments.identity )
+		var key    = grantKey( arguments.toolName, arguments.scope )
+
+		grants[ key ] = {
+			"toolName" : arguments.toolName,
+			"scope"    : arguments.scope,
+			"grantedAt": now(),
+			"expiresAt": isNull( arguments.expiresAt ) ? "" : arguments.expiresAt
+		}
+
+		saveGrants( arguments.identity, grants )
+	}
+
+	boolean function isGranted(
+		required string identity,
+		required string toolName,
+		string scope = ""
+	) {
+		var grants = loadGrants( arguments.identity )
+		var key    = grantKey( arguments.toolName, arguments.scope )
+
+		if ( !grants.keyExists( key ) ) {
+			return false
+		}
+
+		var record = grants[ key ]
+		if ( len( record.expiresAt ) && now() > record.expiresAt ) {
+			revoke( arguments.identity, arguments.toolName, arguments.scope )
+			return false
+		}
+
+		return true
+	}
+
+	void function revoke(
+		required string identity,
+		required string toolName,
+		string scope = ""
+	) {
+		var grants = loadGrants( arguments.identity )
+		var key    = grantKey( arguments.toolName, arguments.scope )
+
+		if ( grants.keyExists( key ) ) {
+			grants.delete( key )
+			saveGrants( arguments.identity, grants )
+		}
+	}
+
+	array function listGrants( required string identity ) {
+		return loadGrants( arguments.identity )
+			.valueArray()
+			.filter( ( record ) => !len( record.expiresAt ) || now() <= record.expiresAt )
+	}
+
+	// -------------------------------------------------------------------------
+	// Private Helpers
+	// -------------------------------------------------------------------------
+
+	private string function grantKey( required string toolName, required string scope ) {
+		return arguments.toolName & "::" & arguments.scope
+	}
+
+	private string function getFilePath( required string identity ) {
+		return variables.directoryPath & "/" & arguments.identity.slugify() & ".json"
+	}
+
+	private struct function loadGrants( required string identity ) {
+		var filePath = getFilePath( arguments.identity )
+		if ( !fileExists( filePath ) ) {
+			return {}
+		}
+		try {
+			var content = fileRead( filePath )
+			if ( !len( trim( content ) ) ) {
+				return {}
+			}
+			return jsonDeserialize( content )
+		} catch ( any e ) {
+			return {}
+		}
+	}
+
+	private void function saveGrants( required string identity, required struct grants ) {
+		fileWrite( getFilePath( arguments.identity ), jsonSerialize( arguments.grants ) )
+	}
+
+}

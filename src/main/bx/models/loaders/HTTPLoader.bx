@@ -211,15 +211,15 @@ class extends="BaseDocumentLoader" {
 	/**
 	 * Set proxy configuration
 	 *
-	 * @server Proxy server hostname
+	 * @proxyHost Proxy server hostname
 	 * @port Proxy port
 	 * @user Optional proxy username
 	 * @password Optional proxy password
 	 *
 	 * @return HTTPLoader for chaining
 	 */
-	HTTPLoader function proxy( required string server, required numeric port, string user = "", string password = "" ) {
-		variables.config.proxyServer   = arguments.server;
+	HTTPLoader function proxy( required string proxyHost, required numeric port, string user = "", string password = "" ) {
+		variables.config.proxyServer   = arguments.proxyHost;
 		variables.config.proxyPort     = arguments.port;
 		variables.config.proxyUser     = arguments.user;
 		variables.config.proxyPassword = arguments.password;
@@ -367,12 +367,12 @@ class extends="BaseDocumentLoader" {
 		}
 
 		// Try to detect from URL extension
-		var url = variables.source.lCase();
-		if ( url.endsWith( ".json" ) ) {
+		var sourceUrl = variables.source.lCase();
+		if ( sourceUrl.endsWith( ".json" ) ) {
 			return "json";
-		} else if ( url.endsWith( ".html" ) || url.endsWith( ".htm" ) ) {
+		} else if ( sourceUrl.endsWith( ".html" ) || sourceUrl.endsWith( ".htm" ) ) {
 			return "html";
-		} else if ( url.endsWith( ".xml" ) ) {
+		} else if ( sourceUrl.endsWith( ".xml" ) ) {
 			return "xml";
 		}
 

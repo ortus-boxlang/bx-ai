@@ -1,0 +1,150 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Abstract base for gateway implementations.
+ *
+ * Provides a sensible configure() default and capability discovery driven by
+ * getDeclaredCapabilities() — mirrors BaseService's getCapabilities()/hasCapability()
+ * pattern used by AI providers, so gateways follow the same "declare what you support"
+ * convention.
+ *
+ * Concrete gateways: `class extends="BaseGateway"`, overriding only the IGateway
+ * capability methods (parseInbound/verifyInbound, deliver, deliverChunk,
+ * deliverInteractive, requestHumanInteraction/parseHumanDecision) they actually
+ * support, and overriding getDeclaredCapabilities() to advertise those same
+ * capabilities (e.g. "inboundMessages", "outboundMessages", "streaming",
+ * "interactiveActions", "humanApproval", plus any platform-specific ones like
+ * "threads", "attachments", "messageEditing", "argumentEditing", "authentication").
+ *
+ * start()/stop() are template methods here (mirroring the getCapabilities()/
+ * getDeclaredCapabilities() split above): they track isRunning() and fire
+ * onGatewayConnect/onGatewayDisconnect for every gateway automatically, so a
+ * concrete gateway with connect/disconnect logic overrides onStart()/onStop()
+ * — never start()/stop() directly — and gets both for free. A gateway with no
+ * real lifecycle (most of them, today) doesn't need to override anything here.
+ */
+abstract class implements="IGateway" {
+
+	/**
+	 * The gateway's name, used for logging, debugging, and registry lookups
+	 */
+	property name="name" type="string" default="";
+
+	/**
+	 * The gateway's description, used for logging and debugging
+	 */
+	property name="description" type="string" default="";
+
+	/**
+	 * Configuration options this gateway was configured with
+	 */
+	property name="options" type="struct" default={};
+
+	/**
+	 * Backs isRunning() — see the start()/stop() template methods below.
+	 */
+	property name="running" type="boolean" default=false;
+
+	/**
+	 * Configure the gateway with configuration options.
+	 * Override for gateway-specific setup (credentials, endpoints, etc.) — call
+	 * super.configure() to retain the base storage behavior.
+	 *
+	 * @options A struct containing configuration options — shape is gateway-specific
+	 *
+	 * @return The configured gateway instance
+	 */
+	IGateway function configure( required any options ) {
+		variables.options = isStruct( arguments.options ) ? arguments.options : { "value": arguments.options }
+		return this;
+	}
+
+	/**
+	 * Returns all capabilities this gateway supports — whatever getDeclaredCapabilities()
+	 * reports.
+	 *
+	 * @return Array of capability strings
+	 */
+	public array function getCapabilities() {
+		return getDeclaredCapabilities()
+	}
+
+	/**
+	 * Override in concrete gateways to declare which capabilities they support
+	 * (e.g. "inboundMessages", "outboundMessages", "streaming", "interactiveActions",
+	 * "humanApproval", "threads", "attachments", "messageEditing", "argumentEditing",
+	 * "authentication"). Only declare a capability if the corresponding IGateway
+	 * method is actually overridden.
+	 *
+	 * @return Array of capability strings
+	 */
+	public array function getDeclaredCapabilities() {
+		return []
+	}
+
+	/**
+	 * Start the gateway. Fires onGatewayConnect only on a real not-running -> running
+	 * transition (calling start() again while already running is a harmless no-op, no
+	 * duplicate event) — same "gate the state change, then announce" discipline as
+	 * AiAgent.cancelRun()/steerRun(). Calls onStart() first so a concrete gateway's own
+	 * connect logic runs before the event fires.
+	 */
+	public void function start() {
+		if ( variables.running ) {
+			return
+		}
+		onStart()
+		variables.running = true
+		BoxAnnounce( "onGatewayConnect", { gateway: this } )
+	}
+
+	/**
+	 * Stop the gateway. Fires onGatewayDisconnect only on a real running -> not-running
+	 * transition. Calls onStop() first so a concrete gateway's own disconnect logic runs
+	 * before the event fires.
+	 */
+	public void function stop() {
+		if ( !variables.running ) {
+			return
+		}
+		onStop()
+		variables.running = false
+		BoxAnnounce( "onGatewayDisconnect", { gateway: this } )
+	}
+
+	/**
+	 * Whether start() has been called and stop() hasn't since.
+	 */
+	public boolean function isRunning() {
+		return variables.running
+	}
+
+	/**
+	 * Override for gateway-specific connect logic (open a socket, register a webhook
+	 * listener, etc.) — called by start(), before onGatewayConnect fires. Default is a
+	 * no-op; most gateways today have no real connect step.
+	 */
+	public void function onStart() {
+		// no-op by default
+	}
+
+	/**
+	 * Override for gateway-specific disconnect logic — called by stop(), before
+	 * onGatewayDisconnect fires. Default is a no-op.
+	 */
+	public void function onStop() {
+		// no-op by default
+	}
+
+}

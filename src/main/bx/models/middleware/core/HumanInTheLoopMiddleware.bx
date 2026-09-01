@@ -14,15 +14,24 @@
  * ----------------------------------------------------------------------------------
  * Human-in-the-Loop (HITL) middleware.
  *
- * Intercepts tool calls that match the configured approval list and either:
- *   - mode "cli"  : Blocks execution and prompts the user on stdin/stdout
- *   - mode "web"  : Suspends the run, returning an AiMiddlewareResult.suspend() so the
- *                   caller can checkpoint and present the approval request asynchronously.
+ * A thin adapter over three collaborators:
+ *   - An IApprovalPolicy decides WHETHER a pending tool call needs approval
+ *     (default: match against `toolsRequiringApproval` via ToolNameApprovalPolicy —
+ *     pass `policy` for annotation-based, risk-based, callback-based, or composite
+ *     decisions instead — see models/hitl/policies/).
+ *   - Presentation is always through an IGateway via HumanInteractionCoordinator.
+ *     Pass `gateway` for Slack/HTTP/any custom gateway. With no gateway supplied,
+ *     mode "cli" (the default) auto-attaches a CliGateway — the canonical/reference
+ *     gateway, a blocking stdin/stdout prompt — so the CLI is just another gateway,
+ *     not a special case.
+ *   - mode "web" (no gateway attached) suspends the run instead, returning an
+ *     AiMiddlewareResult.suspend() so the caller can checkpoint and present the
+ *     approval request asynchronously via its own means.
  *
- * CLI mode example:
+ * CLI mode example (unchanged — default-attaches a CliGateway under the hood):
  *   aiAgent( middleware: new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ] ) )
  *
- * Web / async mode example:
+ * Web / async mode example (unchanged):
  *   aiAgent(
  *       middleware  : new HumanInTheLoopMiddleware(
  *                         mode                 : "web",
@@ -31,59 +40,263 @@
  *       checkpointer: aiMemory( "cache" )
  *   )
  *
+ * Gateway-attached example (Phase 2+):
+ *   aiAgent(
+ *       middleware  : new HumanInTheLoopMiddleware(
+ *                         policy : new RiskLevelApprovalPolicy( minLevel: "high" ),
+ *                         gateway: aiGateway( "mock" )
+ *                    ),
+ *       checkpointer: aiMemory( "cache" )
+ *   )
+ *
  * After suspension the caller receives an AiMiddlewareResult and can call:
  *   agent.resume( "approve", threadId )
  *   agent.resume( "reject", threadId )
  *   agent.resume( "edit", threadId, { correctedArgs: { ... } } )
+ *
+ * Migration note: `mode` still works exactly as before and isn't deprecated for "cli"/
+ * "web" — but if you're attaching a specific gateway anyway, prefer `gateway:` over
+ * `mode:` going forward; an unrecognized `mode` value now falls back to a CliGateway
+ * with a console warning rather than silently behaving like "cli".
+ *
+ * Durable "approve_always" grants are backed by an IDecisionStore, passed straight
+ * through to HumanInteractionCoordinator. Pass `decisionStore` to use a specific one
+ * (e.g. `aiDecisionStore( "jdbc", { datasource: "..." } )`); with none supplied, it
+ * defaults to the application-wide store resolved from settings.hitl.decisionStore —
+ * deliberately application-scoped, not per-agent, since an application only ever
+ * attaches one HumanInTheLoopMiddleware at a time.
  */
 import bxModules.bxai.models.middleware.BaseAiMiddleware;
 import bxModules.bxai.models.middleware.AiMiddlewareResult;
+import bxModules.bxai.models.hitl.IApprovalPolicy;
+import bxModules.bxai.models.hitl.HumanInteractionCoordinator;
+import bxModules.bxai.models.hitl.decisions.IDecisionStore;
+import bxModules.bxai.models.hitl.policies.ToolNameApprovalPolicy;
+import bxModules.bxai.models.hitl.policies.CallbackApprovalPolicy;
+import bxModules.bxai.models.gateway.IGateway;
+import bxModules.bxai.models.gateway.AgentSuspension;
+import bxModules.bxai.models.gateway.cli.CliGateway;
+import bxModules.bxai.models.gateway.contracts.GatewayContext;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionRequest;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
 
 class extends="BaseAiMiddleware" {
 
 	/**
-	 * Tool names that require human approval (case-insensitive)
+	 * Tool names that require human approval (case-insensitive). Ignored if `policy` is supplied.
 	 */
 	property name="toolsRequiringApproval" type="array" default=[];
 
 	/**
-	 * Approval mode: "cli" (blocking stdin prompt) or "web" (suspend and return)
+	 * Approval mode: "cli" (blocking stdin prompt) or "web" (suspend and return).
+	 * Ignored when a `gateway` is attached.
 	 */
 	property name="approvalMode" type="string" default="cli";
 
 	/**
-	 * Optional callback invoked on approval in web mode: function( context ) => "approve"|"reject"|"edit"
+	 * Optional custom approval decision: function( context ) => boolean, true if the
+	 * pending tool call needs approval. Wrapped into a CallbackApprovalPolicy when no
+	 * explicit `policy` is supplied. Ignored if `policy` is supplied.
 	 */
 	property name="approvalCallback";
 
 	/**
-	 * Controls whether to show tool arguments in the CLI prompt
+	 * Controls whether to show tool arguments in the CLI prompt / gateway request message
 	 */
 	property name="showArguments" type="boolean" default=true;
 
 	/**
+	 * The approval policy deciding whether a pending tool call needs a human's sign-off
+	 */
+	property name="policy";
+
+	/**
+	 * The gateway approval requests are presented through — either the one supplied,
+	 * or (mode "cli"/unrecognized) a default-attached CliGateway. Null only for mode "web".
+	 */
+	property name="gateway";
+
+	/**
+	 * Coordinator tracking suspensions raised while a gateway is attached
+	 */
+	property name="coordinator";
+
+	/**
+	 * The checkpointer linked from the agent this middleware is attached to (see onAttach()).
+	 * Null until this middleware is attached to an agent that has one configured.
+	 */
+	property name="checkpointer";
+
+	/**
 	 * Constructor
 	 *
-	 * @toolsRequiringApproval Array of tool names needing human sign-off
-	 * @mode                   "cli" or "web", determines how the middleware requests approval. Default is "cli".
-	 * @showArguments          Whether to print tool arguments in the CLI prompt
-	 * @approvalCallback       Optional callback for custom approval logic
+	 * @toolsRequiringApproval Array of tool names needing human sign-off. Ignored if `policy` is supplied.
+	 * @mode                   "cli" or "web", determines how the middleware requests approval when no
+	 *                         gateway is attached. Default is "cli".
+	 * @showArguments          Whether to show tool arguments in the CLI prompt / gateway request message
+	 * @approvalCallback       Optional function( context ) => boolean deciding if approval is needed.
+	 *                         Ignored if `policy` is supplied.
+	 * @policy                 An IApprovalPolicy deciding whether a pending tool call needs approval.
+	 *                         Defaults to a ToolNameApprovalPolicy built from toolsRequiringApproval
+	 *                         (or a CallbackApprovalPolicy built from approvalCallback, if supplied).
+	 * @gateway                An IGateway to present approval requests through — e.g. aiGateway( "mock" ),
+	 *                         a Slack gateway, etc. Defaults to a CliGateway unless mode is "web".
+	 * @decisionStore          An IDecisionStore for durable "approve_always" grants. Defaults to the
+	 *                         application-wide store resolved by aiDecisionStore() (settings.hitl.
+	 *                         decisionStore) — there is deliberately no per-agent override, since an
+	 *                         application never attaches more than one HumanInTheLoopMiddleware at a time.
 	 */
 	function init(
 		array    toolsRequiringApproval = [],
 		string   mode                   = "cli",
 		boolean  showArguments          = true,
-		function approvalCallback
+		function approvalCallback,
+		IApprovalPolicy policy,
+		IGateway gateway,
+		IDecisionStore decisionStore
 	) {
 		variables.toolsRequiringApproval = arguments.toolsRequiringApproval
 		variables.approvalMode           = arguments.mode
 		variables.showArguments          = arguments.showArguments
-		variables.approvalCallback 		 = arguments.approvalCallback
+		variables.approvalCallback       = arguments.approvalCallback
+		variables.coordinator            = new HumanInteractionCoordinator( arguments.decisionStore ?: aiDecisionStore() )
+
+		if ( !isNull( arguments.gateway ) ) {
+			variables.gateway = arguments.gateway
+		} else if ( arguments.mode == "web" ) {
+			variables.gateway = javacast( "null", "" )
+		} else {
+			if ( arguments.mode != "cli" ) {
+				println( "[DEPRECATED] HumanInTheLoopMiddleware: unrecognized mode [#arguments.mode#] — defaulting to a CliGateway. Pass `gateway:` instead of `mode:` going forward." )
+			}
+			variables.gateway = new CliGateway()
+		}
+
+		if ( !isNull( arguments.policy ) ) {
+			variables.policy = arguments.policy
+		} else if ( !isNull( arguments.approvalCallback ) ) {
+			variables.policy = new CallbackApprovalPolicy( arguments.approvalCallback )
+		} else {
+			variables.policy = new ToolNameApprovalPolicy( arguments.toolsRequiringApproval )
+		}
+
 		variables.name = "Human-in-the-Loop Middleware"
-		variables.description = "Intercepts specified tool calls and requires human approval before proceeding. " &
-			"Supports 'cli' mode for blocking stdin prompts and 'web' mode for asynchronous suspension. Configurable tool list and optional approval callback for custom logic."
+		variables.description = "Intercepts tool calls that need human approval (per its IApprovalPolicy) and " &
+			"presents them via an attached IGateway (a CliGateway by default), or — for mode 'web' with no " &
+			"gateway attached — suspends the run for asynchronous approval."
 
 		return this
+	}
+
+	/**
+	 * Fired once when this middleware is attached to an agent (see IAiMiddleware.onAttach()).
+	 * Links this middleware to the agent's own checkpointer instead of requiring a second,
+	 * separately-configured store — the two would otherwise risk drifting out of sync (a
+	 * checkpoint surviving a restart while this middleware's own bookkeeping doesn't, or
+	 * vice versa).
+	 *
+	 * A gateway that can't resolve synchronously (i.e. anything other than the default
+	 * CliGateway) has nowhere durable to record a pending interaction without one — that
+	 * case fails loudly here, at attach time, rather than silently at the first suspend.
+	 *
+	 * @agent The runnable this middleware was attached to — only AiAgent exposes
+	 *        getCheckpointer(), so anything else (e.g. AiModel) is left unlinked
+	 */
+	function onAttach( required any agent ) {
+		if ( !isInstanceOf( arguments.agent, "AiAgent" ) ) {
+			return
+		}
+
+		variables.checkpointer = arguments.agent.getCheckpointer()
+
+		if ( !isNull( variables.checkpointer ) ) {
+			variables.coordinator.setCheckpointer( variables.checkpointer )
+			if ( !isNull( variables.gateway ) ) {
+				variables.gateway.setCheckpointer( variables.checkpointer )
+			}
+		}
+
+		// Only a CliGateway resolves synchronously and never suspends. Mode "web" (no
+		// gateway attached at all) and every other gateway can suspend, so both need a
+		// checkpointer to have anywhere durable to land the pause.
+		var canSuspend = isNull( variables.gateway ) || !isInstanceOf( variables.gateway, "CliGateway" )
+
+		if ( isNull( variables.checkpointer ) && canSuspend ) {
+			throw(
+				type   : "HumanInTheLoopMiddleware.NoCheckpointer",
+				message: "HumanInTheLoopMiddleware is attached to " &
+					( isNull( variables.gateway ) ? "mode ""web""" : "gateway [#variables.gateway.getName()#]" ) &
+					", which can suspend a run, but the agent has no checkpointer configured. " &
+					"Pass checkpointer: to aiAgent(...) so a pending approval can survive past this run."
+			)
+		}
+	}
+
+	// ==================== Coordinator delegates ====================
+	//
+	// Thin pass-throughs to this middleware's HumanInteractionCoordinator, so callers
+	// don't need to reach through getCoordinator() themselves for common lookups. All the
+	// actual logic and durability live on HumanInteractionCoordinator — see its docs.
+
+	/**
+	 * Look up a tracked suspension by id, pending or resolved.
+	 *
+	 * @suspensionID The suspension id to look up
+	 */
+	AgentSuspension function getSuspension( required string suspensionID ) {
+		return variables.coordinator.getSuspension( arguments.suspensionID )
+	}
+
+	/**
+	 * Look up the decision a suspension was resolved with, if any.
+	 *
+	 * @suspensionID The suspension id to look up
+	 */
+	HumanInteractionDecision function getDecision( required string suspensionID ) {
+		return variables.coordinator.getDecision( arguments.suspensionID )
+	}
+
+	/**
+	 * Whether a suspension is currently tracked as pending.
+	 *
+	 * @suspensionID The suspension id to check
+	 */
+	boolean function hasPending( required string suspensionID ) {
+		return variables.coordinator.hasPending( arguments.suspensionID )
+	}
+
+	/**
+	 * Every currently-pending suspension.
+	 */
+	array function getAllPending() {
+		return variables.coordinator.getAllPending()
+	}
+
+	/**
+	 * Look up the currently-pending suspension for a thread, if any — e.g. to check whether
+	 * there's something awaiting a decision before calling agent.resume(decision, threadId).
+	 *
+	 * @threadID The thread to look up
+	 */
+	AgentSuspension function getSuspensionByThread( required string threadID ) {
+		return variables.coordinator.getSuspensionByThread( arguments.threadID )
+	}
+
+	/**
+	 * Remove a suspension entirely — without recording a decision. Distinct from resolving
+	 * it; see HumanInteractionCoordinator.clearSuspension().
+	 *
+	 * @suspensionID The suspension to clear
+	 */
+	void function clearSuspension( required string suspensionID ) {
+		variables.coordinator.clearSuspension( arguments.suspensionID )
+	}
+
+	/**
+	 * Clear every currently-pending suspension.
+	 */
+	void function clearAllPending() {
+		variables.coordinator.clearAllPending()
 	}
 
 	// ==================== Hooks ====================
@@ -107,80 +320,208 @@ class extends="BaseAiMiddleware" {
 				// Clear so subsequent tool calls in the same run go through normal HITL
 				context.chatRequest.setResumeContext( {} )
 
-				var decision = resumeCtx.resumeDecision
-
-				if ( decision == "reject" ) {
-					return AiMiddlewareResult.reject( "Rejected by human operator during resume." )
+				var resumeReason = resumeCtx.reason ?: ""
+				if ( !resumeReason.len() && resumeCtx.resumeDecision == "reject" ) {
+					resumeReason = "Rejected by human operator during resume."
 				}
+				var resumedDecision = new HumanInteractionDecision(
+					decision  : resumeCtx.resumeDecision,
+					editedData: resumeCtx.editedData ?: {},
+					reason    : resumeReason,
+					decidedBy : resumeCtx.decidedBy ?: ""
+				)
 
-				if ( decision == "edit" && !resumeCtx.editedData.isEmpty() ) {
-					// Patch tool call arguments with the edited data.
-					// BaseService reads toolCall.function.arguments AFTER beforeToolCall
-					// returns, so in-place mutation is picked up automatically.
-					var newArgs = resumeCtx.editedData.correctedArgs ?: resumeCtx.editedData
-					if ( !isNull( context.toolCall ) && context.toolCall.keyExists( "function" ) ) {
-						context.toolCall.function.arguments = jsonSerialize( newArgs )
+				// Route through the SAME coordinator that presented the original request, so
+				// approve_always/approve_session record a grant here too — not just on the
+				// synchronous (Cli/scripted-Mock) path. This only works when the coordinator
+				// that suspended the run is still alive to resolve it (e.g. an application-
+				// scoped agent/middleware, not one rebuilt fresh per request) — when it isn't,
+				// fall back to dispatching the plain decision below rather than failing resume.
+				var suspensionID = resumeCtx.suspendData?.suspensionID ?: ""
+				if ( len( suspensionID ) ) {
+					var tool = context.tool ?: javacast( "null", "" )
+					try {
+						variables.coordinator.resolve( suspensionID, resumedDecision, tool )
+						resumedDecision = variables.coordinator.getDecision( suspensionID )
+					} catch ( SuspensionNotFound e ) {
+						// Coordinator lost track of this suspension (different process/instance
+						// than the one that suspended it) — dispatch the decision anyway.
+					} catch ( SuspensionAlreadyResolved e ) {
+						// Someone else already resolved it — use what was actually recorded.
+						resumedDecision = variables.coordinator.getDecision( suspensionID )
 					}
 				}
 
-				// "approve" (and "edit" after patching) → let the tool proceed
-				return AiMiddlewareResult.continue()
+				return decisionToMiddlewareResult( resumedDecision, context )
 			}
 		}
 		// ── End resume path ──────────────────────────────────────────────────────
 
-		// Only intercept matching tools
-		if ( variables.toolsRequiringApproval.findNoCase( toolName ) == 0 ) {
+		// Policy decides whether this tool call needs a human's sign-off
+		if ( !variables.policy.needsApproval( context ) ) {
 			return AiMiddlewareResult.continue()
 		}
 
-		// Gather pending tool info
+		// Gather pending tool info. Prefer the normalized context.toolArgs (set by providers
+		// whose toolCall shape doesn't carry a `.function.arguments` JSON string — Claude,
+		// Bedrock, Cohere) over the OpenAI-shape read, so the approval payload always shows
+		// the real arguments regardless of provider.
 		var pendingData = {
 			toolName  : toolName,
 			toolCall  : context.toolCall ?: {},
-			arguments : context.toolCall?.function?.arguments ?: "{}"
+			arguments : ( context.keyExists( "toolArgs" ) && isStruct( context.toolArgs ) )
+				? jsonSerialize( context.toolArgs )
+				: ( context.toolCall?.function?.arguments ?: "{}" )
 		}
 
-		if ( variables.approvalMode == "web" ) {
-			// Async/web mode: suspend and let the caller checkpoint
-			return AiMiddlewareResult.suspend( pendingData )
+		// A gateway is always attached except for mode "web" — present through it immediately,
+		// exactly as before: CliGateway resolves synchronously, and so can a scripted/mock
+		// gateway; a genuinely asynchronous one comes back still pending (suspend() carrying a
+		// suspensionID). Either way this is per-tool-call, same as always — batching changes
+		// what happens AFTER this returns, not the presentation itself (see afterToolBatch()):
+		// the caller no longer stops evaluating the rest of this turn's tool calls just because
+		// ONE of them came back pending.
+		if ( !isNull( variables.gateway ) ) {
+			return gatewayApprove( toolName, pendingData, context )
 		}
 
-		// CLI mode: block and prompt on stdin/stdout
-		return cliApprove( toolName, pendingData )
+		// mode "web", no gateway attached: nothing to present anywhere — defer so
+		// afterToolBatch() below can checkpoint ONCE for the whole turn instead of tool-by-tool.
+		return AiMiddlewareResult.defer( pendingData )
+	}
+
+	/**
+	 * Fired once per LLM turn after every tool call has been evaluated (see IAiMiddleware docs).
+	 * Collects whatever still needs a human decision — deferred (mode "web") or already
+	 * individually presented but still pending (a gateway that didn't resolve synchronously) —
+	 * and checkpoints ONCE for all of it, instead of the provider suspending (and checkpointing)
+	 * on the first pending tool call and never even looking at the rest of the batch.
+	 *
+	 * Note this does NOT achieve a single combined gateway presentation for an asynchronous
+	 * gateway — each pending tool call was already individually presented by gatewayApprove()
+	 * above (there's no way to know a gateway will resolve synchronously before calling it, so
+	 * presentation can't be deferred the way mode "web" defers it). What this fixes is that
+	 * EVERY tool call in the turn now actually gets evaluated and presented — none are silently
+	 * skipped — and the run suspends/resumes as ONE batch regardless of how many gateway
+	 * suspensions that took.
+	 */
+	AiMiddlewareResult function afterToolBatch( required struct context ) {
+		var pending = arguments.context.batch.filter( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() )
+		if ( pending.isEmpty() ) {
+			return AiMiddlewareResult.continue()
+		}
+
+		// mode "web": nothing was presented anywhere yet — defer() only recorded intent.
+		if ( isNull( variables.gateway ) ) {
+			var pendingActions = pending.map( ( entry ) => {
+				return { toolName: entry.toolName, toolArgs: ( isStruct( entry.toolArgs ) ) ? entry.toolArgs : {} }
+			} )
+			return AiMiddlewareResult.suspend( { pendingActions: pendingActions } )
+		}
+
+		// Gateway-attached: each pending item already has its own suspensionID from
+		// gatewayApprove() — surface the aggregate list so the checkpoint (and a later
+		// agent.resume()) can find every one of them, not just the first.
+		var pendingActions = pending.map( ( entry ) => {
+			return {
+				toolName    : entry.toolName,
+				toolArgs    : ( isStruct( entry.toolArgs ) ) ? entry.toolArgs : {},
+				suspensionID: entry.result.getData().suspensionID ?: ""
+			}
+		} )
+		return AiMiddlewareResult.suspend( { pendingActions: pendingActions } )
 	}
 
 	// ==================== Private Helpers ====================
 
-	private AiMiddlewareResult function cliApprove( required string toolName, required struct pendingData ) {
-		println( "" )
-		println( "╔══════════════════════════════════════════════════╗" )
-		println( "║         HUMAN APPROVAL REQUIRED                  ║" )
-		println( "╚══════════════════════════════════════════════════╝" )
-		println( " Tool: #arguments.toolName#" )
+	/**
+	 * Present a pending tool call through the attached gateway via the coordinator.
+	 * Synchronous gateways resolve immediately; asynchronous gateways leave the
+	 * suspension pending and this behaves like mode "web" (suspend and return),
+	 * carrying the suspensionID so a later resolve() can find it again.
+	 */
+	private AiMiddlewareResult function gatewayApprove( required string toolName, required struct pendingData, required struct context ) {
+		// NOTE: never name this local "request" — BoxLang treats a bare "request" identifier
+		// as the built-in Request scope even for a local `var` assignment, silently degrading
+		// the HumanInteractionRequest instance to a plain struct.
+		var interactionRequest = new HumanInteractionRequest(
+			interactionType: HumanInteractionRequest.TYPES.TOOL_APPROVAL,
+			title          : "Approval needed: #arguments.toolName#",
+			message        : variables.showArguments
+				? "The tool [#arguments.toolName#] wants to run with arguments: #arguments.pendingData.arguments#"
+				: "The tool [#arguments.toolName#] wants to run.",
+			pendingAction  : {
+				toolName: arguments.toolName,
+				toolArgs: arguments.pendingData.arguments
+			}
+		)
+		// Identity for grant-scoping (see HumanInteractionCoordinator.isAlreadyGranted()) comes
+		// from the chat request's userId — the only place it survives down to a tool-call
+		// context, since the AiAgent instance itself isn't reachable from here (see
+		// AiBaseRequest.userId's doc comment for why).
+		var gwContext = new GatewayContext(
+			gateway: variables.gateway.getName(),
+			userID : arguments.context.chatRequest?.getUserId() ?: ""
+		)
+		var tool      = arguments.context.tool ?: javacast( "null", "" )
 
-		if ( variables.showArguments ) {
-			println( " Args: #arguments.pendingData.arguments#" )
+		var suspension = variables.coordinator.requestApproval(
+			humanRequest: interactionRequest,
+			context     : gwContext,
+			gateway     : variables.gateway,
+			tool        : tool
+		)
+
+		if ( suspension.isTerminal() ) {
+			var decision = variables.coordinator.getDecision( suspension.getSuspensionID() )
+			return decisionToMiddlewareResult( decision, arguments.context )
 		}
 
-		println( "" )
-		println( " [A]pprove  [R]eject  [Q]uit" )
-		print  ( " Decision: " )
+		// Still pending (asynchronous gateway) — suspend the run the same way mode "web" does
+		var pending = duplicate( arguments.pendingData )
+		pending[ "suspensionID" ] = suspension.getSuspensionID()
+		return AiMiddlewareResult.suspend( pending )
+	}
 
-		var input = cliRead().trim().lCase()
-
-		println( "" )
-
-		if ( input == "a" || input == "approve" ) {
+	/**
+	 * Translate a resolved HumanInteractionDecision into the equivalent AiMiddlewareResult.
+	 */
+	private AiMiddlewareResult function decisionToMiddlewareResult( required HumanInteractionDecision decision, required struct context ) {
+		if ( arguments.decision.isApproved() ) {
 			return AiMiddlewareResult.approve()
 		}
-
-		if ( input == "r" || input == "reject" ) {
-			return AiMiddlewareResult.reject( "Rejected by human operator." )
+		if ( arguments.decision.isRejected() ) {
+			return AiMiddlewareResult.reject( arguments.decision.getReason() )
 		}
+		if ( arguments.decision.isEdit() ) {
+			var newArgs = arguments.decision.getEditedData().correctedArgs ?: arguments.decision.getEditedData()
+			applyEditedArguments( arguments.context, newArgs )
+			return AiMiddlewareResult.continue()
+		}
+		// cancel (or anything else)
+		return AiMiddlewareResult.cancel( arguments.decision.getReason() )
+	}
 
-		// "q" or anything else = cancel the entire run
-		return AiMiddlewareResult.cancel( "Human operator chose to quit." )
+	/**
+	 * Patch a pending tool call's live arguments in place with human-edited values.
+	 * Each provider reads the tool call's arguments back from the same struct reference
+	 * AFTER beforeToolCall returns, so in-place mutation is picked up automatically — but
+	 * the field/shape differs per provider, so detect which one is present.
+	 */
+	private void function applyEditedArguments( required struct context, required struct newArgs ) {
+		if ( isNull( arguments.context.toolCall ) ) {
+			return
+		}
+		if ( arguments.context.toolCall.keyExists( "function" ) ) {
+			// OpenAI-family shape: arguments is a JSON-encoded string
+			arguments.context.toolCall.function.arguments = jsonSerialize( arguments.newArgs )
+		} else if ( arguments.context.toolCall.keyExists( "input" ) ) {
+			// Claude / Bedrock shape: input is already a struct
+			arguments.context.toolCall.input = arguments.newArgs
+		} else if ( arguments.context.toolCall.keyExists( "parameters" ) ) {
+			// Cohere shape: parameters is already a struct
+			arguments.context.toolCall.parameters = arguments.newArgs
+		}
 	}
 
 }

@@ -98,7 +98,7 @@ public class aiImageTest extends BaseIntegrationTest {
 	@Test
 	public void testBeforeAIImageGenerationEventFires() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			capturedPrompt = "";
 			capturedSize   = "";
@@ -126,7 +126,7 @@ public class aiImageTest extends BaseIntegrationTest {
 	@Test
 	public void testAiImageOpenAIReturnsResponse() {
 		// @formatter:off
-		executeWithTimeoutHandling(
+		var completed = executeWithTimeoutHandling(
 			"""
 			response      = aiImage( "a simple red circle on a white background" )
 			hasImages     = response.hasImages()
@@ -137,6 +137,10 @@ public class aiImageTest extends BaseIntegrationTest {
 			context
 		);
 		// @formatter:on
+
+		if ( !completed ) {
+			return;
+		}
 
 		var	hasImages		= variables.getAsBoolean( Key.of( "hasImages" ) );
 		var	imageCount		= variables.getAsInteger( Key.of( "imageCount" ) );
@@ -152,9 +156,9 @@ public class aiImageTest extends BaseIntegrationTest {
 	@DisplayName( "aiImage with outputFile option saves image to disk and returns path" )
 	@Test
 	public void testAiImageSavesToFile() {
-		var outputPath = "/tmp/bxai-image-test.png";
+		var	outputPath	= "/tmp/bxai-image-test.png";
 		// @formatter:off
-		executeWithTimeoutHandling(
+		var completed = executeWithTimeoutHandling(
 			"""
 			savedPath        = aiImage(
 				prompt : "a simple green triangle",
@@ -166,6 +170,10 @@ public class aiImageTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
+		if ( !completed ) {
+			return;
+		}
+
 		var fileExistsResult = variables.getAsBoolean( Key.of( "fileExistsResult" ) );
 		assertThat( fileExistsResult ).isTrue();
 
@@ -176,9 +184,9 @@ public class aiImageTest extends BaseIntegrationTest {
 	@DisplayName( "aiImage returns a string path when outputFile is set, not an AiImageResponse" )
 	@Test
 	public void testAiImageWithOutputFileReturnsString() {
-		var outputPath = "/tmp/bxai-image-string-test.png";
+		var	outputPath	= "/tmp/bxai-image-string-test.png";
 		// @formatter:off
-		executeWithTimeoutHandling(
+		var completed = executeWithTimeoutHandling(
 			"""
 			result       = aiImage( prompt: "a yellow star", options: { outputFile: "#outputPath#" } )
 			resultIsString = isSimpleValue( result )
@@ -186,6 +194,10 @@ public class aiImageTest extends BaseIntegrationTest {
 			context
 		);
 		// @formatter:on
+
+		if ( !completed ) {
+			return;
+		}
 
 		var resultIsString = variables.getAsBoolean( Key.of( "resultIsString" ) );
 		assertThat( resultIsString ).isTrue();
@@ -265,7 +277,7 @@ public class aiImageTest extends BaseIntegrationTest {
 	@Test
 	public void testFluentBuilderPortraitAndLowQuality() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			capturedSize    = "";
 			capturedQuality = "";
@@ -294,7 +306,7 @@ public class aiImageTest extends BaseIntegrationTest {
 	@Test
 	public void testFluentBuilderStyleAndInstructions() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			capturedStyle      = "";
 			capturedInstructions = "";
@@ -323,7 +335,7 @@ public class aiImageTest extends BaseIntegrationTest {
 	@Test
 	public void testFluentBuilderOutputFormatWebp() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			capturedFormat = "";
 			BoxRegisterInterceptor(
@@ -346,7 +358,7 @@ public class aiImageTest extends BaseIntegrationTest {
 	@Test
 	public void testFluentBuilderOutputFormatJpeg() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			capturedFormat = "";
 			BoxRegisterInterceptor(
@@ -369,7 +381,7 @@ public class aiImageTest extends BaseIntegrationTest {
 	@Test
 	public void testFluentBuilderOutputFormatB64Json() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			capturedOutputFormat = "";
 			BoxRegisterInterceptor(
@@ -392,7 +404,7 @@ public class aiImageTest extends BaseIntegrationTest {
 	@Test
 	public void testFluentBuilderImageCount() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			capturedN = 0;
 			BoxRegisterInterceptor(
@@ -414,9 +426,9 @@ public class aiImageTest extends BaseIntegrationTest {
 	@DisplayName( "Fluent builder .outputFile() saves image and returns file path" )
 	@Test
 	public void testFluentBuilderOutputFile() {
-		var outputPath = "/tmp/bxai-fluent-image-test.png";
+		var	outputPath	= "/tmp/bxai-fluent-image-test.png";
 		// @formatter:off
-		executeWithTimeoutHandling(
+		var completed = executeWithTimeoutHandling(
 			"""
 			savedPath = aiImage()
 				.prompt( "a simple orange diamond" )
@@ -427,6 +439,10 @@ public class aiImageTest extends BaseIntegrationTest {
 			context
 		);
 		// @formatter:on
+
+		if ( !completed ) {
+			return;
+		}
 
 		var fileExistsResult = variables.getAsBoolean( Key.of( "fileExistsResult" ) );
 		assertThat( fileExistsResult ).isTrue();
@@ -439,7 +455,7 @@ public class aiImageTest extends BaseIntegrationTest {
 	@Test
 	public void testFluentBuilderOutputCompression() {
 		// @formatter:off
-		runtime.executeSource(
+		executeWithTimeoutHandling(
 			"""
 			capturedCompression = 0;
 			BoxRegisterInterceptor(

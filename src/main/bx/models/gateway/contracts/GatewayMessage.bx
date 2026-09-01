@@ -1,0 +1,104 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * A gateway-neutral inbound or outbound message.
+ *
+ * Whether it originated as a Slack message, a CLI prompt response, or an HTTP webhook
+ * payload, it's normalized into this same shape before the agent layer ever sees it.
+ */
+class {
+
+	/**
+	 * Unique identifier for this message
+	 */
+	property name="id" type="string" default="";
+
+	/**
+	 * The message type: "message" (default), or a gateway-specific variant
+	 */
+	property name="type" type="string" default="message";
+
+	/**
+	 * The plain-text content of the message
+	 */
+	property name="text" type="string" default="";
+
+	/**
+	 * File/media attachments: array of structs, shape is gateway-specific
+	 */
+	property name="attachments" type="array" default=[];
+
+	/**
+	 * Interactive actions available on this message (buttons, selects, etc.),
+	 * gateway-specific shape
+	 */
+	property name="actions" type="array" default=[];
+
+	/**
+	 * The GatewayContext identifying who/where this message belongs to
+	 */
+	property name="context" type="GatewayContext";
+
+	/**
+	 * When this message was created
+	 */
+	property name="createdAt" type="date";
+
+	/**
+	 * Free-form metadata for gateway-specific extensions
+	 */
+	property name="metadata" type="struct" default={};
+
+	/**
+	 * The raw, unprocessed platform payload this message was derived from, if any
+	 */
+	property name="raw" type="struct" default={};
+
+	/**
+	 * Constructor
+	 *
+	 * @id          Unique identifier for this message (auto-generated if omitted)
+	 * @type        The message type
+	 * @text        The plain-text content of the message
+	 * @attachments File/media attachments
+	 * @actions     Interactive actions available on this message
+	 * @context     The GatewayContext identifying who/where this message belongs to
+	 * @createdAt   When this message was created (defaults to now)
+	 * @metadata    Free-form metadata for gateway-specific extensions
+	 * @raw         The raw, unprocessed platform payload this message was derived from
+	 */
+	function init(
+		string  id          = createUUID(),
+		string  type        = "message",
+		string  text        = "",
+		array   attachments = [],
+		array   actions     = [],
+		any     context,
+		date    createdAt   = now(),
+		struct  metadata    = {},
+		struct  raw         = {}
+	) {
+		variables.id          = arguments.id
+		variables.type        = arguments.type
+		variables.text        = arguments.text
+		variables.attachments = arguments.attachments
+		variables.actions     = arguments.actions
+		variables.context     = arguments.context ?: new GatewayContext()
+		variables.createdAt   = arguments.createdAt
+		variables.metadata    = arguments.metadata
+		variables.raw         = arguments.raw
+		return this;
+	}
+
+}

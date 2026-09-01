@@ -21,11 +21,30 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
+import ortus.boxlang.runtime.scopes.Key;
 
 /**
  * Integration tests for OpenAI provider
  */
 public class OpenAITest extends BaseIntegrationTest {
+
+	/**
+	 * Model used by every test below that passes tools.
+	 *
+	 * The provider default (gpt-5.6-luna) is a reasoning model, and OpenAI rejects function
+	 * tools alongside active reasoning on /v1/chat/completions:
+	 *
+	 * "Function tools with reasoning_effort are not supported for gpt-5.6-luna in
+	 * /v1/chat/completions. To use function tools, use /v1/responses or set
+	 * reasoning_effort to 'none'."
+	 *
+	 * That is a genuine constraint of the endpoint this provider speaks, not a bug in these
+	 * tests - a caller combining tools with a reasoning model has to change one of the two,
+	 * or use the Responses API (which this module does not implement yet). These tests are
+	 * here to exercise tool calling, so they pin a non-reasoning tool-capable model and
+	 * leave the endpoint question to be answered properly by Responses API support.
+	 */
+	private static final String TOOL_MODEL = "gpt-4o";
 
 	@BeforeEach
 	public void beforeEach() {
@@ -131,16 +150,130 @@ public class OpenAITest extends BaseIntegrationTest {
 
 			result = aiChat( messages = "How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.", params = {
 				tools: [ tool ],
-				seed: 27
+				seed : 27,
+				model: "%s"
 			} )
 			println( result )
 
-			""",
+			""".formatted( TOOL_MODEL ),
 			context
 		);
 		// @formatter:on
 
 		assertThat( variables.get( result ) ).isEqualTo( "San Salvador" );
+	}
+
+	@DisplayName( "Test HITL suspend and resume with OpenAI" )
+	@Test
+	public void testHITLSuspendAndResume() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+			import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+
+			tool = aiTool(
+				"get_weather",
+				"Get current temperature for a given location.",
+				location => {
+				if( location contains "Kansas City" ) {
+					return "85"
+				}
+				return "unknown";
+			}).describeLocation( "City and country e.g. Bogotá, Colombia" )
+
+			hitlMw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "get_weather" ], mode: "web" )
+			checkpointer = aiMemory( "cache" )
+
+			agent = aiAgent(
+				tools        : [ tool ],
+				middleware   : [ hitlMw ],
+				checkpointer : checkpointer,
+				checkpointTTL: 5,
+				params       : { seed: 27, model: "%s" }
+			)
+
+			suspendedResult = agent.run(
+				"How hot is it in Kansas City?",
+				{},
+				{ threadId: "openai-live-hitl-suspend" }
+			)
+			wasSuspended = isObject( suspendedResult ) && suspendedResult.isSuspended()
+			println( "Suspended: " & wasSuspended )
+
+			finalResult = wasSuspended
+				? agent.resume( "approve", "openai-live-hitl-suspend" )
+				: suspendedResult
+			println( "Final result: " & finalResult )
+			""".formatted( TOOL_MODEL ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "wasSuspended" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "finalResult" ) ) ).isNotNull();
+	}
+
+	@DisplayName( "Test HITL batch suspend and resume with OpenAI (multiple tool calls in one turn)" )
+	@Test
+	public void testHITLBatchSuspendAndResume() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+			import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+
+			toolCalls = 0
+			tool = aiTool(
+				"get_weather",
+				"Get current temperature for a given location.",
+				location => {
+				toolCalls++
+				if( location contains "Kansas City" ) {
+					return "85"
+				}
+				if( location contains "San Salvador" ){
+					return "90"
+				}
+				return "unknown";
+			}).describeLocation( "City and country e.g. Bogotá, Colombia" )
+
+			hitlMw = new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "get_weather" ], mode: "web" )
+			checkpointer = aiMemory( "cache" )
+
+			agent = aiAgent(
+				tools        : [ tool ],
+				middleware   : [ hitlMw ],
+				checkpointer : checkpointer,
+				checkpointTTL: 5,
+				params       : { seed: 27, model: "%s" }
+			)
+
+			// Same prompt/seed as "Test the tool calls with OpenAI" — reliably drives two tool
+			// calls in a single turn there, which is exactly the scenario batching exists for:
+			// both must suspend together as ONE checkpoint, and neither runs before it's resolved.
+			suspendedResult = agent.run(
+				"How hot is it in Kansas City? What about San Salvador? Answer with only the name of the warmer city, nothing else.",
+				{},
+				{ threadId: "openai-live-hitl-batch" }
+			)
+			wasSuspended  = isObject( suspendedResult ) && suspendedResult.isSuspended()
+			pendingCount  = wasSuspended ? ( suspendedResult.getData().pendingActions ?: [] ).len() : 0
+			noToolsRanYet = toolCalls == 0
+			println( "Suspended: " & wasSuspended & ", pending: " & pendingCount )
+
+			// A single "approve" applies to every pending call, however many the model batched
+			finalResult = wasSuspended
+				? agent.resume( "approve", "openai-live-hitl-batch" )
+				: suspendedResult
+			println( "Final result: " & finalResult )
+			""".formatted( TOOL_MODEL ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "wasSuspended" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noToolsRanYet" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "pendingCount" ) ) ).isAtLeast( 1 );
+		assertThat( variables.get( Key.of( "finalResult" ) ) ).isEqualTo( "San Salvador" );
 	}
 
 	@DisplayName( "Test the async chat ai with OpenAI" )

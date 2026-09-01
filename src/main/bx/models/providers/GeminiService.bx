@@ -187,8 +187,15 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 			dataPacket.tools = dataPacket.tools.map( .getSchema )
 		}
 
-		// Update URL according to the model
-		variables.chatURL = getChatUrl().replace( '%MODEL%', chatRequest.getModel() ) & '?key=#chatRequest.getApiKey()#';
+		// Update URL according to the model.
+		// The API key is Gemini's auth mechanism (query param), so it is kept in a REQUEST-LOCAL
+		// URL and handed straight to the transport. It is deliberately NOT written into
+		// variables.chatURL: that property is instance state on a long-lived shared service, so
+		// storing the key there would (a) leak it into the request log via getChatURL() and
+		// (b) let concurrent requests using different keys read each other's credentials.
+		var modelChatURL   = getChatUrl().replace( '%MODEL%', chatRequest.getModel() );
+		var requestChatURL = modelChatURL & '?key=#chatRequest.getApiKey()#';
+		variables.chatURL  = modelChatURL;
 		// No auth header
 		arguments.chatRequest.setSendAuthHeader( false );
 
@@ -206,10 +213,11 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		// -------------------------------------------------------------------------------------------
 		var capturedDataPacket  = dataPacket;
 		var capturedChatRequest = arguments.chatRequest;
+		var capturedChatURL     = requestChatURL;
 		var result = arguments.chatRequest.fireWrapMiddleware(
 			hook         : "wrapLLMCall",
 			context      : llmContext,
-			innerFunction: () => sendChatRequest( capturedChatRequest, capturedDataPacket )
+			innerFunction: () => sendChatRequest( capturedChatRequest, capturedDataPacket, capturedChatURL )
 		)
 
 		// -------------------------------------------------------------------------------------------
@@ -254,7 +262,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 			case "raw":
 				return result;
 			case "json":
-				return jsonDeserialize( extractFromCodeBlock( content, "json" ) );
+				return extractJSONContent( content );
 			case "xml":
 				return xmlParse( extractFromCodeBlock( content, "xml" ) );
 			case "structuredOutput":
@@ -299,21 +307,26 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 			dataPacket.tools = dataPacket.tools.map( .getSchema )
 		}
 
-		// Update URL for Gemini streaming: use streamGenerateContent endpoint with alt=sse
-		var streamingURL = getChatUrl()
+		// Update URL for Gemini streaming: use streamGenerateContent endpoint with alt=sse.
+		// As on the non-streaming path, the key-bearing URL stays request-local and only the
+		// key-free endpoint is stored on the shared instance (see the note in chat()).
+		var streamBaseURL = getChatUrl()
 			.replace( '%MODEL%', chatRequest.getModel() )
-			.replace( 'generateContent', 'streamGenerateContent' )
-			& '?key=#chatRequest.getApiKey()#&alt=sse';
+			.replace( 'generateContent', 'streamGenerateContent' );
+		var streamingURL = streamBaseURL & '?key=#chatRequest.getApiKey()#&alt=sse';
 
-		// Set the streaming URL
-		variables.chatURL = streamingURL;
+		// Set the key-free streaming endpoint for logging/introspection
+		variables.chatURL = streamBaseURL;
 
 		// No auth header for Gemini
 		arguments.chatRequest.setSendAuthHeader( false );
 		var geminiUsage = { "promptTokens": 0, "completionTokens": 0, "totalTokens": 0, "raw": {} };
+		// Accumulate the streamed assistant text so afterLLMCall middleware can inspect it
+		var geminiContent = "";
 		var normalizedCallback = ( chunk ) => {
 			var content = chunk.candidates?.first()?.content?.parts?.first()?.text ?: "";
 			var finishReason = chunk.candidates?.first()?.finishReason ?: "";
+			geminiContent &= content;
 
 			// Capture usage metadata from Gemini chunks
 			if( !isNull( chunk.usageMetadata ) ){
@@ -341,8 +354,17 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 			});
 		};
 
+		// -------------------------------------------------------------------------------------------
+		// --- Fire beforeLLMCall middleware (streaming) ---
+		// -------------------------------------------------------------------------------------------
+		var streamLlmBefore = arguments.chatRequest.fireMiddleware( "beforeLLMCall", { chatRequest: arguments.chatRequest, dataPacket: dataPacket } );
+		if( streamLlmBefore.isTerminal() ){
+			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
+			return
+		}
+
 		// Send it with streaming
-		sendStreamRequest( chatRequest, dataPacket, normalizedCallback )
+		sendStreamRequest( chatRequest, dataPacket, normalizedCallback, streamingURL )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Usage Event Announcement (Streaming) ---
@@ -360,6 +382,15 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 				timestamp        : now()
 			} )
 		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire afterLLMCall middleware (streaming), in reverse order ---
+		// -------------------------------------------------------------------------------------------
+		arguments.chatRequest.fireMiddleware(
+			hook   : "afterLLMCall",
+			context: { chatRequest: arguments.chatRequest, streamState: { "reasoning": "", "content": geminiContent, "finishReason": "", "toolCalls": [], "usage": geminiUsage.raw } },
+			reverse: true
+		)
 	}
 
 	/**

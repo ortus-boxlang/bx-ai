@@ -15,7 +15,9 @@
 package ortus.boxlang.ai.providers;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -29,24 +31,38 @@ import ortus.boxlang.runtime.types.Struct;
  *
  * These hit real Bedrock and are skipped unless AWS credentials are present in
  * the environment (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION, and
- * AWS_SESSION_TOKEN for SSO). The model must also be enabled in that
- * account/region — note that newer Claude models are only reachable on-demand
- * via an inference-profile id (e.g. "us.anthropic.claude-3-5-sonnet-...");
- * adjust BEDROCK_MODEL to one your test account can invoke.
+ * AWS_SESSION_TOKEN for SSO). A call this account/role simply cannot make —
+ * no entitlement, an expired session token, throttling — is skipped rather
+ * than failed; see BaseIntegrationTest::executeLiveBedrockCall.
+ *
+ * The model must also be enabled in that account/region. Both ids are
+ * overridable from .env, defined in BaseIntegrationTest:
+ *
+ * <pre>
+ * BEDROCK_MODEL=...             # plain chat and tool-use
+ * BEDROCK_STRUCTURED_MODEL=...  # structured output via forced tool-use
+ * </pre>
+ *
+ * The defaults are "global." inference profiles so they resolve in any region.
+ * Override BEDROCK_MODEL only with a model that supports tool use — the
+ * tool-use test shares it, and Bedrock answers a model that does not with a
+ * ValidationException, which is deliberately NOT tolerated.
  *
  * For deterministic, credential-free coverage of the tool-use logic see
  * BedrockToolUseTest.
  */
 public class BedrockTest extends BaseIntegrationTest {
 
-	private static final String	BEDROCK_MODEL				= "anthropic.claude-3-5-sonnet-20240620-v1:0";
-	// Cross-region inference profile id reachable in eu-west-2 for structured-output coverage
-	private static final String	BEDROCK_STRUCTURED_MODEL	= "eu.anthropic.claude-sonnet-4-6";
+	private String	awsAccessKeyId;
+	private String	awsSecretAccessKey;
+	private String	awsSessionToken;
+	private String	awsRegion;
 
-	private String				awsAccessKeyId;
-	private String				awsSecretAccessKey;
-	private String				awsSessionToken;
-	private String				awsRegion;
+	private boolean	captured;
+	private boolean	hadPriorProvider;
+	private Object	priorProvider;
+	private boolean	hadPriorApiKey;
+	private Object	priorApiKey;
 
 	@BeforeEach
 	public void beforeEach() {
@@ -56,6 +72,15 @@ public class BedrockTest extends BaseIntegrationTest {
 		awsSecretAccessKey	= dotenv.get( "AWS_SECRET_ACCESS_KEY", "" );
 		awsSessionToken		= dotenv.get( "AWS_SESSION_TOKEN", "" );
 		awsRegion			= dotenv.get( "AWS_REGION", "us-east-1" );
+
+		// moduleRecord.settings is static and shared with every other test class in this Gradle
+		// worker, and Bedrock is the only provider whose apiKey is a struct — leaking it makes
+		// setApiKeyIfEmpty( required string ) throw a type error in whichever class runs next.
+		hadPriorProvider	= moduleRecord.settings.containsKey( "provider" );
+		priorProvider		= moduleRecord.settings.get( "provider" );
+		hadPriorApiKey		= moduleRecord.settings.containsKey( "apiKey" );
+		priorApiKey			= moduleRecord.settings.get( "apiKey" );
+		captured			= true;
 
 		moduleRecord.settings.put( "provider", "bedrock" );
 		Struct credentials = new Struct();
@@ -68,6 +93,25 @@ public class BedrockTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "apiKey", credentials );
 	}
 
+	@AfterEach
+	public void afterEach() {
+		// A @BeforeEach that threw before the capture leaves the flags false — restoring then would
+		// delete shared settings this class never wrote. JUnit runs @AfterEach either way.
+		if ( !captured ) {
+			return;
+		}
+		if ( hadPriorProvider ) {
+			moduleRecord.settings.put( "provider", priorProvider );
+		} else {
+			moduleRecord.settings.remove( "provider" );
+		}
+		if ( hadPriorApiKey ) {
+			moduleRecord.settings.put( "apiKey", priorApiKey );
+		} else {
+			moduleRecord.settings.remove( "apiKey" );
+		}
+	}
+
 	private boolean hasAwsCredentials() {
 		return !awsAccessKeyId.isEmpty() && !awsSecretAccessKey.isEmpty();
 	}
@@ -75,20 +119,17 @@ public class BedrockTest extends BaseIntegrationTest {
 	@DisplayName( "Test Bedrock AI chat" )
 	@Test
 	public void testBedrock() {
-		if ( !hasAwsCredentials() ) {
-			System.out.println( "Skipping testBedrock - AWS credentials not configured in .env" );
-			return;
-		}
+		assumeTrue( hasAwsCredentials(), "AWS credentials not configured in .env" );
 
 		// @formatter:off
-		executeWithTimeoutHandling(
+		assumeTrue( executeLiveBedrockCall(
 			"""
 			result    = aiChat( messages = "what is boxlang?", options = { model: "%s" } )
 			answerLen = len( result )
 			println( result )
 			""".formatted( BEDROCK_MODEL ),
 			context
-		);
+		), "live Bedrock call timed out" );
 		// @formatter:on
 
 		assertThat( variables.get( Key.of( "result" ) ) ).isInstanceOf( String.class );
@@ -98,13 +139,10 @@ public class BedrockTest extends BaseIntegrationTest {
 	@DisplayName( "Test Bedrock Tools" )
 	@Test
 	public void testBedrockTools() {
-		if ( !hasAwsCredentials() ) {
-			System.out.println( "Skipping testBedrockTools - AWS credentials not configured in .env" );
-			return;
-		}
+		assumeTrue( hasAwsCredentials(), "AWS credentials not configured in .env" );
 
 		// @formatter:off
-		executeWithTimeoutHandling(
+		assumeTrue( executeLiveBedrockCall(
 			"""
 			tool = aiTool(
 				"get_weather",
@@ -128,7 +166,7 @@ public class BedrockTest extends BaseIntegrationTest {
 			println( result )
 			""".formatted( BEDROCK_MODEL ),
 			context
-		);
+		), "live Bedrock call timed out" );
 		// @formatter:on
 
 		assertThat( variables.get( Key.of( "result" ) ) ).isEqualTo( "San Salvador" );
@@ -137,13 +175,10 @@ public class BedrockTest extends BaseIntegrationTest {
 	@DisplayName( "Test Bedrock structured output via forced tool-use" )
 	@Test
 	public void testBedrockStructuredOutput() {
-		if ( !hasAwsCredentials() ) {
-			System.out.println( "Skipping testBedrockStructuredOutput - AWS credentials not configured in .env" );
-			return;
-		}
+		assumeTrue( hasAwsCredentials(), "AWS credentials not configured in .env" );
 
 		// @formatter:off
-		executeWithTimeoutHandling(
+		assumeTrue( executeLiveBedrockCall(
 			"""
 			result = aiChat(
 				messages = "John Doe is 30 years old and lives in Seattle. Extract his details.",
@@ -168,7 +203,7 @@ public class BedrockTest extends BaseIntegrationTest {
 			println( result )
 			""".formatted( BEDROCK_STRUCTURED_MODEL ),
 			context
-		);
+		), "live Bedrock call timed out" );
 		// @formatter:on
 
 		assertThat( variables.getAsBoolean( Key.of( "isStruct" ) ) ).isTrue();

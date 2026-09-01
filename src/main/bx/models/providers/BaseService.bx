@@ -31,6 +31,8 @@
  * - params        : Default request parameters
  */
 import bxModules.bxai.models.util.SchemaBuilder;
+import bxModules.bxai.models.security.PromptSecurity;
+import bxModules.bxai.models.transformers.JSONExtractorTransformer;
 
 abstract class implements="IAiService" {
 
@@ -363,7 +365,7 @@ abstract class implements="IAiService" {
 				statusCode: chatResult.statusCode,
 				errorData: errorData,
 				chatRequest: arguments.chatRequest,
-				retryAfter: chatResult.responseheader.keyExists( "retry-after" ) ? chatResult.responseheader[ "retry-after" ] : ""
+				retryAfter: firstHeaderValue( chatResult.responseheader[ "retry-after" ] ?: "" )
 			} );
 		}
 
@@ -408,6 +410,10 @@ abstract class implements="IAiService" {
 			);
 		}
 
+		// Normalize reasoning BEFORE announcing, so onAIChatResponse listeners and the
+		// caller both see the same standard shape (see normalizeReasoningMessage)
+		normalizeReasoningMessage( iData.response );
+
 		BoxAnnounce( "onAIChatResponse", iData );
 
 		return iData.response;
@@ -434,6 +440,7 @@ abstract class implements="IAiService" {
 		var thisChatRequest = arguments.chatRequest;
 		var streamState = {
 			"content": "",
+			"reasoning": "",
 			"finishReason": "",
 			"toolCalls": [],
 			"usage": {}
@@ -501,6 +508,7 @@ abstract class implements="IAiService" {
 				// Try to parse and send to callback
 				try {
 					var parsedChunk = jsonDeserialize( chunk.data );
+					normalizeReasoningDelta( parsedChunk );
 					updateStreamState( streamState, parsedChunk );
 					userCallback( parsedChunk );
 				} catch( any e ){
@@ -560,6 +568,100 @@ abstract class implements="IAiService" {
 	}
 
 	/**
+	 * Normalize a provider's native reasoning/thinking delta field onto the standard
+	 * `choices[].delta.reasoning` key, IN PLACE, before the chunk reaches the caller.
+	 *
+	 * Reasoning-capable providers each named this field differently as the feature
+	 * shipped (DeepSeek emits `reasoning_content`, others already emit `reasoning`),
+	 * so consumers would otherwise have to branch on provider to read the same thing.
+	 * Every provider in this module emits the OpenAI `chat.completion.chunk` envelope
+	 * to its callback, and this keeps reasoning inside that same contract rather than
+	 * beside it — see the normalized-reasoning section of the streaming docs.
+	 *
+	 * Absence is normal, never an error: a provider or model with no reasoning simply
+	 * leaves the key unset, and consumers treat that as "this turn had none".
+	 *
+	 * @parsedChunk A parsed streaming chunk in OpenAI envelope shape - MUTATED in place
+	 *
+	 * @return void
+	 */
+	/**
+	 * Normalize a response header value that may come back as an array (some HTTP clients return
+	 * multi-valued headers as an array rather than one delimited string) into a single plain
+	 * string. Without this, a listener handed `retryAfter` as an array sees `val()` yield 0 and
+	 * retries immediately into the same throttle.
+	 *
+	 * @headerValue The raw header value: a string, an array of strings, or empty
+	 *
+	 * @return The first value as a string, or an empty string
+	 */
+	private string function firstHeaderValue( required any headerValue ){
+		if( isArray( arguments.headerValue ) ){
+			return arguments.headerValue.len() ? toString( arguments.headerValue[ 1 ] ) : ""
+		}
+		return toString( arguments.headerValue )
+	}
+
+	private void function normalizeReasoningDelta( required struct parsedChunk ){
+		var choices = arguments.parsedChunk.choices ?: [];
+		if( !isArray( choices ) || choices.isEmpty() ){
+			return;
+		}
+
+		var delta = choices.first().delta ?: "";
+		if( !isStruct( delta ) || delta.keyExists( "reasoning" ) ){
+			return;
+		}
+
+		// Alternate native spellings, in priority order
+		for( var candidate in [ "reasoning_content", "thinking" ] ){
+			if( delta.keyExists( candidate ) && !isNull( delta[ candidate ] ) && isSimpleValue( delta[ candidate ] ) ){
+				delta[ "reasoning" ] = delta[ candidate ];
+				return;
+			}
+		}
+	}
+
+	/**
+	 * Synchronous counterpart to normalizeReasoningDelta(): normalize a provider's native
+	 * reasoning field onto the standard `choices[].message.reasoning` key, IN PLACE, on a
+	 * non-streaming completion.
+	 *
+	 * Subclasses that replace the transport entirely (see MockService) must call this from
+	 * their own override too, or mock responses would follow a different contract than the
+	 * real providers they stand in for.
+	 *
+	 * @response A parsed chat completion in OpenAI envelope shape - MUTATED in place
+	 *
+	 * @return void
+	 */
+	private void function normalizeReasoningMessage( required any response ){
+		if( !isStruct( arguments.response ) ){
+			return;
+		}
+
+		var choices = arguments.response.choices ?: [];
+		if( !isArray( choices ) || choices.isEmpty() ){
+			return;
+		}
+
+		for( var choice in choices ){
+			var message = choice.message ?: "";
+			if( !isStruct( message ) || message.keyExists( "reasoning" ) ){
+				continue;
+			}
+
+			// Alternate native spellings, in priority order
+			for( var candidate in [ "reasoning_content", "thinking" ] ){
+				if( message.keyExists( candidate ) && !isNull( message[ candidate ] ) && isSimpleValue( message[ candidate ] ) ){
+					message[ "reasoning" ] = message[ candidate ];
+					break;
+				}
+			}
+		}
+	}
+
+	/**
 	 * Update stream state from a parsed chunk
 	 *
 	 * @streamState The mutable stream state accumulator
@@ -583,6 +685,16 @@ abstract class implements="IAiService" {
 		var content = firstChoice.delta?.content ?: "";
 		if( !isNull( content ) && isSimpleValue( content ) ){
 			arguments.streamState.content &= toString( content );
+		}
+
+		// Accumulate streamed reasoning, kept STRICTLY separate from content — reasoning is
+		// the model's own thinking, not the answer, and must never be merged into the
+		// assistant message that gets returned or persisted to memory.
+		// A provider that builds its own streamState struct may not carry the key at all, so
+		// seed it here rather than assuming it — never assume a caller's struct shape.
+		var reasoning = firstChoice.delta?.reasoning ?: "";
+		if( !isNull( reasoning ) && isSimpleValue( reasoning ) && toString( reasoning ).len() ){
+			arguments.streamState[ "reasoning" ] = ( arguments.streamState.reasoning ?: "" ) & toString( reasoning );
 		}
 
 		// Track finish reason if available
@@ -799,6 +911,31 @@ abstract class implements="IAiService" {
 	}
 
 	/**
+	 * Extract and parse JSON from content that may contain surrounding prose or markdown fences.
+	 * Delegates to JSONExtractorTransformer in lenient mode (strictMode:false), so a reply with
+	 * no usable JSON degrades to an empty struct instead of throwing.
+	 *
+	 * @content The raw LLM content to extract JSON from
+	 *
+	 * @return The parsed JSON value - struct, array, string, number, boolean, or null - or an
+	 *         empty struct if no JSON could be found/parsed
+	 */
+	private any function extractJSONContent( required string content ){
+		var result = new JSONExtractorTransformer( { strictMode : false } ).transform( arguments.content );
+
+		// Extraction found nothing usable - warn so this degraded path isn't silent, but never throw
+		if ( isStruct( result ) && structIsEmpty( result ) && len( arguments.content.trim() ) > 0 ) {
+			writeLog(
+				text: "aiChat returnFormat json: no parseable JSON found in model reply (first 200 chars): " & left( arguments.content, 200 ),
+				type: "warn",
+				log : "ai"
+			);
+		}
+
+		return result;
+	}
+
+	/**
 	 * Populate structured output from LLM response
 	 * Handles classes, structs, and arrays based on the original definition
 	 *
@@ -855,12 +992,46 @@ abstract class implements="IAiService" {
 						// Populate based on schema type
 						if( isObject( schema ) ) {
 							result[ name ] = SchemaBuilder::populateClass( schema, propertyData );
+						} else if( isArray( schema ) && !schema.isEmpty() && ( isObject( schema[ 1 ] ) || isStruct( schema[ 1 ] ) ) ) {
+							result[ name ] = SchemaBuilder::populateArray( schema[ 1 ], propertyData );
 						} else if( isStruct( schema ) ) {
 							result[ name ] = SchemaBuilder::populateStruct( propertyData );
 						} else {
 							// Raw data
 							result[ name ] = data[ name ];
 						}
+					}
+				}
+
+				return result;
+			}
+
+			// Check if this is a complex struct with class instance or array-of-class/struct-instance values.
+			// BoxLang class instances satisfy isStruct(), so we must check isObject() first.
+			var hasComplexValues = false;
+			for( var checkKey in outputDefinition ) {
+				var checkValue = outputDefinition[ checkKey ];
+				if( isObject( checkValue ) || ( isArray( checkValue ) && !checkValue.isEmpty() && ( isObject( checkValue[ 1 ] ) || isStruct( checkValue[ 1 ] ) ) ) ) {
+					hasComplexValues = true;
+					break;
+				}
+			}
+
+			if( hasComplexValues ) {
+				var result = {};
+				var data = jsonDeserialize( jsonContent );
+
+				for( var key in outputDefinition ) {
+					if( !data.keyExists( key ) ) continue;
+
+					var originalValue = outputDefinition[ key ];
+
+					if( isObject( originalValue ) ) {
+						result[ key ] = SchemaBuilder::populateClass( duplicate( originalValue ), jsonSerialize( data[ key ] ) );
+					} else if( isArray( originalValue ) && !originalValue.isEmpty() && ( isObject( originalValue[ 1 ] ) || isStruct( originalValue[ 1 ] ) ) ) {
+						result[ key ] = SchemaBuilder::populateArray( originalValue[ 1 ], jsonSerialize( data[ key ] ) );
+					} else {
+						result[ key ] = data[ key ];
 					}
 				}
 
@@ -889,7 +1060,7 @@ abstract class implements="IAiService" {
 		logLines.append( "========================================" );
 		logLines.append( "** AI Request (#now()#)**" );
 		logLines.append( "Provider: #this.name# / Model: #arguments.chatRequest.getModel()#" );
-		logLines.append( "Endpoint: #getChatURL()#" );
+		logLines.append( "Endpoint: #PromptSecurity::redactURLSecrets( getChatURL() )#" );
 		logLines.append( "Timeout: #arguments.chatRequest.getTimeout()#s" );
 		logLines.append( "Message Count: #arguments.chatRequest.getMessages().len()#" );
 
@@ -980,7 +1151,7 @@ abstract class implements="IAiService" {
 		logLines.append( "========================================" );
 		logLines.append( "** AI Embedding Request (#now()#)**" );
 		logLines.append( "Provider: #this.name# / Model: #arguments.embeddingRequest.getModel()#" );
-		logLines.append( "Endpoint: #getEmbeddingsURL()#" );
+		logLines.append( "Endpoint: #PromptSecurity::redactURLSecrets( getEmbeddingsURL() )#" );
 		logLines.append( "Timeout: #arguments.embeddingRequest.getTimeout()#s" );
 
 		// Show input details

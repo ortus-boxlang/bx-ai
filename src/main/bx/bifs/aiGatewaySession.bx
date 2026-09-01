@@ -1,0 +1,50 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Creates a GatewaySession wiring one AiAgent to one or more IGateway instances for inbound
+ * message handling. See GatewaySession.bx for the full policy semantics.
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Wires an agent to one or more gateways for inbound message handling.
+	 *
+	 * @agent         The AiAgent every inbound message dispatches to
+	 * @gateways      A single gateway or an array of gateways — each entry either an IGateway
+	 *                instance, or a string gateway name resolved via aiGateway( name ) (core
+	 *                names "mock"/"cli"/"http", or anything registered in aiGatewayRegistry()).
+	 * @policy        "reject" | "queue" | "steer" | "interrupt" — how to handle an inbound
+	 *                message that arrives for a thread with a turn already in flight.
+	 *                Defaults to "queue".
+	 * @maxQueueDepth Cap on buffered messages per thread for "queue"/"interrupt" policies
+	 *                before further messages fall back to reject. 0 = unlimited. Default 50.
+	 * @checkpointer  Optional IAiMemory instance passed to every gateway's setCheckpointer().
+	 *                Defaults to the agent's own checkpointer, if it has one.
+	 *
+	 * @return An unstarted GatewaySession instance — call .start() to begin accepting inbound messages
+	 */
+	function invoke(
+		required any agent,
+		required any gateways,
+		string  policy        = "queue",
+		numeric maxQueueDepth = 50,
+		any     checkpointer
+	) {
+		var session = new bxModules.bxai.models.gateway.GatewaySession( argumentCollection: arguments )
+		BoxAnnounce( "onGatewaySessionCreate", { session: session } )
+		return session
+	}
+
+}

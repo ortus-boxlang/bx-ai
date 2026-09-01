@@ -203,6 +203,39 @@ class extends="BaseMemory" {
 		return this;
 	}
 
+	/**
+	 * AI-summarize older messages and persist the result to database.
+	 * JdbcMemory only ever holds one database row per instance (memory_key is the sole
+	 * primary key, and unlike CacheMemory/FileMemory/SessionMemory it never reloads from
+	 * the database for a different scope), so it cannot safely honor a per-call userId/
+	 * conversationId that targets a different scope than the instance's own - doing so
+	 * would summarize this instance's own real messages under a foreign identity. Construct
+	 * a separate JdbcMemory instance per conversation for true multi-tenant routing.
+	 *
+	 * @config Optional struct with keys: keepRecent, model, provider
+	 * @userId   Optional per-call user identifier - must match the instance's own userId, or be omitted
+	 * @conversationId Optional per-call conversation identifier - must match the instance's own conversationId, or be omitted
+	 *
+	 * @return IAiMemory for chaining
+	 */
+	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
+		var targetUserId = resolveUserId( arguments.userId )
+		var targetConversationId = resolveConversationId( arguments.conversationId )
+
+		if ( targetUserId != variables.userId || targetConversationId != variables.conversationId ) {
+			throw(
+				type: "JdbcMemory.UnsupportedScope",
+				message: "JdbcMemory.summarize() cannot target a different (userId, conversationId) than the instance's own bound scope (userId=""#variables.userId#"", conversationId=""#variables.conversationId#""), since a JdbcMemory instance only holds one database row. Construct a separate JdbcMemory instance for that user/conversation instead."
+			)
+		}
+
+		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
+			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
+			saveToDatabase( targetUserId, targetConversationId )
+		}
+		return this
+	}
+
 	// ========================================
 	// Private Helper Methods
 	// ========================================

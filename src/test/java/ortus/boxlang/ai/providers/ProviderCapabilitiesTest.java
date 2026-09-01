@@ -169,6 +169,18 @@ public class ProviderCapabilitiesTest extends BaseIntegrationTest {
 		assertThat( caps ).containsAtLeast( "chat", "stream", "embeddings" );
 	}
 
+	@Test
+	@DisplayName( "Bedrock reports chat, stream and embeddings capabilities" )
+	public void testBedrockCapabilities() {
+		// configure( "test-key" ) sets modelId for Bedrock (its long-standing, non-breaking
+		// behavior — see BedrockService.configure()'s docblock) rather than apiKey; this exercises
+		// that capability reporting is unaffected by that, same as every other provider here.
+		Array caps = executeGetCapabilities( "Bedrock" );
+		assertThat( caps ).containsAtLeast( "chat", "stream", "embeddings" );
+		assertThat( executeHasCapability( "Bedrock", "chat" ) ).isTrue();
+		assertThat( executeHasCapability( "Bedrock", "embeddings" ) ).isTrue();
+	}
+
 	// -----------------------------------------------------------------------
 	// Chat-only providers
 	// -----------------------------------------------------------------------

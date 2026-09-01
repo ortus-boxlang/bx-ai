@@ -21,6 +21,8 @@ import bxModules.bxai.models.runnables.*;
 import bxModules.bxai.models.middleware.AiMiddlewareResult;
 import bxModules.bxai.models.middleware.IAiMiddleware;
 import bxModules.bxai.models.middleware.StructMiddlewareAdapter;
+import bxModules.bxai.models.middleware.core.RunControlMiddleware;
+import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
 
 class extends="AiBaseRunnable" {
 
@@ -174,6 +176,10 @@ class extends="AiBaseRunnable" {
 		arguments.subAgents.each( subAgent => addSubAgent( subAgent ) )
 		// Middleware setup + Checkpointer
 		withMiddleware( arguments.middleware )
+		// Every agent can cancelRun()/steerRun() out of the box — internal, always attached,
+		// zero cost for callers who never use it. See RunControlMiddleware.bx.
+		variables.runControlMiddleware = new RunControlMiddleware()
+		withMiddleware( variables.runControlMiddleware )
 		// MCP Server Setup
 		withMCPServers( arguments.mcpServers )
 
@@ -314,9 +320,15 @@ class extends="AiBaseRunnable" {
 		// --- Fire Before Agent MiddleWare ---
 		// -------------------------------------------------------------------------------------------
 		// Merge parameters
-		var effectiveParams = variables.params.append( arguments.params )
+		// NOTE: struct.append() mutates the struct it's called ON in place — duplicate first, or
+		// per-call options (e.g. resume()'s transient _resumeContext) would permanently leak into
+		// this agent's own variables.params/variables.options and contaminate every future call.
+		var effectiveParams = variables.params.duplicate().append( arguments.params )
 		// Merge options (including returnFormat)
-		var effectiveOptions = variables.options.append( arguments.options )
+		var effectiveOptions = variables.options.duplicate().append( arguments.options )
+		// Guarantee threadId is always present on effectiveOptions — and therefore on the
+		// request it flows into — even when the caller didn't pass one and it was auto-generated
+		effectiveOptions.threadId = threadId
 		// Create the agent context of execution
 		var agentContext = {
 			runId			: runId,
@@ -357,22 +369,25 @@ class extends="AiBaseRunnable" {
 		var response = variables.aiModel.run( messages, effectiveParams, effectiveOptions )
 
 		// -------------------------------------------------------------------------------------------
-		// --- Handle Suspension ---
+		// --- Handle Terminal Middleware Results (suspend/cancel/reject) ---
 		// -------------------------------------------------------------------------------------------
-		// If the model returned a suspension, save checkpoint and return it
-		// However, if there is no checkpointer configured, we can't save state, so just return the suspension result without saving
-		if ( isObject( response ) && response instanceof "AiMiddlewareResult" && response.isSuspended() ) {
-			variables.checkpointer?.saveState(
-				threadId,
-				{
-					input       : arguments.input,
-					messages    : messages,
-					params      : effectiveParams,
-					options     : effectiveOptions,
-					suspendData : response.getData()
-				},
-				variables.checkpointTTL
-			)
+		// A terminal result means there is no successful assistant turn to store in memory.
+		// If the model returned a suspension specifically, also save a checkpoint before returning
+		// (if there is no checkpointer configured, we can't save state, so just return without saving).
+		if ( isObject( response ) && response instanceof "AiMiddlewareResult" && response.isTerminal() ) {
+			if ( response.isSuspended() ) {
+				variables.checkpointer?.saveState(
+					threadId,
+					{
+						input       : arguments.input,
+						messages    : messages,
+						params      : effectiveParams,
+						options     : effectiveOptions,
+						suspendData : response.getData()
+					},
+					variables.checkpointTTL
+				)
+			}
 			return response
 		}
 
@@ -437,10 +452,15 @@ class extends="AiBaseRunnable" {
 		// -------------------------------------------------------------------------------------------
 		// --- Fire Before Agent MiddleWare ---
 		// -------------------------------------------------------------------------------------------
-		// Merge parameters
-		var effectiveParams = variables.params.append( arguments.params )
+		// Merge parameters — duplicate first: struct.append() mutates in place, and per-call
+		// options (e.g. resume()'s transient _resumeContext) must never leak into this agent's
+		// own variables.params/variables.options and contaminate every future call.
+		var effectiveParams = variables.params.duplicate().append( arguments.params )
 		// Merge options
-		var effectiveOptions = variables.options.append( arguments.options )
+		var effectiveOptions = variables.options.duplicate().append( arguments.options )
+		// Guarantee threadId is always present on effectiveOptions — and therefore on the
+		// request it flows into — even when the caller didn't pass one and it was auto-generated
+		effectiveOptions.threadId = threadId
 		// Fire beforeAgentRun middleware (inbound)
 		var agentContext = {
 			agent    : this,
@@ -471,11 +491,33 @@ class extends="AiBaseRunnable" {
 		var userOnChunk = arguments.onChunk
 		// Store accumulated response for memory
 		var accumulated = ""
+		// Captures a terminal (suspend/cancel/reject) middleware result surfaced via the
+		// "middleware_stop" sentinel chunk emitted by the provider's chatStream() implementation
+		var terminalStreamResult = ""
 		var wrappedCallback = ( chunk ) => {
-			// Accumulate content
-			var content = arguments.chunk.choices?.first()?.delta?.content ?: ""
+			// A terminal middleware result (e.g. a suspended tool call) is delivered as a sentinel
+			// chunk rather than a normal delta — capture it instead of treating it as content.
+			// Normal content chunks from every provider have no `type` key, so this must be a
+			// safe-navigated read, not a direct one.
+			if ( isStruct( arguments.chunk ) && ( arguments.chunk.type ?: "" ) == "middleware_stop" ) {
+				terminalStreamResult = arguments.chunk.result
+				userOnChunk( arguments.chunk )
+				return
+			}
+			// Accumulate content ONLY — deliberately never `delta.reasoning`. Reasoning is
+			// the model's own thinking, not its answer: `accumulated` becomes the assistant
+			// message persisted to memory, so folding reasoning in here would replay the
+			// model's private thinking back to it as if it had said it. Reasoning still
+			// reaches the caller below, on the chunk itself.
+			// Guard on len(): a provider's final usage-only chunk carries `choices: []`, and
+			// first() on an EMPTY array throws — safe navigation only short-circuits a null. This
+			// used to be masked because the provider threw before delivering that chunk.
+			var content = ""
+			if ( isArray( arguments.chunk.choices ?: "" ) && arguments.chunk.choices.len() ) {
+				content = arguments.chunk.choices.first().delta?.content ?: ""
+			}
 			accumulated &= content;
-			// Call user callback with the chunk
+			// Call user callback with the chunk (content AND reasoning deltas alike)
 			userOnChunk( arguments.chunk )
 		}
 
@@ -489,6 +531,33 @@ class extends="AiBaseRunnable" {
 		// -------------------------------------------------------------------------------------------
 		variables.aiModel.stream( wrappedCallback, messages, effectiveParams, effectiveOptions )
 
+		// -------------------------------------------------------------------------------------------
+		// --- Handle Terminal Middleware Results (suspend/cancel/reject) ---
+		// -------------------------------------------------------------------------------------------
+		// A terminal result means there is no successful assistant turn to store in memory —
+		// mirrors run()'s handling. If the tool call suspended specifically, also save a
+		// checkpoint before stopping (if there is no checkpointer configured, we can't save
+		// state, so just stop).
+		if (
+			isObject( terminalStreamResult )
+			&& terminalStreamResult instanceof "AiMiddlewareResult"
+			&& terminalStreamResult.isTerminal()
+		) {
+			if ( terminalStreamResult.isSuspended() ) {
+				variables.checkpointer?.saveState(
+					threadId,
+					{
+						input       : arguments.input,
+						messages    : messages,
+						params      : effectiveParams,
+						options     : effectiveOptions,
+						suspendData : terminalStreamResult.getData()
+					},
+					variables.checkpointTTL
+				)
+			}
+			return
+		}
 
 		// -------------------------------------------------------------------------------------------
 		// --- Store in memory ---
@@ -718,19 +787,100 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
+	 * Get the checkpointer backend configured on this agent, if any.
+	 *
+	 * Middleware can call this from their onAttach( agent ) hook to link to the same
+	 * durable store the agent itself checkpoints to, rather than requiring a second,
+	 * separately-configured store that risks drifting out of sync with this one.
+	 *
+	 * @return The configured IAiMemory checkpointer, or null if none is configured
+	 */
+	any function getCheckpointer() {
+		return variables.checkpointer;
+	}
+
+	/**
+	 * Cancel the run currently active for a thread, from anywhere — a webhook handler, an
+	 * admin endpoint, any code path, with no reference to the original run()/stream() call
+	 * kept around. Addresses the run purely by threadId, the same identifier already passed
+	 * to run()/stream() via options.threadId.
+	 *
+	 * Takes effect at the run's next beforeLLMCall/beforeToolCall checkpoint, not instantly —
+	 * there is no mid-token-generation interruption. Safe no-op if nothing is active for that
+	 * thread (already finished, or a threadId was never passed to begin with).
+	 *
+	 * @threadId The thread whose active run should be cancelled
+	 * @reason   Human-readable reason, surfaced on the run's terminal result
+	 *
+	 * @return True if an active run was found and cancelled, false if nothing was active
+	 */
+	boolean function cancelRun( required string threadId, string reason = "Cancelled by caller." ) {
+		var wasCancelled = variables.runControlMiddleware.cancel( arguments.threadId, arguments.reason )
+		if ( wasCancelled ) {
+			BoxAnnounce( "onAIAgentRunCancel", { agent: this, threadId: arguments.threadId, reason: arguments.reason } )
+		}
+		return wasCancelled;
+	}
+
+	/**
+	 * Steer the run currently active for a thread — splices a new message into it at the
+	 * next checkpoint without restarting anything already in progress. Same addressing and
+	 * timing caveats as cancelRun(); safe no-op if nothing is active for that thread.
+	 *
+	 * @threadId The thread whose active run should be steered
+	 * @input    A string (wrapped as a user-role message) or a full message struct
+	 *
+	 * @return True if an active run was found and steered, false if nothing was active
+	 */
+	boolean function steerRun( required string threadId, required any input ) {
+		var wasSteered = variables.runControlMiddleware.steer( arguments.threadId, arguments.input )
+		if ( wasSteered ) {
+			BoxAnnounce( "onAIAgentRunSteer", { agent: this, threadId: arguments.threadId, input: arguments.input } )
+		}
+		return wasSteered;
+	}
+
+	/**
 	 * Resume a previously suspended run from its saved checkpoint.
 	 *
 	 * When a middleware suspends a run (e.g. HumanInTheLoopMiddleware), the agent
 	 * saves a checkpoint. Call this method after the human has approved/edited the
 	 * pending operation to continue execution.
 	 *
-	 * @decision  "approve", "reject", or "edit" — the human's decision
-	 * @threadId  The thread to resume. Defaults to this agent's current threadId.
-	 * @editedData When decision is "edit", pass the corrected data here.
+	 * @decision   For a single pending tool call: "approve"/"approve_always"/"approve_session"/
+	 *             "reject"/"edit"/"cancel" — the human's decision. Any value beyond plain
+	 *             approve/reject/edit is passed through as-is to HumanInteractionCoordinator,
+	 *             which is what actually interprets approve_always/approve_session into a
+	 *             recorded grant.
+	 *             For a BATCH suspension covering multiple simultaneous tool calls (see
+	 *             IAiMiddleware.afterToolBatch()): pass either one of those same strings,
+	 *             applied uniformly to every pending tool call in the batch, OR an array of
+	 *             per-call decision structs — { decision, editedData?, decidedBy?, reason? } —
+	 *             one per pending tool call, in the same order they were originally presented.
+	 *             A field omitted on a per-call struct falls back to this call's own top-level
+	 *             argument. approve_always/approve_session record a durable grant for every
+	 *             batch entry a gateway actually presented (those carry a suspensionID — see
+	 *             HumanInTheLoopMiddleware.afterToolBatch()); in mode "web" nothing was
+	 *             presented, so there is no grant to record and they resolve like "approve".
+	 * @threadId   The thread to resume. Defaults to this agent's current threadId.
+	 * @editedData When decision is "edit", pass the corrected data here. Fallback for any
+	 *             per-call struct (batch case) that omits its own editedData.
+	 * @decidedBy  Optional identifier of who made the decision (platform-native user id, email,
+	 *             etc.) — recorded on the resolved HumanInteractionDecision if the coordinator
+	 *             that originally suspended this run is still reachable. Fallback for the batch
+	 *             case, same as editedData.
+	 * @reason     Optional human-readable reason for the decision (e.g. why it was rejected).
+	 *             Fallback for the batch case, same as editedData.
 	 *
 	 * @return The agent response continuing from the checkpoint
 	 */
-	any function resume( required string decision, required string threadId, struct editedData = {} ) {
+	any function resume(
+		required any    decision,
+		required string threadId,
+		struct editedData = {},
+		string decidedBy  = "",
+		string reason      = ""
+	) {
 		if ( isNull( variables.checkpointer ) ) {
 			throw(
 				type   : "AiAgent.NoCheckpointer",
@@ -749,10 +899,64 @@ class extends="AiBaseRunnable" {
 		// Clear the checkpoint so it is not accidentally resumed twice
 		variables.checkpointer.clearState( arguments.threadId )
 
-		// Build a resume result to inject into the middleware context
+		var suspendData = savedState.suspendData ?: {}
+
+		// Batch suspension (see afterToolBatch()): the provider saved the raw assistant message
+		// it generated for this turn, plus a per-tool-call resume ledger — finish processing
+		// that same tool batch directly. No LLM replay, and nothing that already executed (or
+		// was already blocked) during the original attempt runs again.
+		if ( isStruct( suspendData ) && suspendData.keyExists( "assistantMessage" ) ) {
+			var resolved     = resolvePendingActions(
+				suspendData,
+				arguments.decision,
+				arguments.editedData,
+				arguments.decidedBy,
+				arguments.reason
+			)
+			var resumeLedger     = resolved.ledger
+			var pendingDecisions = resolved.pendingDecisions
+
+			// Every pending action carries its own suspensionID when a gateway individually
+			// presented it (see HumanInTheLoopMiddleware.afterToolBatch()) — mode "web" never
+			// sets one, since nothing was presented anywhere to begin with. Resolve each one
+			// through the SAME coordinator that presented it (positionally paired with
+			// pendingDecisions, built in the same order) so "approve_always"/"approve_session"
+			// still record a grant here, same as the single-tool/CLI resume path always has.
+			var pendingActions = suspendData.pendingActions ?: []
+			for ( var i = 1; i <= pendingActions.len(); i++ ) {
+				var suspensionID = pendingActions[ i ].suspensionID ?: ""
+				if ( len( suspensionID ) ) {
+					_resolveGatewaySuspension( suspensionID, pendingDecisions[ i ] )
+				}
+			}
+
+			var resumeResult = savedState
+			resumeResult[ "assistantMessage" ] = suspendData.assistantMessage
+			resumeResult[ "resumeLedger" ]     = resumeLedger
+
+			return run(
+				savedState.input,
+				savedState.params,
+				savedState.options.append( { _resumeContext: resumeResult } )
+			)
+		}
+
+		if ( isArray( arguments.decision ) ) {
+			throw(
+				type   : "AiAgent.InvalidResumeDecision",
+				message: "An array of decisions was passed to resume(), but the checkpoint for threadId " &
+					"'#arguments.threadId#' is a single-tool-call suspension, not a batch. Pass a single " &
+					"decision string instead."
+			)
+		}
+
+		// Single-tool suspension (legacy path) — re-run from the saved input; beforeToolCall()
+		// consumes resumeDecision the instant it reaches the tool call that suspended.
 		var resumeResult = savedState
 		resumeResult.resumeDecision = arguments.decision
 		resumeResult.editedData     = arguments.editedData
+		resumeResult.decidedBy      = arguments.decidedBy
+		resumeResult.reason         = arguments.reason
 
 		// Re-run from the savedState input with resume context in options
 		return run(
@@ -763,21 +967,170 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
+	 * Translate a resume() decision (single string, applied to every pending tool call, or an
+	 * array of per-call decision structs) into a finalized resume ledger — every entry's status
+	 * resolved to "execute"/"blocked"/"cancel" (plus editedArgs for an "edit"), ready for a
+	 * provider's resumeToolBatch() to act on without knowing anything about the human-decision
+	 * vocabulary itself. Entries that were already resolved during the original attempt (status
+	 * "execute"/"blocked" from a tool call that didn't need approval, or was synchronously
+	 * rejected) pass through untouched.
+	 *
+	 * Also returns `pendingDecisions` — the same per-call decision info, one entry per
+	 * originally-pending item, in the same order they appear in suspendData.pendingActions — so
+	 * the caller can resolve each gateway-presented suspension (see
+	 * HumanInteractionCoordinator.resolve()) with the actual decision applied to it, recording an
+	 * "approve_always"/"approve_session" grant exactly like the single-tool/CLI resume path does.
+	 *
+	 * @suspendData The checkpoint's suspendData struct (carries the pending resumeLedger)
+	 * @decision    A single decision string, or an array of per-call decision structs
+	 * @editedData  Fallback editedData for a per-call struct that omits its own
+	 * @decidedBy   Fallback decidedBy, same as editedData
+	 * @reason      Fallback reason, same as editedData
+	 *
+	 * @return { ledger: array, pendingDecisions: array }
+	 */
+	private struct function resolvePendingActions(
+		required struct suspendData,
+		required any    decision,
+		required struct editedData,
+		required string decidedBy,
+		required string reason
+	) {
+		var ledger = duplicate( arguments.suspendData.resumeLedger ?: [] )
+		var pendingIndexes = []
+		for ( var i = 1; i <= ledger.len(); i++ ) {
+			if ( ledger[ i ].status == "pending" ) {
+				pendingIndexes.append( i )
+			}
+		}
+
+		if ( pendingIndexes.isEmpty() ) {
+			return { ledger: ledger, pendingDecisions: [] }
+		}
+
+		var perCallDecisions = []
+		if ( isArray( arguments.decision ) ) {
+			if ( arguments.decision.len() != pendingIndexes.len() ) {
+				throw(
+					type   : "AiAgent.ResumeDecisionCountMismatch",
+					message: "This suspension has #pendingIndexes.len()# pending tool call(s) awaiting a " &
+						"decision, but #arguments.decision.len()# decision(s) were supplied. Pass exactly " &
+						"one decision per pending tool call (in the order they were originally presented), " &
+						"or pass a single decision string to apply it to all of them."
+				)
+			}
+			perCallDecisions = arguments.decision
+		} else {
+			// NOTE: capture into locals first — `arguments` inside a .map()/.filter()/.each()
+			// closure resolves to the CLOSURE's own arguments scope, not this function's.
+			var uniformDecision   = arguments.decision
+			var uniformEditedData = arguments.editedData
+			var uniformDecidedBy  = arguments.decidedBy
+			var uniformReason     = arguments.reason
+			perCallDecisions = pendingIndexes.map( ( idx ) => {
+				return {
+					decision  : uniformDecision,
+					editedData: uniformEditedData,
+					decidedBy : uniformDecidedBy,
+					reason    : uniformReason
+				}
+			} )
+		}
+
+		var pendingDecisions = []
+
+		for ( var i = 1; i <= pendingIndexes.len(); i++ ) {
+			var idx        = pendingIndexes[ i ]
+			var rawItem     = perCallDecisions[ i ]
+			var item        = isStruct( rawItem ) ? rawItem : { decision: rawItem }
+			var itemDecision   = item.decision ?: arguments.decision
+			var itemEditedData = item.editedData ?: arguments.editedData
+			var itemDecidedBy  = item.decidedBy ?: arguments.decidedBy
+			var itemReason     = item.reason ?: arguments.reason
+
+			if ( !len( itemReason ) && itemDecision == "reject" ) {
+				itemReason = "Rejected by human operator during resume."
+			}
+
+			pendingDecisions.append( {
+				decision  : itemDecision,
+				editedData: itemEditedData,
+				decidedBy : itemDecidedBy,
+				reason    : itemReason
+			} )
+
+			if ( itemDecision == "approve" || itemDecision == "approve_always" || itemDecision == "approve_session" ) {
+				ledger[ idx ].status = "execute"
+			} else if ( itemDecision == "edit" ) {
+				ledger[ idx ].status     = "execute"
+				ledger[ idx ].editedArgs = itemEditedData.correctedArgs ?: itemEditedData
+			} else if ( itemDecision == "cancel" ) {
+				ledger[ idx ].status = "cancel"
+				ledger[ idx ].reason = itemReason
+			} else {
+				// reject (or anything else)
+				ledger[ idx ].status = "blocked"
+				ledger[ idx ].reason = itemReason
+			}
+		}
+
+		return { ledger: ledger, pendingDecisions: pendingDecisions }
+	}
+
+	/**
+	 * Resolve a gateway-presented pending item (see afterToolBatch()) through the SAME
+	 * HumanInteractionCoordinator that presented it — reusing its existing atomic-claim and
+	 * grant-recording logic (an "approve_always"/"approve_session" decision here records a
+	 * durable/session grant exactly like the single-tool/CLI resume path always has) rather than
+	 * reimplementing any of that here. A silent no-op if no HumanInTheLoopMiddleware is attached,
+	 * or the coordinator can no longer find the suspension (e.g. a different process already
+	 * resolved it) — resume() must still succeed either way; this is bookkeeping, not the source
+	 * of truth for what happens to the tool call itself (that's the resume ledger).
+	 *
+	 * @suspensionID   The suspension to resolve
+	 * @decisionInfo   { decision, editedData, decidedBy, reason } — the decision applied to it
+	 */
+	private void function _resolveGatewaySuspension( required string suspensionID, required struct decisionInfo ) {
+		for ( var mw in variables.middleware ) {
+			if ( isInstanceOf( mw, "HumanInTheLoopMiddleware" ) ) {
+				try {
+					var decision = new HumanInteractionDecision(
+						decision  : arguments.decisionInfo.decision,
+						editedData: arguments.decisionInfo.editedData ?: {},
+						reason    : arguments.decisionInfo.reason ?: "",
+						decidedBy : arguments.decisionInfo.decidedBy ?: ""
+					)
+					mw.getCoordinator().resolve( arguments.suspensionID, decision )
+				} catch ( any e ) {
+					// best-effort only
+				}
+				return
+			}
+		}
+	}
+
+	/**
 	 * Resume a previously suspended streaming run from its saved checkpoint.
 	 *
-	 * Mirror of resume() for streaming agents. Calls stream() with the saved input
-	 * and injects the resume decision into options so middleware can act on it.
+	 * Mirror of resume() for streaming agents — see its docs for the batch-decision vocabulary
+	 * (a single decision applied to every pending call, or an array of per-call decisions) and
+	 * the no-replay mechanics. Calls stream() with the saved input and injects the resume
+	 * decision into options so middleware/providers can act on it.
 	 *
-	 * @onChunk   Callback for each streamed chunk
-	 * @decision  "approve", "reject", or "edit"
-	 * @threadId  The thread to resume. Defaults to this agent's current threadId.
-	 * @editedData When decision is "edit", pass corrected data here.
+	 * @onChunk    Callback for each streamed chunk
+	 * @decision   See resume()'s docs — a single decision string or an array of per-call decision structs
+	 * @threadId   The thread to resume. Defaults to this agent's current threadId.
+	 * @editedData When decision is "edit", pass corrected data here. Fallback for the batch case.
+	 * @decidedBy  Optional identifier of who made the decision. Fallback for the batch case.
+	 * @reason     Optional human-readable reason for the decision. Fallback for the batch case.
 	 */
 	void function resumeStream(
 		required function onChunk,
-		required string   decision,
+		required any       decision,
 		required string   threadId,
-		struct            editedData = {}
+		struct            editedData = {},
+		string            decidedBy  = "",
+		string            reason      = ""
 	) {
 		if ( isNull( variables.checkpointer ) ) {
 			throw(
@@ -796,9 +1149,55 @@ class extends="AiBaseRunnable" {
 
 		variables.checkpointer.clearState( arguments.threadId )
 
+		var suspendData = savedState.suspendData ?: {}
+
+		// Batch suspension — see resume() for the full explanation.
+		if ( isStruct( suspendData ) && suspendData.keyExists( "assistantMessage" ) ) {
+			var resolved     = resolvePendingActions(
+				suspendData,
+				arguments.decision,
+				arguments.editedData,
+				arguments.decidedBy,
+				arguments.reason
+			)
+			var resumeLedger     = resolved.ledger
+			var pendingDecisions = resolved.pendingDecisions
+
+			var pendingActions = suspendData.pendingActions ?: []
+			for ( var i = 1; i <= pendingActions.len(); i++ ) {
+				var suspensionID = pendingActions[ i ].suspensionID ?: ""
+				if ( len( suspensionID ) ) {
+					_resolveGatewaySuspension( suspensionID, pendingDecisions[ i ] )
+				}
+			}
+
+			var resumeResult = savedState
+			resumeResult[ "assistantMessage" ] = suspendData.assistantMessage
+			resumeResult[ "resumeLedger" ]     = resumeLedger
+
+			stream(
+				arguments.onChunk,
+				savedState.input,
+				savedState.params,
+				savedState.options.append( { _resumeContext: resumeResult } )
+			)
+			return
+		}
+
+		if ( isArray( arguments.decision ) ) {
+			throw(
+				type   : "AiAgent.InvalidResumeDecision",
+				message: "An array of decisions was passed to resumeStream(), but the checkpoint for threadId " &
+					"'#arguments.threadId#' is a single-tool-call suspension, not a batch. Pass a single " &
+					"decision string instead."
+			)
+		}
+
 		var resumeResult = savedState
 		resumeResult.resumeDecision = arguments.decision
 		resumeResult.editedData     = arguments.editedData
+		resumeResult.decidedBy      = arguments.decidedBy
+		resumeResult.reason         = arguments.reason
 
 		stream(
 			arguments.onChunk,
