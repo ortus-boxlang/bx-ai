@@ -17,7 +17,7 @@
 		"boxlang"
 	],
 	"boxlang": {
-		"minimumVersion": "1.8.0",
+		"minimumVersion": "1.14.0",
 		"moduleName": "bxai"
 	},
 	"private": false,
