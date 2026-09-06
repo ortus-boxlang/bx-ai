@@ -1,6 +1,7 @@
 package ortus.boxlang.ai.middleware;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
+import ortus.boxlang.runtime.types.exceptions.BoxRuntimeException;
 
 @DisplayName( "FlightRecorderMiddleware Unit Tests" )
 public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
@@ -890,7 +892,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 
 		        handlerCalled = false;
 		        replayed = rep.wrapLLMCall(
-		            context: { stream: true, dataPacket: {} },
+		            context: { stream: true, transport: "bedrock-event-stream", dataPacket: {} },
 		            handler: function() { handlerCalled = true; return "LIVE"; }
 		        );
 
@@ -944,7 +946,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "handlerCalled" ) ) ).isTrue();
 	}
 
-	@DisplayName( "replay mode: a stream call with no recorded stream body passes through, never returns a struct" )
+	@DisplayName( "replay mode + strict=false: a stream call with no recorded stream body passes through, never returns a struct" )
 	@Test
 	public void testReplayStreamFallsThroughToHandler( @TempDir Path tempDir ) throws IOException {
 		// Tape holds only an ordinary chat interaction — handing that struct to a stream
@@ -967,7 +969,7 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		    """
 		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
 
-		        mw = new FlightRecorderMiddleware( mode: "replay", fixturePath: "%s" );
+		        mw = new FlightRecorderMiddleware( mode: "replay", strict: false, fixturePath: "%s" );
 		        mw.beforeAgentRun( context: {} );
 
 		        handlerCalled = false;
@@ -987,6 +989,297 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 
 		assertThat( variables.getAsBoolean( Key.of( "passedThrough" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "notAStruct" ) ) ).isTrue();
+	}
+
+	// ---- Stream/sync interaction discrimination ----
+
+	@DisplayName( "replay mode + strict=false: the sync llm path SKIPS a recorded raw stream body" )
+	@Test
+	public void testSyncReplaySkipsStreamInteraction( @TempDir Path tempDir ) throws IOException {
+		// A `stream: true` entry is a raw provider body. Handing it to the sync path (which expects
+		// a parsed chat struct) yields garbage downstream, so it must never satisfy an llm request.
+		String	fixturePath	= tempDir.resolve( "sync-skips-stream.json" ).toString();
+		String	fixture		= """
+		                      {
+		                        "version": "1",
+		                        "recordedAt": "2026-01-01T00:00:00",
+		                        "agentName": "test-agent",
+		                        "interactions": [
+		                          { "seq": 1, "type": "llm", "stream": true, "transport": "bedrock-event-stream", "request": {}, "response": "RAW-EVENT-STREAM-BODY" },
+		                          { "seq": 2, "type": "llm", "request": {}, "response": { "id": "chat-resp" } }
+		                        ]
+		                      }
+		                      """;
+		Files.writeString( Path.of( fixturePath ), fixture );
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        mw = new FlightRecorderMiddleware( mode: "replay", strict: false, fixturePath: "%s" );
+		        mw.beforeAgentRun( context: {} );
+
+		        handlerCalled = false;
+		        result = mw.wrapLLMCall(
+		            context: { dataPacket: {} },
+		            handler: function() { handlerCalled = true; return { id: "LIVE" }; }
+		        );
+
+		        noLiveCall    = !handlerCalled;
+		        gotChatStruct = isStruct( result ) && ( result.id ?: "" ) == "chat-resp";
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "noLiveCall" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "gotChatStruct" ) ) ).isTrue();
+	}
+
+	@DisplayName( "replay mode + strict=true: the sync llm path THROWS on a recorded raw stream body" )
+	@Test
+	public void testSyncReplayStrictRejectsStreamInteraction( @TempDir Path tempDir ) throws IOException {
+		String	fixturePath	= tempDir.resolve( "sync-rejects-stream.json" ).toString();
+		String	fixture		= """
+		                      {
+		                        "version": "1",
+		                        "recordedAt": "2026-01-01T00:00:00",
+		                        "agentName": "test-agent",
+		                        "interactions": [
+		                          { "seq": 1, "type": "llm", "stream": true, "request": {}, "response": "RAW-EVENT-STREAM-BODY" }
+		                        ]
+		                      }
+		                      """;
+		Files.writeString( Path.of( fixturePath ), fixture );
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        mw = new FlightRecorderMiddleware( mode: "replay", fixturePath: "%s" );
+		        mw.beforeAgentRun( context: {} );
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		var thrown = assertThrows(
+		    BoxRuntimeException.class,
+		    () -> runtime.executeSource(
+		        "mw.wrapLLMCall( context: { dataPacket: {} }, handler: function() { return { id: \"LIVE\" }; } )",
+		        context
+		    )
+		);
+		assertThat( thrown.getType() ).isEqualTo( "FlightRecorder.TypeMismatch" );
+	}
+
+	@DisplayName( "replay mode: a stream entry recorded on another transport is NOT consumed" )
+	@Test
+	public void testStreamReplayTransportMismatchDoesNotConsume( @TempDir Path tempDir ) throws IOException {
+		// The Cohere/Bedrock case: an emit-based Cohere stream must not swallow Bedrock's raw
+		// event-stream body just because both are `stream: true`.
+		String	fixturePath	= tempDir.resolve( "stream-transport.json" ).toString();
+		String	fixture		= """
+		                      {
+		                        "version": "1",
+		                        "recordedAt": "2026-01-01T00:00:00",
+		                        "agentName": "test-agent",
+		                        "interactions": [
+		                          { "seq": 1, "type": "llm", "stream": true, "transport": "bedrock-event-stream", "request": { "model": "anthropic.claude" }, "response": "RAW-EVENT-STREAM-BODY" }
+		                        ]
+		                      }
+		                      """;
+		Files.writeString( Path.of( fixturePath ), fixture );
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        mw = new FlightRecorderMiddleware( mode: "replay", strict: false, fixturePath: "%s" );
+		        mw.beforeAgentRun( context: {} );
+
+		        // Cohere-shaped call: no transport marker at all
+		        cohereHandlerCalled = false;
+		        cohereResult = mw.wrapLLMCall(
+		            context: { stream: true, dataPacket: { model: "command-r" } },
+		            handler: function() { cohereHandlerCalled = true; return "COHERE-LIVE"; }
+		        );
+
+		        cohereFellThrough = cohereHandlerCalled && cohereResult == "COHERE-LIVE";
+
+		        // Same transport but a DIFFERENT request also misses
+		        wrongRequestHandlerCalled = false;
+		        mw.wrapLLMCall(
+		            context: { stream: true, transport: "bedrock-event-stream", dataPacket: { model: "amazon.titan", messages: [ {}, {} ] } },
+		            handler: function() { wrongRequestHandlerCalled = true; return "OTHER-LIVE"; }
+		        );
+
+		        wrongRequestFellThrough = wrongRequestHandlerCalled;
+
+		        // The Bedrock entry was never consumed, so the matching call still replays it
+		        bedrockHandlerCalled = false;
+		        bedrockResult = mw.wrapLLMCall(
+		            context: { stream: true, transport: "bedrock-event-stream", dataPacket: { model: "anthropic.claude" } },
+		            handler: function() { bedrockHandlerCalled = true; return "BEDROCK-LIVE"; }
+		        );
+
+		        bedrockReplayed = !bedrockHandlerCalled && bedrockResult == "RAW-EVENT-STREAM-BODY";
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "cohereFellThrough" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "wrongRequestFellThrough" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bedrockReplayed" ) ) ).isTrue();
+	}
+
+	@DisplayName( "replay mode + strict=true: an unmatched stream call throws StreamReplayUnsupported" )
+	@Test
+	public void testStrictUnmatchedStreamThrows( @TempDir Path tempDir ) throws IOException {
+		// A strict replay promises zero live calls — an emit-based transport (nothing taped) must
+		// fail loudly rather than quietly hitting the network.
+		String	fixturePath	= tempDir.resolve( "stream-strict-nomatch.json" ).toString();
+		String	fixture		= """
+		                      {
+		                        "version": "1",
+		                        "recordedAt": "2026-01-01T00:00:00",
+		                        "agentName": "test-agent",
+		                        "interactions": [
+		                          { "seq": 1, "type": "llm", "request": {}, "response": { "id": "chat-resp" } }
+		                        ]
+		                      }
+		                      """;
+		Files.writeString( Path.of( fixturePath ), fixture );
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        mw = new FlightRecorderMiddleware( mode: "replay", fixturePath: "%s" );
+		        mw.beforeAgentRun( context: {} );
+		        liveCalled = false;
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		var thrown = assertThrows(
+		    BoxRuntimeException.class,
+		    () -> runtime.executeSource(
+		        "mw.wrapLLMCall( context: { stream: true, dataPacket: {} }, handler: function() { liveCalled = true; return \"LIVE\"; } )",
+		        context
+		    )
+		);
+		assertThat( thrown.getType() ).isEqualTo( "FlightRecorder.StreamReplayUnsupported" );
+
+		runtime.executeSource( "noLiveCall = !liveCalled", context );
+		assertThat( variables.getAsBoolean( Key.of( "noLiveCall" ) ) ).isTrue();
+	}
+
+	@DisplayName( "storageCallback receives an independent tape snapshot, unaffected by later appends" )
+	@Test
+	public void testStorageCallbackSnapshotIsIndependent( @TempDir Path tempDir ) {
+		// A shallow .copy() shared the SAME interactions array, so the "snapshot" a callback
+		// persisted kept growing behind its back.
+		String fixturePath = tempDir.resolve( "callback-snapshot.json" ).toString();
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        snapshots = [];
+
+		        mw = new FlightRecorderMiddleware(
+		            mode           : "record",
+		            fixturePath    : "%s",
+		            storageCallback: function( tape, interaction ) { snapshots.append( tape ); }
+		        );
+		        mw.beforeAgentRun( context: {} );
+
+		        mw.wrapLLMCall(
+		            context : { dataPacket: { model: "gpt-4", messages: [] } },
+		            handler : function() { return { id: "resp-1" }; }
+		        );
+		        mw.wrapLLMCall(
+		            context : { dataPacket: { model: "gpt-4", messages: [] } },
+		            handler : function() { return { id: "resp-2" }; }
+		        );
+
+		        twoSnapshots     = snapshots.len() == 2;
+		        firstStillHasOne = snapshots[ 1 ].interactions.len() == 1;
+		        secondHasTwo     = snapshots[ 2 ].interactions.len() == 2;
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "twoSnapshots" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "firstStillHasOne" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "secondHasTwo" ) ) ).isTrue();
+	}
+
+	@DisplayName( "record mode: the taped request is frozen, so later mutation of the live messages array cannot break replay" )
+	@Test
+	public void testRecordedRequestIsSnapshotNotAlias( @TempDir Path tempDir ) {
+		// Providers hand wrapLLMCall an ALIAS of the live messages array and the tool loop keeps
+		// appending to it; _saveSnapshot() rewrites the whole tape on every interaction, so an
+		// aliased request would fingerprint every turn with the FINAL message count and strict
+		// stream replay would then reject turn 1.
+		String fixturePath = tempDir.resolve( "aliased-request.json" ).toString();
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        // ONE live array, mutated between the two turns — exactly what a tool loop does.
+		        liveMessages = [ { role: "user", content: "hi" } ];
+		        packet       = { model: "command-r", messages: liveMessages };
+
+		        rec = new FlightRecorderMiddleware( mode: "record", fixturePath: "%s" );
+		        rec.beforeAgentRun( context: {} );
+
+		        rec.wrapLLMCall(
+		            context : { stream: true, transport: "cohere-sse", dataPacket: packet },
+		            handler : function() { return "BODY-TURN-1"; }
+		        );
+
+		        // The tool loop appends the assistant turn + the tool result to the SAME array
+		        liveMessages.append( { role: "assistant", content: "calling tool" } );
+		        liveMessages.append( { role: "tool", content: "tool output" } );
+
+		        rec.wrapLLMCall(
+		            context : { stream: true, transport: "cohere-sse", dataPacket: packet },
+		            handler : function() { return "BODY-TURN-2"; }
+		        );
+
+		        // Replay with a FRESH strict instance reading the fixture off disk
+		        play = new FlightRecorderMiddleware( mode: "replay", fixturePath: "%s" );
+		        play.beforeAgentRun( context: {} );
+
+		        liveCalls = 0;
+		        turn1 = play.wrapLLMCall(
+		            context : { stream: true, transport: "cohere-sse", dataPacket: { model: "command-r", messages: [ { role: "user", content: "hi" } ] } },
+		            handler : function() { liveCalls++; return "LIVE"; }
+		        );
+		        turn2 = play.wrapLLMCall(
+		            context : { stream: true, transport: "cohere-sse", dataPacket: { model: "command-r", messages: [ {}, {}, {} ] } },
+		            handler : function() { liveCalls++; return "LIVE"; }
+		        );
+
+		        bothReplayed = turn1 == "BODY-TURN-1" && turn2 == "BODY-TURN-2" && liveCalls == 0;
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ), fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "bothReplayed" ) ) ).isTrue();
 	}
 
 	// ---- Subclass overriding _saveSnapshot ----

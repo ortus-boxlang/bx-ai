@@ -157,6 +157,130 @@ public class AiAgentResumeStreamGuardTest extends BaseIntegrationTest {
 		}
 	}
 
+	@DisplayName( "resume() rejecting a wrong decision count leaves the checkpoint retryable" )
+	@Test
+	public void testResumeDecisionCountMismatchKeepsCheckpoint() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolCalls = 0
+		        toolA     = aiTool( "toolA", "Tool A", () => { toolCalls++; return "A done" } )
+		        toolB     = aiTool( "toolB", "Tool B", () => { toolCalls++; return "B done" } )
+
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "toolA", arguments: {} }, { name: "toolB", arguments: {} } ] },
+		            "both ran."
+		        ] )
+
+		        checkpointer = aiMemory( "cache" )
+		        agent = aiAgent(
+		            model       : new AiModel( service: mockSvc ),
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" ) ],
+		            checkpointer: checkpointer,
+		            checkpointTTL: 5
+		        )
+
+		        agent.run( "please run both tools", {}, { threadId: "count-mismatch-sync" } )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		// WRONG count: two pending calls, one decision
+		var thrown = assertThrows(
+		    BoxRuntimeException.class,
+		    () -> runtime.executeSource( "agent.resume( [ { decision: \"approve\" } ], \"count-mismatch-sync\" )", context )
+		);
+		assertThat( thrown.getType() ).isEqualTo( "AiAgent.ResumeDecisionCountMismatch" );
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        // Checkpoint must have survived the rejected resume
+		        reloaded           = checkpointer.loadState( "count-mismatch-sync" )
+		        checkpointSurvived = !reloaded.isEmpty() && ( reloaded.suspendData ?: {} ).keyExists( "assistantMessage" )
+		        toolsNotRunYet     = toolCalls == 0
+
+		        // Retry with the CORRECT count now succeeds
+		        agent.resume( [ { decision: "approve" }, { decision: "approve" } ], "count-mismatch-sync" )
+		        bothToolsRan = toolCalls == 2
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "checkpointSurvived" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolsNotRunYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bothToolsRan" ) ) ).isTrue();
+	}
+
+	@DisplayName( "resumeStream() rejecting a wrong decision count leaves the checkpoint retryable" )
+	@Test
+	public void testResumeStreamDecisionCountMismatchKeepsCheckpoint() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolCalls = 0
+		        toolA     = aiTool( "toolA", "Tool A", () => { toolCalls++; return "A done" } )
+		        toolB     = aiTool( "toolB", "Tool B", () => { toolCalls++; return "B done" } )
+
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "toolA", arguments: {} }, { name: "toolB", arguments: {} } ] },
+		            "both ran."
+		        ] )
+
+		        checkpointer = aiMemory( "cache" )
+		        agent = aiAgent(
+		            model       : new AiModel( service: mockSvc ),
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" ) ],
+		            checkpointer: checkpointer,
+		            checkpointTTL: 5
+		        )
+
+		        agent.stream( ( chunk ) => {}, "please run both tools", {}, { threadId: "count-mismatch-stream" } )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		var thrown = assertThrows(
+		    BoxRuntimeException.class,
+		    () -> runtime.executeSource(
+		        "agent.resumeStream( ( chunk ) => {}, [ { decision: \"approve\" } ], \"count-mismatch-stream\" )",
+		        context
+		    )
+		);
+		assertThat( thrown.getType() ).isEqualTo( "AiAgent.ResumeDecisionCountMismatch" );
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        reloaded           = checkpointer.loadState( "count-mismatch-stream" )
+		        checkpointSurvived = !reloaded.isEmpty() && ( reloaded.suspendData ?: {} ).keyExists( "assistantMessage" )
+		        toolsNotRunYet     = toolCalls == 0
+
+		        agent.resumeStream( ( chunk ) => {}, [ { decision: "approve" }, { decision: "approve" } ], "count-mismatch-stream" )
+		        bothToolsRan = toolCalls == 2
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "checkpointSurvived" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolsNotRunYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bothToolsRan" ) ) ).isTrue();
+	}
+
 	@DisplayName( "The guard leaves a supported provider's single-call resumeStream() untouched" )
 	@Test
 	public void testResumeStreamStillWorksForSupportedProvider() {

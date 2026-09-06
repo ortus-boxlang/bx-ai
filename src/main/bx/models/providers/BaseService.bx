@@ -943,13 +943,27 @@ abstract class implements="IAiService" {
 	private any function extractJSONContent( required string content ){
 		var result = new JSONExtractorTransformer( { strictMode : false } ).transform( arguments.content );
 
-		// Extraction found nothing usable - warn so this degraded path isn't silent, but never throw
+		// An empty struct is ambiguous in lenient mode: it is both "nothing was found" AND the
+		// correct parse of a literal `{}` reply. Ask the strict/returnRaw extractor which one it
+		// was — it throws only when there is genuinely nothing to extract — so a model that
+		// legitimately answered `{}` no longer logs a false warning.
 		if ( isStruct( result ) && structIsEmpty( result ) && len( arguments.content.trim() ) > 0 ) {
-			writeLog(
-				text: "aiChat returnFormat json: no parseable JSON found in model reply (first 200 chars): " & left( arguments.content, 200 ),
-				type: "warn",
-				log : "ai"
-			);
+			// `local.` on every read/write: inside a catch block an unqualified identifier resolves
+			// to variables/methods BEFORE locals, so a bare `foundJSON = false` here would write to
+			// the instance scope and leave the local still true — the warning would never fire.
+			local.foundJSON = true;
+			try {
+				new JSONExtractorTransformer( { strictMode : true, returnRaw : true } ).transform( arguments.content );
+			} catch( any e ){
+				local.foundJSON = false;
+			}
+			if ( !local.foundJSON ) {
+				writeLog(
+					text: "aiChat returnFormat json: no parseable JSON found in model reply (first 200 chars): " & left( arguments.content, 200 ),
+					type: "warn",
+					log : "ai"
+				);
+			}
 		}
 
 		return result;
@@ -981,9 +995,12 @@ abstract class implements="IAiService" {
 		// strictMode + returnRaw make "found nothing" an exception rather than an empty struct,
 		// so a model reply of "Here you go: {}" populates an empty struct instead of being
 		// mistaken for a failed extraction.
-		var rawJSON = "";
 		try {
-			rawJSON = new JSONExtractorTransformer( { strictMode : true, returnRaw : true } ).transform( arguments.content );
+			var rawJSON = new JSONExtractorTransformer( { strictMode : true, returnRaw : true } ).transform( arguments.content );
+			// Deserialize INSIDE the same try: returnRaw hands back a string the extractor believed
+			// was JSON, and a malformed one threw a bare JSON parse error past this method instead
+			// of the documented StructuredOutputError.
+			return jsonDeserialize( rawJSON );
 		} catch( any e ){
 			writeLog(
 				text: "Structured output requested but no parseable JSON found in model reply (first 200 chars): " & left( arguments.content, 200 ),
@@ -996,8 +1013,6 @@ abstract class implements="IAiService" {
 				detail : "Reply (first 500 chars): " & left( arguments.content, 500 ) & " | Extractor: " & e.message
 			);
 		}
-
-		return jsonDeserialize( rawJSON );
 	}
 
 	/**

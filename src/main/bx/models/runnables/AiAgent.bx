@@ -896,23 +896,38 @@ class extends="AiBaseRunnable" {
 			)
 		}
 
-		// Clear the checkpoint so it is not accidentally resumed twice
-		variables.checkpointer.clearState( arguments.threadId )
-
 		var suspendData = savedState.suspendData ?: {}
 
 		// Batch suspension (see afterToolBatch()): the provider saved the raw assistant message
 		// it generated for this turn, plus a per-tool-call resume ledger — finish processing
 		// that same tool batch directly. No LLM replay, and nothing that already executed (or
 		// was already blocked) during the original attempt runs again.
-		if ( isStruct( suspendData ) && suspendData.keyExists( "assistantMessage" ) ) {
-			var resolved     = resolvePendingActions(
+		var isBatch  = isStruct( suspendData ) && suspendData.keyExists( "assistantMessage" )
+		var resolved = {}
+
+		// Everything that can reject this call runs BEFORE clearState(), so a rejected resume()
+		// leaves the checkpoint intact and can be retried with a corrected decision.
+		if ( isBatch ) {
+			resolved = resolvePendingActions(
 				suspendData,
 				arguments.decision,
 				arguments.editedData,
 				arguments.decidedBy,
 				arguments.reason
 			)
+		} else if ( isArray( arguments.decision ) ) {
+			throw(
+				type   : "AiAgent.InvalidResumeDecision",
+				message: "An array of decisions was passed to resume(), but the checkpoint for threadId " &
+					"'#arguments.threadId#' is a single-tool-call suspension, not a batch. Pass a single " &
+					"decision string instead."
+			)
+		}
+
+		// Clear the checkpoint so it is not accidentally resumed twice
+		variables.checkpointer.clearState( arguments.threadId )
+
+		if ( isBatch ) {
 			var resumeLedger     = resolved.ledger
 			var pendingDecisions = resolved.pendingDecisions
 
@@ -938,15 +953,6 @@ class extends="AiBaseRunnable" {
 				savedState.input,
 				savedState.params,
 				savedState.options.append( { _resumeContext: resumeResult } )
-			)
-		}
-
-		if ( isArray( arguments.decision ) ) {
-			throw(
-				type   : "AiAgent.InvalidResumeDecision",
-				message: "An array of decisions was passed to resume(), but the checkpoint for threadId " &
-					"'#arguments.threadId#' is a single-tool-call suspension, not a batch. Pass a single " &
-					"decision string instead."
 			)
 		}
 
@@ -1155,8 +1161,16 @@ class extends="AiBaseRunnable" {
 		// The streaming-resume guard only applies to the batch path: the single-tool-call path
 		// replays the LLM by design (beforeToolCall() consumes resumeDecision), which every
 		// provider supports regardless of resumeToolBatchStream().
+		var resolved = {}
 		if ( isBatch ) {
 			_assertStreamingResumeSupported()
+			resolved = resolvePendingActions(
+				suspendData,
+				arguments.decision,
+				arguments.editedData,
+				arguments.decidedBy,
+				arguments.reason
+			)
 		} else if ( isArray( arguments.decision ) ) {
 			throw(
 				type   : "AiAgent.InvalidResumeDecision",
@@ -1170,13 +1184,6 @@ class extends="AiBaseRunnable" {
 
 		// Batch suspension — see resume() for the full explanation.
 		if ( isBatch ) {
-			var resolved     = resolvePendingActions(
-				suspendData,
-				arguments.decision,
-				arguments.editedData,
-				arguments.decidedBy,
-				arguments.reason
-			)
 			var resumeLedger     = resolved.ledger
 			var pendingDecisions = resolved.pendingDecisions
 
@@ -1240,7 +1247,8 @@ class extends="AiBaseRunnable" {
 			type   : "AiAgent.StreamingResumeUnsupported",
 			message: "Provider '#service.getName()#' cannot resume a suspended tool batch while streaming — " &
 				"its chatStream() ignores the resume context, so resuming here would call the LLM again and " &
-				"never run the approved tools. Use resume() (non-streaming) for this thread instead."
+				"never run the approved tools. Use resume() (non-streaming) for this thread instead, if the " &
+				"provider supports non-streaming tool resume."
 		)
 	}
 
