@@ -425,4 +425,165 @@ public class ClaudeTest extends BaseIntegrationTest {
 		// Verify callback was invoked
 		assertThat( variables.get( "chunkCount" ) ).isNotNull();
 	}
+
+	@DisplayName( "chatStream injects the forced structured_output tool into the stream packet" )
+	@Test
+	public void testStreamStructuredOutputInjectsForcedTool() {
+		// Deterministic / credential-free: a beforeLLMCall middleware captures the streaming
+		// request packet and short-circuits before any SSE/HTTP call.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService( "claude", { apiKey: "dummy-key" } )
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract the person: John Doe, age 30" ),
+					{ model: "claude-sonnet-4-5", max_tokens: 200 },
+					{
+						provider: "claude",
+						schema: {
+							"type": "object",
+							"properties": {
+								"name": { "type": "string" },
+								"age":  { "type": "integer" }
+							},
+							"required": [ "name", "age" ]
+						}
+					}
+				)
+
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+
+				provider.chatStream( chatRequest, ( chunk ) => {} )
+
+				isStream       = captured.packet.stream
+				toolCount      = captured.packet.tools.len()
+				toolName       = captured.packet.tools[ 1 ].name
+				hasNameProp    = captured.packet.tools[ 1 ].input_schema.properties.keyExists( "name" )
+				choiceType     = captured.packet.tool_choice.type
+				choiceName     = captured.packet.tool_choice.name
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isStream" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "toolCount" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "toolName" ) ) ).isEqualTo( "structured_output" );
+		assertThat( variables.getAsBoolean( Key.of( "hasNameProp" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "choiceType" ) ) ).isEqualTo( "tool" );
+		assertThat( variables.get( Key.of( "choiceName" ) ) ).isEqualTo( "structured_output" );
+	}
+
+	@DisplayName( "Streamed structured_output input_json_delta fragments populate the schema" )
+	@Test
+	public void testStreamStructuredOutputAccumulatesDeltas() {
+		// Deterministic: drives the three public stream helpers with the exact Anthropic SSE
+		// events (already deserialized, as the onChunk handler sees them). No HTTP.
+		// A real tool_use block on a different index is interleaved to prove the accumulator
+		// only claims its own block.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService( "claude", { apiKey: "dummy-key" } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract: John Doe, age 30" ),
+					{ model: "claude-sonnet-4-5" },
+					{
+						provider: "claude",
+						schema: {
+							"type": "object",
+							"properties": { "name": { "type": "string" }, "age": { "type": "integer" } },
+							"required": [ "name", "age" ]
+						}
+					}
+				)
+
+				soState = provider.newStructuredOutputStreamState()
+				events  = [
+					{ "type": "message_start", "message": { "id": "msg_1", "model": "claude-sonnet-4-5" } },
+					{ "type": "content_block_start", "index": 0,
+					  "content_block": { "type": "tool_use", "id": "toolu_other", "name": "get_weather", "input": {} } },
+					{ "type": "content_block_delta", "index": 0,
+					  "delta": { "type": "input_json_delta", "partial_json": '{"city":"KC"}' } },
+					{ "type": "content_block_start", "index": 1,
+					  "content_block": { "type": "tool_use", "id": "toolu_1", "name": "structured_output", "input": {} } },
+					{ "type": "content_block_delta", "index": 1,
+					  "delta": { "type": "input_json_delta", "partial_json": '{"name": "Joh' } },
+					{ "type": "content_block_delta", "index": 1,
+					  "delta": { "type": "input_json_delta", "partial_json": 'n Doe", "ag' } },
+					{ "type": "content_block_delta", "index": 1,
+					  "delta": { "type": "input_json_delta", "partial_json": 'e": 30}' } },
+					{ "type": "message_delta", "delta": { "stop_reason": "tool_use" } }
+				]
+
+				consumedCount = 0
+				for( evt in events ){
+					if( provider.accumulateStructuredOutputChunk( evt, soState ) ){
+						consumedCount++
+					}
+				}
+
+				result   = provider.finalizeStructuredOutputStream( soState, chatRequest, "tool_use" )
+				isStruct = isStruct( result )
+				name     = result.name
+				age      = result.age
+			""",
+			context
+		);
+		// @formatter:on
+
+		// 1 content_block_start + 3 input_json_delta for the structured block only —
+		// the real get_weather tool block on index 0 is NOT consumed.
+		assertThat( variables.getAsInteger( Key.of( "consumedCount" ) ) ).isEqualTo( 4 );
+		assertThat( variables.getAsBoolean( Key.of( "isStruct" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "name" ) ).toString() ).isEqualTo( "John Doe" );
+		assertThat( variables.getAsInteger( Key.of( "age" ) ) ).isEqualTo( 30 );
+	}
+
+	@DisplayName( "Streamed structured output throws when the forced block never arrives" )
+	@Test
+	public void testStreamStructuredOutputThrowsWhenBlockAbsent() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService( "claude", { apiKey: "dummy-key" } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract: John Doe" ),
+					{ model: "claude-sonnet-4-5" },
+					{
+						provider: "claude",
+						schema: { "type": "object", "properties": { "name": { "type": "string" } }, "required": [ "name" ] }
+					}
+				)
+
+				soState = provider.newStructuredOutputStreamState()
+				// Only plain text streamed back, truncated at max_tokens
+				provider.accumulateStructuredOutputChunk(
+					{ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "I cannot comply." } },
+					soState
+				)
+
+				caughtType = ""
+				caughtMsg  = ""
+				try {
+					provider.finalizeStructuredOutputStream( soState, chatRequest, "max_tokens" )
+				} catch( any e ) {
+					caughtType = e.type
+					caughtMsg  = e.message
+				}
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "caughtType" ) ) ).isEqualTo( "StructuredOutputError" );
+		assertThat( variables.get( Key.of( "caughtMsg" ) ).toString() ).contains( "truncated" );
+	}
 }
