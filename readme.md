@@ -202,7 +202,7 @@ Just make sure you have already a server setup with BoxLang.  You can check our 
 
 The following are the AI providers supported by this module. **Please note that in order to interact with these providers you will need to have an account with them and an API key.** 🔑
 
-- ☁️ [AWS Bedrock](https://aws.amazon.com/bedrock/) - Claude, Titan, Llama, Mistral via AWS
+- ☁️ [AWS Bedrock](https://aws.amazon.com/bedrock/) - Claude, OpenAI (gpt-oss), Cohere Command R/R+, Amazon Titan & Nova, Meta Llama, Mistral, AI21 Jamba, DeepSeek, Qwen and other OpenAI-shaped families via AWS
 - 🧠 [Claude Anthropic](https://www.anthropic.com/claude)
 - 🧬 [Cohere](https://cohere.com/)
 - 🔍 [DeepSeek](https://www.deepseek.com/)
@@ -228,7 +228,7 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 
 | Provider            | Chat & Streaming | Real-time Tools | Embeddings       | TTS (Speech)     | STT (Transcription) |
 |---------------------|------------------|-----------------|------------------|------------------|---------------------|
-| AWS Bedrock         | ✅               | ✅              | ✅               | ❌               | ❌                  |
+| AWS Bedrock         | ✅               | ✅ (per family) | ✅               | ❌               | ❌                  |
 | Claude              | ✅               | ✅              | ❌               | ❌               | ❌                  |
 | Cohere              | ✅               | ✅              | ✅               | ❌               | ❌                  |
 | DeepSeek            | ✅               | ✅              | ✅               | ❌               | ❌                  |
@@ -246,6 +246,22 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | OpenRouter          | ✅               | ✅              | ✅               | ❌               | ❌                  |
 | Perplexity          | ✅               | ✅              | ❌               | ❌               | ❌                  |
 | Voyage              | ❌               | ❌              | ✅ (Specialized) | ❌               | ❌                  |
+
+> **AWS Bedrock — Real-time Tools, per model family.** Bedrock is not one API but a family of
+> per-vendor request/response shapes, so tool calling is wired up family by family:
+>
+> | Bedrock family | Tools (sync) | Tools (streaming) | Schema-typed structured output |
+> |---|---|---|---|
+> | `anthropic.claude-*` (and opaque `arn:` inference profiles) | ✅ | ✅ | ✅ (forced `structured_output` tool) |
+> | `openai.gpt-oss-*` — and the OpenAI-shaped catch-all: Nova, DeepSeek, Qwen, AI21 Jamba, modern Mistral, GLM, Kimi, Nemotron, Gemma | ✅ | ✅ | ✅ (`response_format` json_schema) |
+> | `cohere.command-r*` (Command R / R+) | ✅ (`tools` / `tool_results`) | ✅ (`tool-calls-generation`) | ❌ — Bedrock's Cohere body documents no `response_format` |
+> | `cohere.command-text-*`, `cohere.command-light-text-*` (legacy) | ❌ | ❌ | ❌ |
+> | `amazon.titan-*`, `meta.llama*`, legacy `mistral.*` (7B / Mixtral / *-2402) | ❌ | ❌ | ❌ |
+>
+> Families marked ❌ throw `UnsupportedProviderCapability` rather than silently dropping the
+> tools or the schema. Claude on Bedrock also honours `cache_control` on system messages: a
+> system message carrying `cache_control` (or already block-shaped content) is sent as an array
+> of `{ type: "text", text, cache_control }` blocks instead of a flattened string.
 
 ### 🔍 Provider Capability Discovery
 

@@ -647,6 +647,20 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+
+		// -------------------------------------------------------------------------------------------
+		// --- Resume short-circuit ---
+		// A batch tool-call suspension (see chatStream()'s afterToolBatch participation below) was
+		// resolved via AiAgent.resumeStream() with a finalized resume ledger — finish that same
+		// tool batch directly instead of streaming the first turn again (no replay, nothing that
+		// already ran re-runs). Mirrors chat()'s identical short-circuit.
+		// -------------------------------------------------------------------------------------------
+		var resumeCtx = arguments.chatRequest.getResumeContext() ?: {}
+		if ( !resumeCtx.isEmpty() && resumeCtx.keyExists( "assistantMessage" ) ) {
+			resumeToolBatchStream( arguments.chatRequest, arguments.callback, resumeCtx, arguments.interactionCount )
+			return
+		}
+
 		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback;
 		var thisChatRequest = arguments.chatRequest;
@@ -654,14 +668,65 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		var cohereUsage = { "inputTokens": 0, "outputTokens": 0, "totalTokens": 0, "raw": {} };
 		// Accumulate the streamed assistant text so afterLLMCall middleware can inspect it
 		var cohereContent = "";
+		// Tool-call accumulation across the stream.
+		// Cohere v1 (/v1/chat, which is what this service targets — see init()) streams tool use as:
+		//   - `tool-calls-chunk`      : incremental { text (the tool plan), tool_call_delta: { index, name, parameters } }
+		//   - `tool-calls-generation` : the complete, authoritative { tool_calls: [ { name, parameters } ] }
+		//   - `stream-end`            : { finish_reason, response: { tool_calls, meta } }
+		// `tool-calls-generation` is preferred when present; the per-index deltas are the fallback
+		// for streams that only ever emit chunks, and `stream-end.response.tool_calls` is the last
+		// resort.
+		var streamState = {
+			"toolCalls"        : [],
+			"toolCallBuffers"  : {},
+			"toolPlan"         : "",
+			"finishReason"     : ""
+		};
 		var emitNormalizedChunk = ( parsedChunk ) => {
+			var eventType = parsedChunk.event_type ?: ""
 			var content = parsedChunk.text ?: ""
 			var finishReason = ""
-			cohereContent &= content;
 
-			if( parsedChunk.event_type == "stream-end" ){
-				finishReason = "stop"
+			// The tool plan is Cohere's reasoning about which tools to call — it is not the
+			// answer, so it is normalized onto `delta.reasoning` (same convention as Claude's
+			// thinking_delta) and never merged into `content`, which is what gets persisted.
+			if( eventType == "tool-calls-chunk" ){
+				streamState.toolPlan &= content;
+				accumulateToolCallDelta( streamState, parsedChunk );
+				if( content.len() ){
+					userCallback( {
+						"provider": "Cohere",
+						"model"   : requestedModel,
+						"object"  : "chat.completion.chunk",
+						"choices" : [ { "index": 0, "delta": { "role": "assistant", "reasoning": content }, "finish_reason": "" } ],
+						"raw"     : parsedChunk
+					} );
+				}
+				return;
 			}
+
+			if( eventType == "tool-calls-generation" ){
+				var generated = parsedChunk.tool_calls ?: []
+				if( isArray( generated ) && generated.len() ){
+					streamState.toolCalls = generated;
+				}
+				return;
+			}
+
+			if( eventType == "stream-end" ){
+				streamState.finishReason = parsedChunk.finish_reason ?: "stop"
+				if( !streamState.toolCalls.len() ){
+					var endToolCalls = parsedChunk.response?.tool_calls ?: []
+					if( isArray( endToolCalls ) && endToolCalls.len() ){
+						streamState.toolCalls = endToolCalls;
+					}
+				}
+				// Buffers may still be un-folded at this point (finalizeToolCallBuffers() runs once
+				// the transport returns), so both sources count towards "this turn called tools".
+				finishReason = ( streamState.toolCalls.len() || !streamState.toolCallBuffers.isEmpty() ) ? "tool_calls" : "stop"
+			}
+
+			cohereContent &= content;
 
 			userCallback( {
 				"provider": "Cohere",
@@ -793,40 +858,43 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			httpRequest.header( thisHeader, arguments.chatRequest.getHeaders()[ thisHeader ] );
 		}
 
+		// Handle one raw SSE frame: { data, event, id, retry } — chunk.data carries the payload.
+		// Held in its own closure so the transport call below can expose it to wrapLLMCall
+		// middleware as `emitSSEChunk`, which is the only seam that makes the streamed tool loop
+		// drivable without a network call.
+		var processSSEChunk = ( chunk ) => {
+			// Check for stream end marker
+			if( chunk.data == "[DONE]" ){
+				return;
+			}
+
+			// Try to parse and send to callback
+			try {
+				var parsedChunk = jsonDeserialize( chunk.data );
+
+				// Capture usage from stream-end event
+				if( ( parsedChunk.event_type ?: "" ) == "stream-end" && !isNull( parsedChunk.response?.meta?.billed_units ) ){
+					var billedUnits = parsedChunk.response.meta.billed_units;
+					cohereUsage.inputTokens  = billedUnits.input_tokens ?: 0;
+					cohereUsage.outputTokens = billedUnits.output_tokens ?: 0;
+					cohereUsage.totalTokens  = cohereUsage.inputTokens + cohereUsage.outputTokens;
+					cohereUsage.raw          = parsedChunk.response.meta;
+				}
+
+				emitNormalizedChunk( parsedChunk );
+			} catch( any e ){
+				writeLog(
+					text: "Error parsing Cohere stream chunk: #e.message# - Data: #chunk.data#",
+					type: "error",
+					log : "ai"
+				)
+			}
+		};
+
 		// Set request body and callbacks
 		httpRequest
 			.body( jsonSerialize( dataPacket ) )
-			.onChunk( ( chunk, lastEventId, httpResult, httpClient, response ) => {
-				// chunk is already parsed SSE data: { data, event, id, retry }
-				// For SSE streams, chunk.data contains the actual payload
-
-				// Check for stream end marker
-				if( chunk.data == "[DONE]" ){
-					return;
-				}
-
-				// Try to parse and send to callback
-				try {
-					var parsedChunk = jsonDeserialize( chunk.data );
-
-					// Capture usage from stream-end event
-					if( ( parsedChunk.event_type ?: "" ) == "stream-end" && !isNull( parsedChunk.response?.meta?.billed_units ) ){
-						var billedUnits = parsedChunk.response.meta.billed_units;
-						cohereUsage.inputTokens  = billedUnits.input_tokens ?: 0;
-						cohereUsage.outputTokens = billedUnits.output_tokens ?: 0;
-						cohereUsage.totalTokens  = cohereUsage.inputTokens + cohereUsage.outputTokens;
-						cohereUsage.raw          = parsedChunk.response.meta;
-					}
-
-					emitNormalizedChunk( parsedChunk );
-				} catch( any e ){
-					writeLog(
-						text: "Error parsing Cohere stream chunk: #e.message# - Data: #chunk.data#",
-						type: "error",
-						log : "ai"
-					)
-				}
-			} )
+			.onChunk( ( chunk, lastEventId, httpResult, httpClient, response ) => processSSEChunk( chunk ) )
 			.onError( ( error, httpResult ) => {
 				var errorMessage = "HTTP Error: #error.message#";
 
@@ -869,8 +937,27 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 						"streamComplete" : true
 					}
 				);
-			} )
-			.send();
+			} );
+
+		// -------------------------------------------------------------------------------------------
+		// --- Fire WrapLLM -> SSE transport ---
+		// The streamed turn goes through wrapLLMCall the same way chat()'s blocking call does, so
+		// record/replay and canned-response middleware are not blind to streaming. The context
+		// carries `stream: true` (so middleware can tell the two apart) and `emitSSEChunk`, which
+		// feeds a raw `{ data: "..." }` SSE frame through the normal parse/normalize/accumulate
+		// path — a middleware that replays a stream never calls the handler.
+		// -------------------------------------------------------------------------------------------
+		var capturedHttpRequest = httpRequest;
+		arguments.chatRequest.fireWrapMiddleware(
+			hook         : "wrapLLMCall",
+			context      : {
+				chatRequest : arguments.chatRequest,
+				dataPacket  : dataPacket,
+				stream      : true,
+				emitSSEChunk: processSSEChunk
+			},
+			innerFunction: () => capturedHttpRequest.send()
+		)
 
 		// -------------------------------------------------------------------------------------------
 		// --- Usage Event Announcement (Streaming) ---
@@ -889,13 +976,388 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			} )
 		}
 
+		// Fold any per-index `tool_call_delta` buffers into complete tool calls. Only used when the
+		// stream never sent an authoritative `tool-calls-generation` event.
+		finalizeToolCallBuffers( streamState );
+
 		// -------------------------------------------------------------------------------------------
 		// --- Fire afterLLMCall middleware (streaming), in reverse order ---
 		// -------------------------------------------------------------------------------------------
 		arguments.chatRequest.fireMiddleware(
 			hook   : "afterLLMCall",
-			context: { chatRequest: arguments.chatRequest, streamState: { "reasoning": "", "content": cohereContent, "finishReason": "", "toolCalls": [], "usage": cohereUsage.raw } },
+			context: { chatRequest: arguments.chatRequest, streamState: { "reasoning": streamState.toolPlan, "content": cohereContent, "finishReason": streamState.finishReason, "toolCalls": streamState.toolCalls, "usage": cohereUsage.raw } },
 			reverse: true
+		)
+
+		// -------------------------------------------------------------------------------------------
+		// --- Streaming tool loop ---
+		// -------------------------------------------------------------------------------------------
+		if( streamState.toolCalls.len() ){
+			runStreamToolBatch(
+				chatRequest     : arguments.chatRequest,
+				callback        : arguments.callback,
+				toolCalls       : streamState.toolCalls,
+				dataPacket      : dataPacket,
+				tempParams      : tempParams,
+				tools           : tools,
+				interactionCount: arguments.interactionCount
+			)
+		}
+	}
+
+	/**
+	 * Accumulate a Cohere v1 `tool-calls-chunk` event's `tool_call_delta` into per-index buffers.
+	 * Cohere sends `{ index, name, parameters }` where `parameters` arrives as a partial JSON
+	 * string that must be concatenated across chunks before it can be deserialized.
+	 *
+	 * @streamState  The mutable stream accumulator
+	 * @parsedChunk  The deserialized SSE payload
+	 */
+	private void function accumulateToolCallDelta( required struct streamState, required struct parsedChunk ){
+		var delta = arguments.parsedChunk.tool_call_delta ?: ""
+		if( !isStruct( delta ) ){
+			return;
+		}
+
+		var bufferKey = toString( delta.index ?: 0 );
+		if( !arguments.streamState.toolCallBuffers.keyExists( bufferKey ) ){
+			arguments.streamState.toolCallBuffers[ bufferKey ] = { "name": "", "parameters": "" };
+		}
+		var buffer = arguments.streamState.toolCallBuffers[ bufferKey ];
+		buffer.name &= ( delta.name ?: "" );
+
+		// `parameters` is a partial JSON string while streaming, but a complete struct when the
+		// provider chooses to send it in one piece — handle both.
+		var params = delta.parameters ?: ""
+		if( isStruct( params ) ){
+			buffer[ "parsedParameters" ] = params;
+		} else {
+			buffer.parameters &= toString( params );
+		}
+	}
+
+	/**
+	 * Turn the per-index `tool_call_delta` buffers into complete `{ name, parameters }` tool calls,
+	 * matching the shape the non-streaming path produces. No-op when the stream already delivered
+	 * an authoritative `tool-calls-generation` event.
+	 *
+	 * @streamState The mutable stream accumulator
+	 */
+	private void function finalizeToolCallBuffers( required struct streamState ){
+		if( arguments.streamState.toolCalls.len() || arguments.streamState.toolCallBuffers.isEmpty() ){
+			return;
+		}
+
+		var bufferKeys = arguments.streamState.toolCallBuffers.keyArray().sort( "numeric" );
+		for( var bufferKey in bufferKeys ){
+			var buffer = arguments.streamState.toolCallBuffers[ bufferKey ];
+			if( !len( buffer.name ) ){
+				continue;
+			}
+
+			var toolParams = buffer.parsedParameters ?: {}
+			if( !isStruct( toolParams ) || ( isStruct( toolParams ) && toolParams.isEmpty() && len( buffer.parameters ) ) ){
+				try {
+					toolParams = jsonDeserialize( buffer.parameters );
+				} catch( any e ){
+					toolParams = {};
+				}
+			}
+
+			arguments.streamState.toolCalls.append( {
+				"name"      : buffer.name,
+				"parameters": isStruct( toolParams ) ? toolParams : {}
+			} );
+		}
+	}
+
+	/**
+	 * Emit a complete assistant text response through the streaming callback as one synthetic
+	 * chunk. Cohere only streams the first turn; anything produced after tool results is a single
+	 * blocking call (same trade-off ClaudeService.chatStream() makes).
+	 *
+	 * @callback The streaming callback
+	 * @text      The text to emit — nothing is emitted when empty
+	 * @model     The model name to stamp on the chunk
+	 */
+	private void function emitStreamText( required function callback, required string text, required string model ){
+		if( !arguments.text.len() ){
+			return;
+		}
+		arguments.callback( {
+			"provider": "Cohere",
+			"model"   : arguments.model,
+			"object"  : "chat.completion.chunk",
+			"choices" : [ { "index": 0, "delta": { "role": "assistant", "content": arguments.text }, "finish_reason": "stop" } ]
+		} );
+	}
+
+	/**
+	 * Run the tool-call batch accumulated from a streamed first turn, then emit the follow-up
+	 * answer through the streaming callback.
+	 *
+	 * This is chat()'s tool machinery with the returns replaced by callback emissions: the same
+	 * "Pass 1: decide / Pass 2: execute" split (so nothing executes while any part of the batch
+	 * could still suspend), the same afterToolBatch()/defer() participation, and the same
+	 * `assistantMessage` + `resumeLedger` payload — which is what makes a suspension here
+	 * resumable through resumeToolBatchStream().
+	 *
+	 * @chatRequest      The chat request being streamed
+	 * @callback          The streaming callback to emit chunks (and the middleware_stop sentinel) through
+	 * @toolCalls         Normalized `[ { name, parameters } ]` tool calls accumulated from the stream
+	 * @dataPacket        The request packet the streamed turn was built from
+	 * @tempParams        The residual params to replay onto the follow-up request
+	 * @tools             The ITool instances bound to this request
+	 * @interactionCount Current tool call interaction count (used internally)
+	 */
+	private void function runStreamToolBatch(
+		required AiChatRequest chatRequest,
+		required function callback,
+		required array toolCalls,
+		required struct dataPacket,
+		required struct tempParams,
+		required any tools,
+		required numeric interactionCount
+	){
+		var thisChatRequest = arguments.chatRequest
+		var userCallback     = arguments.callback
+		var boundTools       = arguments.tools
+
+		/**
+		 * ---------------------------------------------------------------------------------------------------------
+		 * Max Interactions Check
+		 * ---------------------------------------------------------------------------------------------------------
+		 */
+		var maxAllowed = thisChatRequest.getMaxInteractions() > 0 ? thisChatRequest.getMaxInteractions() : variables.maxInteractions;
+		if( arguments.interactionCount >= maxAllowed ){
+			writeLog(
+				text: "Max tool call interactions (#maxAllowed#) exceeded",
+				type: "error",
+				log : "ai"
+			)
+			throw(
+				type   : "MaxInteractionsExceeded",
+				message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
+			);
+		}
+
+		// ── Pass 1: decide ────────────────────────────────────────────────────────────────
+		var batch = [];
+		var terminalToolResult = "";
+		for( var toolCall in arguments.toolCalls ){
+			var tool = boundTools.filter( t => t.getSchema().function.name == toolCall.name ).first();
+
+			if ( isNull( tool ) ) {
+				batch.append( {
+					tool    : javacast( "null", "" ),
+					toolCall: toolCall,
+					toolName: toolCall.name ?: "",
+					toolArgs: {},
+					result  : AiMiddlewareResult.reject( "Tool ['#toolCall.name#'] not found in chat request" )
+				} )
+				continue
+			}
+
+			var toolContext = {
+				tool       : tool,
+				toolCall   : toolCall,
+				chatRequest: thisChatRequest,
+				toolName   : toolCall.name ?: tool.getName(),
+				toolArgs   : toolCall.parameters ?: {}
+			}
+			var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
+
+			if ( toolBeforeResult.isCancelled() ) {
+				terminalToolResult = toolBeforeResult
+				break
+			}
+
+			batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+		}
+
+		if ( isObject( terminalToolResult ) ) {
+			userCallback( { type: "middleware_stop", result: terminalToolResult } )
+			return
+		}
+
+		// Everything resumeToolBatchStream() needs to rebuild the follow-up request — Cohere has
+		// no shared `messages` array to append an assistant turn to (unlike the other providers).
+		var assistantMessage = {
+			toolCalls    : arguments.toolCalls,
+			followUpTools: arguments.dataPacket.tools ?: [],
+			chatHistory  : arguments.dataPacket.chat_history ?: [],
+			preamble     : arguments.dataPacket.preamble ?: "",
+			tempParams   : arguments.tempParams
+		}
+
+		// ── Suspend the whole batch at once, if anything needs a human decision ────────────
+		if ( batch.some( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() ) ) {
+			var batchResult = thisChatRequest.fireMiddleware(
+				"afterToolBatch",
+				{ chatRequest: thisChatRequest, assistantMessage: assistantMessage, batch: batch }
+			)
+
+			// See chat() — no attached middleware's afterToolBatch() converted the pending entries
+			// into anything, fall back to a generic combined suspend.
+			if ( !batchResult.isSuspended() && !batchResult.isCancelled() ) {
+				var pending = batch.filter( ( entry ) => entry.result.isDeferred() || entry.result.isSuspended() )
+				var pendingActions = pending.map( ( entry ) => {
+					var data = entry.result.getData()
+					return {
+						toolName    : entry.toolName,
+						toolArgs    : ( isStruct( entry.toolArgs ) ) ? entry.toolArgs : {},
+						suspensionID: data.suspensionID ?: ""
+					}
+				} )
+				batchResult = AiMiddlewareResult.suspend( { pendingActions: pendingActions } )
+			}
+
+			if ( batchResult.isTerminal() ) {
+				if ( !batchResult.isSuspended() ) {
+					userCallback( { type: "middleware_stop", result: batchResult } )
+					return
+				}
+				var resumeLedger = batch.map( ( entry ) => {
+					if ( entry.result.isDeferred() || entry.result.isSuspended() ) {
+						return { toolName: entry.toolName, status: "pending" }
+					}
+					if ( entry.result.isRejected() ) {
+						return { toolName: entry.toolName, status: "blocked", reason: entry.result.getReason() }
+					}
+					return { toolName: entry.toolName, status: "execute" }
+				} )
+				var mergedData = duplicate( batchResult.getData() )
+				mergedData[ "assistantMessage" ] = assistantMessage
+				mergedData[ "resumeLedger" ]     = resumeLedger
+				userCallback( { type: "middleware_stop", result: AiMiddlewareResult.suspend( mergedData ) } )
+				return
+			}
+			// continue: afterToolBatch() decided nothing needs to stay pending after all.
+		}
+
+		// ── Pass 2: execute ───────────────────────────────────────────────────────────────
+		var toolResults = [];
+		for ( var entry in batch ) {
+			if ( entry.result.isRejected() ) {
+				toolResults.append( {
+					"call"   : entry.toolCall,
+					"outputs": [ { "result": "[Tool call blocked: #entry.result.getReason()#]" } ]
+				} );
+				continue;
+			}
+
+			var capturedTool     = entry.tool;
+			var capturedToolCall = entry.toolCall;
+			var toolOutput = thisChatRequest.fireWrapMiddleware(
+				"wrapToolCall",
+				{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: entry.toolArgs },
+				() => capturedTool.invoke( capturedToolCall.parameters, thisChatRequest )
+			);
+
+			thisChatRequest.fireMiddleware(
+				hook   : "afterToolCall",
+				context: { tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, result: toolOutput },
+				reverse: true
+			);
+
+			toolResults.append( { "call": entry.toolCall, "outputs": [ { "result": toolOutput } ] } );
+		}
+
+		emitStreamText(
+			userCallback,
+			sendToolResultsFollowUp( thisChatRequest, assistantMessage, toolResults, arguments.interactionCount ),
+			thisChatRequest.getModel()
+		)
+	}
+
+	/**
+	 * Send the follow-up turn carrying tool results and return its assistant text.
+	 *
+	 * NOTE: Cohere requires EITHER message OR tool_results, not both (unless force_single_step=true),
+	 * so the follow-up packet is rebuilt from what the original turn captured rather than replaying
+	 * the user message.
+	 *
+	 * @chatRequest       The chat request being continued
+	 * @assistantMessage The captured tools/chat_history/preamble/params of the originating turn
+	 * @toolResults       The Cohere-shaped `[ { call, outputs } ]` results
+	 * @interactionCount Current tool call interaction count (used internally)
+	 */
+	private string function sendToolResultsFollowUp(
+		required AiChatRequest chatRequest,
+		required struct assistantMessage,
+		required array toolResults,
+		required numeric interactionCount
+	){
+		var thisChatRequest = arguments.chatRequest
+		var followUpPacket   = {
+			"model"       : thisChatRequest.getModel(),
+			"tool_results": arguments.toolResults
+		};
+		if ( ( arguments.assistantMessage.followUpTools ?: [] ).len() ) {
+			followUpPacket.tools = arguments.assistantMessage.followUpTools;
+		}
+		if ( ( arguments.assistantMessage.chatHistory ?: [] ).len() ) {
+			followUpPacket.chat_history = arguments.assistantMessage.chatHistory;
+		}
+		if ( len( arguments.assistantMessage.preamble ?: "" ) ) {
+			followUpPacket.preamble = arguments.assistantMessage.preamble;
+		}
+		followUpPacket.append( arguments.assistantMessage.tempParams ?: {} );
+
+		var result = thisChatRequest.fireWrapMiddleware(
+			hook         : "wrapLLMCall",
+			context      : { chatRequest: thisChatRequest, dataPacket: followUpPacket },
+			innerFunction: () => sendChatRequest( thisChatRequest, followUpPacket )
+		)
+		thisChatRequest.fireMiddleware(
+			hook   : "afterLLMCall",
+			context: { chatRequest: thisChatRequest, result: result },
+			reverse: true
+		)
+
+		// Cohere wants MORE tool calls (multi-step reasoning) — hand the remaining turns to chat(),
+		// which owns the recursion and the max-interactions guard.
+		if ( result.keyExists( "tool_calls" ) && result.tool_calls.len() ) {
+			var continued = chat( thisChatRequest, arguments.interactionCount + 1 );
+			return isSimpleValue( continued ) ? toString( continued ) : "";
+		}
+
+		return toString( result.text ?: "" )
+	}
+
+	/**
+	 * Finish a streaming tool-call batch that was suspended for human approval, using the
+	 * finalized resume ledger AiAgent.resumeStream() built, and emit the follow-up answer through
+	 * the streaming callback.
+	 *
+	 * The LLM is never asked to produce the tool calls again — the decisions, tool calls and
+	 * follow-up request material all come from `resumeCtx` — and nothing that already executed (or
+	 * was already blocked) during the original attempt runs a second time. The batch replay itself
+	 * is identical to the non-streaming path, so it delegates to resumeToolBatch() and only the
+	 * emission differs.
+	 *
+	 * @chatRequest      The chat request to continue
+	 * @callback          The streaming callback to emit chunks (and the middleware_stop sentinel) through
+	 * @resumeCtx         The resume context AiAgent.resumeStream() built: { assistantMessage, resumeLedger }
+	 * @interactionCount Current tool call interaction count (used internally)
+	 */
+	private void function resumeToolBatchStream(
+		required AiChatRequest chatRequest,
+		required function callback,
+		required struct resumeCtx,
+		required numeric interactionCount
+	){
+		var finalResponse = resumeToolBatch( arguments.chatRequest, arguments.resumeCtx, arguments.interactionCount )
+
+		if ( isObject( finalResponse ) && finalResponse instanceof "AiMiddlewareResult" ) {
+			arguments.callback( { type: "middleware_stop", result: finalResponse } )
+			return
+		}
+
+		emitStreamText(
+			arguments.callback,
+			isSimpleValue( finalResponse ) ? toString( finalResponse ) : "",
+			arguments.chatRequest.getModel()
 		)
 	}
 
