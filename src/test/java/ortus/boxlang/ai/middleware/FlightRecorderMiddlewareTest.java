@@ -619,4 +619,326 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "tapeBeforeReset" ) ) ).isEqualTo( 1 );
 		assertThat( variables.getAsBoolean( Key.of( "tapeAfterReset" ) ) ).isTrue();
 	}
+
+	// ---- storageCallback: record mode ----
+
+	@DisplayName( "record mode: storageCallback fires with tape + interaction after each append" )
+	@Test
+	public void testStorageCallbackFiresInRecordMode( @TempDir Path tempDir ) {
+		String fixturePath = tempDir.resolve( "callback-record.json" ).toString();
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        callbackCount     = 0;
+		        callbackTape      = {};
+		        callbackInteraction = {};
+
+		        mw = new FlightRecorderMiddleware(
+		            mode           : "record",
+		            fixturePath    : "%s",
+		            storageCallback: function( tape, interaction ) {
+		                callbackCount++;
+		                callbackTape = tape;
+		                callbackInteraction = interaction;
+		            }
+		        );
+		        mw.beforeAgentRun( context: {} );
+
+		        mw.wrapLLMCall(
+		            context : { dataPacket: { model: "gpt-4", messages: [] } },
+		            handler : function() {
+		                return { id: "resp-1", choices: [ { message: { content: "Paris" } } ] };
+		            }
+		        );
+
+		        firedOnce       = callbackCount == 1;
+		        tapeHasEntry    = callbackTape.interactions.len() == 1;
+		        interactionIsLLM = callbackInteraction.type == "llm";
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "firedOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "tapeHasEntry" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "interactionIsLLM" ) ) ).isTrue();
+	}
+
+	// ---- observe mode ----
+
+	@DisplayName( "observe mode: accumulates tape, fires storageCallback, writes NO fixture file" )
+	@Test
+	public void testObserveModeAccumulatesNoFile( @TempDir Path tempDir ) {
+		String fixturePath = tempDir.resolve( "callback-observe.json" ).toString();
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        callbackCount = 0;
+
+		        mw = new FlightRecorderMiddleware(
+		            mode           : "observe",
+		            fixturePath    : "%s",
+		            storageCallback: function( tape, interaction ) {
+		                callbackCount++;
+		            }
+		        );
+		        mw.beforeAgentRun( context: {} );
+
+		        mw.wrapLLMCall(
+		            context : { dataPacket: { model: "gpt-4", messages: [] } },
+		            handler : function() {
+		                return { id: "resp-1", choices: [ { message: { content: "Paris" } } ] };
+		            }
+		        );
+
+		        mw.afterAgentRun( context: {} );
+
+		        tape          = mw.getTape();
+		        tapeHasEntry  = tape.interactions.len() == 1;
+		        firedOnce     = callbackCount == 1;
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "tapeHasEntry" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "firedOnce" ) ) ).isTrue();
+
+		// No fixture file should ever be written in observe mode
+		assertThat( Files.exists( Path.of( fixturePath ) ) ).isFalse();
+	}
+
+	// ---- storageCallback exception swallowed ----
+
+	@DisplayName( "storageCallback exception is swallowed and does not break the call" )
+	@Test
+	public void testStorageCallbackExceptionSwallowed( @TempDir Path tempDir ) {
+		String fixturePath = tempDir.resolve( "callback-throws.json" ).toString();
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        mw = new FlightRecorderMiddleware(
+		            mode           : "record",
+		            fixturePath    : "%s",
+		            storageCallback: function( tape, interaction ) {
+		                throw( type: "BoomError", message: "callback boom" );
+		            }
+		        );
+		        mw.beforeAgentRun( context: {} );
+
+		        result = mw.wrapLLMCall(
+		            context : { dataPacket: { model: "gpt-4", messages: [] } },
+		            handler : function() {
+		                return { id: "resp-1", choices: [ { message: { content: "Paris" } } ] };
+		            }
+		        );
+
+		        callSucceeded = result.id == "resp-1";
+		        tapeStillHasEntry = mw.getTape().interactions.len() == 1;
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "callSucceeded" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "tapeStillHasEntry" ) ) ).isTrue();
+	}
+
+	// ---- Invalid mode ----
+
+	@DisplayName( "invalid mode throws FlightRecorder.InvalidMode at init" )
+	@Test
+	public void testInvalidModeThrowsAtInit() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        threw = false;
+		        try {
+		            mw = new FlightRecorderMiddleware( mode: "bogus" );
+		        } catch( e ) {
+		            threw = e.type contains "InvalidMode";
+		        }
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isTrue();
+	}
+
+	// ---- Streaming transports (ctx.stream == true) ----
+
+	@DisplayName( "record mode: a stream call returning a raw body is taped with a stream marker" )
+	@Test
+	public void testRecordStreamRawBody( @TempDir Path tempDir ) {
+		String fixturePath = tempDir.resolve( "stream-raw.json" ).toString();
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        mw = new FlightRecorderMiddleware( mode: "record", fixturePath: "%s" );
+		        mw.beforeAgentRun( context: {} );
+
+		        returned = mw.wrapLLMCall(
+		            context : { stream: true, transport: "bedrock-event-stream", dataPacket: { model: "anthropic.claude" } },
+		            handler : function() { return "RAW-EVENT-STREAM-BODY"; }
+		        );
+
+		        tape          = mw.getTape();
+		        oneEntry      = tape.interactions.len() == 1;
+		        markedStream  = tape.interactions[1].stream == true;
+		        bodyRecorded  = tape.interactions[1].response == "RAW-EVENT-STREAM-BODY";
+		        bodyReturned  = returned == "RAW-EVENT-STREAM-BODY";
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "oneEntry" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "markedStream" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bodyRecorded" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bodyReturned" ) ) ).isTrue();
+	}
+
+	@DisplayName( "replay mode: a recorded stream body is returned verbatim, not a chat struct" )
+	@Test
+	public void testReplayStreamRawBody( @TempDir Path tempDir ) throws IOException {
+		String	fixturePath	= tempDir.resolve( "stream-replay.json" ).toString();
+		String	fixture		= """
+		                      {
+		                        "version": "1",
+		                        "recordedAt": "2026-01-01T00:00:00",
+		                        "agentName": "test-agent",
+		                        "interactions": [
+		                          { "seq": 1, "type": "llm", "stream": true, "request": { "model": "anthropic.claude" }, "response": "RAW-EVENT-STREAM-BODY" }
+		                        ]
+		                      }
+		                      """;
+		Files.writeString( Path.of( fixturePath ), fixture );
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        mw = new FlightRecorderMiddleware( mode: "replay", fixturePath: "%s" );
+		        mw.beforeAgentRun( context: {} );
+
+		        handlerCalled = false;
+		        result = mw.wrapLLMCall(
+		            context: { stream: true, dataPacket: {} },
+		            handler: function() { handlerCalled = true; return "LIVE"; }
+		        );
+
+		        handlerNotCalled = !handlerCalled;
+		        gotRawBody       = isSimpleValue( result ) && result == "RAW-EVENT-STREAM-BODY";
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "handlerNotCalled" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "gotRawBody" ) ) ).isTrue();
+	}
+
+	@DisplayName( "record mode: an emit-based stream call is passthrough with no fixture entry" )
+	@Test
+	public void testRecordStreamEmitBasedIsPassthrough( @TempDir Path tempDir ) {
+		String fixturePath = tempDir.resolve( "stream-emit.json" ).toString();
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        mw = new FlightRecorderMiddleware( mode: "record", fixturePath: "%s" );
+		        mw.beforeAgentRun( context: {} );
+
+		        emitted      = [];
+		        handlerRan   = false;
+		        mw.wrapLLMCall(
+		            context : { stream: true, emitSSEChunk: ( c ) => { emitted.append( c ) }, dataPacket: {} },
+		            handler : function() { handlerRan = true; return { done: true }; }
+		        );
+
+		        tape         = mw.getTape();
+		        noEntry      = tape.interactions.len() == 0;
+		        handlerCalled = handlerRan;
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "noEntry" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "handlerCalled" ) ) ).isTrue();
+	}
+
+	@DisplayName( "replay mode: a stream call with no recorded stream body passes through, never returns a struct" )
+	@Test
+	public void testReplayStreamFallsThroughToHandler( @TempDir Path tempDir ) throws IOException {
+		// Tape holds only an ordinary chat interaction — handing that struct to a stream
+		// transport is exactly the crash/silence this guard prevents.
+		String	fixturePath	= tempDir.resolve( "stream-nomatch.json" ).toString();
+		String	fixture		= """
+		                      {
+		                        "version": "1",
+		                        "recordedAt": "2026-01-01T00:00:00",
+		                        "agentName": "test-agent",
+		                        "interactions": [
+		                          { "seq": 1, "type": "llm", "request": {}, "response": { "id": "chat-resp" } }
+		                        ]
+		                      }
+		                      """;
+		Files.writeString( Path.of( fixturePath ), fixture );
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        mw = new FlightRecorderMiddleware( mode: "replay", fixturePath: "%s" );
+		        mw.beforeAgentRun( context: {} );
+
+		        handlerCalled = false;
+		        // No try/catch here on purpose: a ReplayExhausted/TypeMismatch throw would fail the
+		        // test outright, which is exactly the assertion.
+		        result = mw.wrapLLMCall(
+		            context: { stream: true, dataPacket: {} },
+		            handler: function() { handlerCalled = true; return "LIVE-STREAM"; }
+		        );
+
+		        passedThrough = handlerCalled && result == "LIVE-STREAM";
+		        notAStruct    = !isStruct( result );
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "passedThrough" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "notAStruct" ) ) ).isTrue();
+	}
+
+	// ---- Subclass overriding _saveSnapshot ----
+	//
+	// SKIPPED: item (e) — a test proving a subclass override of _saveSnapshot() is invoked.
+	// This test file's existing patterns only ever construct FlightRecorderMiddleware directly
+	// via `new FlightRecorderMiddleware( ... )` inside a runtime.executeSource() string; none of
+	// them define an inline .bx subclass to extend it from Java-side test source. Doing so would
+	// require inventing an untested inline-class-definition + instantiation idiom not used
+	// anywhere else in this suite, so per the task instructions this case is skipped rather than
+	// guessed at. _saveSnapshot() has been made `public` (see FlightRecorderMiddleware.bx) so a
+	// real .bx subclass file can override it; that mechanism is exercised manually instead.
 }
