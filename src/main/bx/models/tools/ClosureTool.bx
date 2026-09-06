@@ -111,7 +111,10 @@ class extends="BaseTool" {
 		// BoxLang param is declared "string" but the AI (or MCP client) still sends a complex
 		// object/array (e.g. JSON-encoded fields like source_context or key_decisions). Without
 		// this, BoxLang's typed-arg binding would throw "Can't cast Struct<Ordered> to a string" before the callable runs.
-		var incomingArgs = arguments.args
+		// Shallow copy: the incoming struct is the live tool_use.input held in the message
+		// history. Mutating it (coercion below, _chatRequest injection) would leak _chatRequest
+		// into the next request body and can close a reference cycle that serializers cannot walk.
+		var incomingArgs = structCopy( arguments.args )
 		var coercionParams = variables.methodParameters.len() ? variables.methodParameters : variables.callable.$bx.meta.parameters
 		coercionParams.each( param => {
 			if ( ( param.type ?: "" ) == "string" && incomingArgs.keyExists( param.name ) ) {
@@ -122,8 +125,8 @@ class extends="BaseTool" {
 			}
 		} )
 		// Inject _chatRequest into args for closures that want conversation context
-		arguments.args._chatRequest = arguments.chatRequest
-		return variables.callable( argumentCollection = arguments.args )
+		incomingArgs._chatRequest = arguments.chatRequest
+		return variables.callable( argumentCollection = incomingArgs )
 	}
 
 	/**
