@@ -296,9 +296,10 @@ class extends="BaseAiMiddleware" {
 	/**
 	 * Streaming LLM transport seam (`context.stream == true`).
 	 *
-	 * Two shapes reach here. A raw-body transport returns the provider's whole response body as a
-	 * simple value for the caller to parse (e.g. Bedrock's binary event stream); that body is the
-	 * entire interaction and is recorded/replayed verbatim under a `stream: true` marker. An
+	 * Two shapes reach here. A raw-body transport returns the provider's whole response body for the
+	 * caller to parse — a string, or a byte[] (Bedrock's binary event stream, which is NOT a simple
+	 * value); that body is the entire interaction and is recorded/replayed verbatim under a
+	 * `stream: true` marker, base64-encoded when binary. An
 	 * emit-based transport instead pushes chunks out through the context (e.g. Cohere's
 	 * emitSSEChunk) and returns nothing useful — there is no value to tape, so those calls are
 	 * passthrough-only, logged once per recorder so the gap in the fixture isn't silent.
@@ -315,6 +316,19 @@ class extends="BaseAiMiddleware" {
 	private any function _wrapStreamLLMCall( required struct context, required function handler ) {
 		if ( variables.mode == "record" || variables.mode == "observe" ) {
 			var response = arguments.handler()
+
+			// Binary raw body (Bedrock's event stream) — fails isSimpleValue(), so tape it
+			// base64-encoded behind an explicit marker replay decodes back to a byte[].
+			if ( !isNull( response ) && isBinary( response ) ) {
+				_appendInteraction( {
+					"type"    : "llm",
+					"stream"  : true,
+					"encoding": "base64",
+					"request" : context.dataPacket ?: {},
+					"response": toBase64( response )
+				} )
+				return response
+			}
 
 			if ( !isNull( response ) && isSimpleValue( response ) ) {
 				_appendInteraction( {
@@ -342,7 +356,9 @@ class extends="BaseAiMiddleware" {
 		// replay — only a recorded raw stream body can satisfy a stream call
 		var recorded = _peekStreamInteraction()
 		if ( !isNull( recorded ) ) {
-			return recorded.response
+			return ( recorded.encoding ?: "" ) == "base64"
+				? toBinary( recorded.response )
+				: recorded.response
 		}
 
 		return arguments.handler()

@@ -539,7 +539,10 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		var toolCalls          = assistantMessage.toolCalls ?: []
 		var tools              = thisChatRequest.getParams()?.tools ?: []
 
+		// Rounds already completed before this batch (multi-round streaming follow-up) — replayed
+		// ahead of this round's results so the follow-up carries the whole exchange.
 		var toolResults = []
+		toolResults.append( assistantMessage.priorToolResults ?: [], true )
 
 		for ( var i = 1; i <= toolCalls.len(); i++ ) {
 			var toolCall    = toolCalls[ i ]
@@ -1057,17 +1060,46 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 
 			var toolParams = buffer.parsedParameters ?: {}
 			if( !isStruct( toolParams ) || ( isStruct( toolParams ) && toolParams.isEmpty() && len( buffer.parameters ) ) ){
-				try {
-					toolParams = jsonDeserialize( buffer.parameters );
-				} catch( any e ){
-					toolParams = {};
-				}
+				toolParams = len( trim( buffer.parameters ) )
+					? parseStreamToolArguments( buffer.name, buffer.parameters, arguments.streamState.finishReason ?: "" )
+					: {};
 			}
 
 			arguments.streamState.toolCalls.append( {
 				"name"      : buffer.name,
 				"parameters": isStruct( toolParams ) ? toolParams : {}
 			} );
+		}
+	}
+
+	/**
+	 * Deserialize a streamed tool call's accumulated argument buffer, or fail loudly.
+	 *
+	 * A truncated stream (max_tokens hit mid-arguments, a dropped connection) leaves the buffer as
+	 * invalid JSON. Swallowing that and substituting `{}` would run the tool with default/missing
+	 * arguments — a silent, potentially side-effecting wrong action — so this throws instead, before
+	 * the batch reaches Pass 1. Mirrors BedrockService.parseStreamToolArguments().
+	 *
+	 * @toolName    The tool the buffer belongs to
+	 * @buffer      The accumulated partial-JSON argument string
+	 * @finishReason The stream's finish reason, when known
+	 */
+	private any function parseStreamToolArguments( required string toolName, required string buffer, string finishReason = "" ){
+		try {
+			return jsonDeserialize( arguments.buffer );
+		} catch( any e ){
+			writeLog(
+				text: "Streamed tool arguments for [#arguments.toolName#] are not valid JSON (finish_reason=#arguments.finishReason#): #e.message# - Buffer: #left( arguments.buffer, 200 )#",
+				type: "error",
+				log : "ai"
+			);
+			throw(
+				type   : "CohereStreamError",
+				message: "Tool call arguments truncated for [#arguments.toolName#] (finish_reason=#len( arguments.finishReason ) ? arguments.finishReason : "unknown"#)."
+					& ( arguments.finishReason == "MAX_TOKENS" ? " The response hit max_tokens mid-arguments — increase max_tokens." : "" )
+					& " The tool was NOT executed.",
+				detail : "truncatedToolArguments"
+			);
 		}
 	}
 
@@ -1141,6 +1173,65 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			);
 		}
 
+		// Everything resumeToolBatchStream() needs to rebuild the follow-up request — Cohere has
+		// no shared `messages` array to append an assistant turn to (unlike the other providers).
+		var assistantMessage = {
+			toolCalls    : arguments.toolCalls,
+			followUpTools: arguments.dataPacket.tools ?: [],
+			chatHistory  : arguments.dataPacket.chat_history ?: [],
+			preamble     : arguments.dataPacket.preamble ?: "",
+			tempParams   : arguments.tempParams
+		}
+
+		var batchOutcome = executeStreamToolBatch( thisChatRequest, userCallback, arguments.toolCalls, assistantMessage, boundTools )
+		if ( batchOutcome.stopped ) {
+			return
+		}
+
+		emitStreamText(
+			userCallback,
+			sendToolResultsFollowUp(
+				chatRequest     : thisChatRequest,
+				assistantMessage: assistantMessage,
+				toolResults     : batchOutcome.toolResults,
+				interactionCount: arguments.interactionCount,
+				callback        : userCallback,
+				tools           : boundTools
+			),
+			thisChatRequest.getModel()
+		)
+	}
+
+	/**
+	 * Run one batch of streamed tool calls through the "Pass 1: decide / Pass 2: execute" split.
+	 *
+	 * Extracted from runStreamToolBatch() so a follow-up turn that asks for ANOTHER tool batch can
+	 * reuse the identical machinery (beforeToolCall / afterToolBatch / wrapToolCall / afterToolCall)
+	 * instead of restarting the conversation.
+	 *
+	 * Any terminal middleware decision (cancel or a batch suspension) is emitted through the
+	 * callback as a `middleware_stop` sentinel here, and reported back as `stopped: true`.
+	 *
+	 * @chatRequest       The chat request being streamed
+	 * @callback           The streaming callback
+	 * @toolCalls          Normalized `[ { name, parameters } ]` tool calls for THIS round
+	 * @assistantMessage  The replay material for this round (also handed to afterToolBatch)
+	 * @tools              The ITool instances bound to this request
+	 *
+	 * @return `{ stopped: boolean, toolResults: array }`
+	 */
+	private struct function executeStreamToolBatch(
+		required AiChatRequest chatRequest,
+		required function callback,
+		required array toolCalls,
+		required struct assistantMessage,
+		required any tools
+	){
+		var thisChatRequest  = arguments.chatRequest
+		var userCallback     = arguments.callback
+		var boundTools       = arguments.tools
+		var assistantMessage = arguments.assistantMessage
+
 		// ── Pass 1: decide ────────────────────────────────────────────────────────────────
 		var batch = [];
 		var terminalToolResult = "";
@@ -1177,17 +1268,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		if ( isObject( terminalToolResult ) ) {
 			userCallback( { type: "middleware_stop", result: terminalToolResult } )
-			return
-		}
-
-		// Everything resumeToolBatchStream() needs to rebuild the follow-up request — Cohere has
-		// no shared `messages` array to append an assistant turn to (unlike the other providers).
-		var assistantMessage = {
-			toolCalls    : arguments.toolCalls,
-			followUpTools: arguments.dataPacket.tools ?: [],
-			chatHistory  : arguments.dataPacket.chat_history ?: [],
-			preamble     : arguments.dataPacket.preamble ?: "",
-			tempParams   : arguments.tempParams
+			return { stopped: true, toolResults: [] }
 		}
 
 		// ── Suspend the whole batch at once, if anything needs a human decision ────────────
@@ -1215,7 +1296,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			if ( batchResult.isTerminal() ) {
 				if ( !batchResult.isSuspended() ) {
 					userCallback( { type: "middleware_stop", result: batchResult } )
-					return
+					return { stopped: true, toolResults: [] }
 				}
 				var resumeLedger = batch.map( ( entry ) => {
 					if ( entry.result.isDeferred() || entry.result.isSuspended() ) {
@@ -1230,7 +1311,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				mergedData[ "assistantMessage" ] = assistantMessage
 				mergedData[ "resumeLedger" ]     = resumeLedger
 				userCallback( { type: "middleware_stop", result: AiMiddlewareResult.suspend( mergedData ) } )
-				return
+				return { stopped: true, toolResults: [] }
 			}
 			// continue: afterToolBatch() decided nothing needs to stay pending after all.
 		}
@@ -1263,66 +1344,122 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			toolResults.append( { "call": entry.toolCall, "outputs": [ { "result": toolOutput } ] } );
 		}
 
-		emitStreamText(
-			userCallback,
-			sendToolResultsFollowUp( thisChatRequest, assistantMessage, toolResults, arguments.interactionCount ),
-			thisChatRequest.getModel()
-		)
+		return { stopped: false, toolResults: toolResults }
 	}
 
 	/**
-	 * Send the follow-up turn carrying tool results and return its assistant text.
+	 * Send the follow-up turn carrying tool results and return its assistant text, looping while
+	 * Cohere keeps asking for more tools.
 	 *
 	 * NOTE: Cohere requires EITHER message OR tool_results, not both (unless force_single_step=true),
 	 * so the follow-up packet is rebuilt from what the original turn captured rather than replaying
 	 * the user message.
 	 *
+	 * A follow-up that itself returns `tool_calls` continues THIS exchange: the accumulated
+	 * tool_results (plus the same tools/chat_history/preamble/params) are carried forward and the
+	 * new batch runs through executeStreamToolBatch(). Restarting via chat() on the unchanged
+	 * original request would instead discard the follow-up, re-send the original prompt with no
+	 * tool results at all, and re-run any side-effecting tool from round 1.
+	 *
 	 * @chatRequest       The chat request being continued
 	 * @assistantMessage The captured tools/chat_history/preamble/params of the originating turn
 	 * @toolResults       The Cohere-shaped `[ { call, outputs } ]` results
 	 * @interactionCount Current tool call interaction count (used internally)
+	 * @callback          The streaming callback (used to emit a middleware_stop from a later round)
+	 * @tools             The ITool instances bound to this request
 	 */
 	private string function sendToolResultsFollowUp(
 		required AiChatRequest chatRequest,
 		required struct assistantMessage,
 		required array toolResults,
-		required numeric interactionCount
+		required numeric interactionCount,
+		required function callback,
+		required any tools
 	){
-		var thisChatRequest = arguments.chatRequest
-		var followUpPacket   = {
-			"model"       : thisChatRequest.getModel(),
-			"tool_results": arguments.toolResults
-		};
-		if ( ( arguments.assistantMessage.followUpTools ?: [] ).len() ) {
-			followUpPacket.tools = arguments.assistantMessage.followUpTools;
-		}
-		if ( ( arguments.assistantMessage.chatHistory ?: [] ).len() ) {
-			followUpPacket.chat_history = arguments.assistantMessage.chatHistory;
-		}
-		if ( len( arguments.assistantMessage.preamble ?: "" ) ) {
-			followUpPacket.preamble = arguments.assistantMessage.preamble;
-		}
-		followUpPacket.append( arguments.assistantMessage.tempParams ?: {} );
+		var thisChatRequest  = arguments.chatRequest
+		var currentAssistant = arguments.assistantMessage
+		var pendingResults   = arguments.toolResults
+		var roundCount       = arguments.interactionCount
+		var maxAllowed       = thisChatRequest.getMaxInteractions() > 0 ? thisChatRequest.getMaxInteractions() : variables.maxInteractions;
 
-		var result = thisChatRequest.fireWrapMiddleware(
-			hook         : "wrapLLMCall",
-			context      : { chatRequest: thisChatRequest, dataPacket: followUpPacket },
-			innerFunction: () => sendChatRequest( thisChatRequest, followUpPacket )
-		)
-		thisChatRequest.fireMiddleware(
-			hook   : "afterLLMCall",
-			context: { chatRequest: thisChatRequest, result: result },
-			reverse: true
-		)
+		while ( true ) {
+			var followUpPacket = {
+				"model"       : thisChatRequest.getModel(),
+				"tool_results": pendingResults
+			};
+			if ( ( currentAssistant.followUpTools ?: [] ).len() ) {
+				followUpPacket.tools = currentAssistant.followUpTools;
+			}
+			if ( ( currentAssistant.chatHistory ?: [] ).len() ) {
+				followUpPacket.chat_history = currentAssistant.chatHistory;
+			}
+			if ( len( currentAssistant.preamble ?: "" ) ) {
+				followUpPacket.preamble = currentAssistant.preamble;
+			}
+			followUpPacket.append( currentAssistant.tempParams ?: {} );
 
-		// Cohere wants MORE tool calls (multi-step reasoning) — hand the remaining turns to chat(),
-		// which owns the recursion and the max-interactions guard.
-		if ( result.keyExists( "tool_calls" ) && result.tool_calls.len() ) {
-			var continued = chat( thisChatRequest, arguments.interactionCount + 1 );
-			return isSimpleValue( continued ) ? toString( continued ) : "";
+			var capturedPacket = followUpPacket;
+			var result = thisChatRequest.fireWrapMiddleware(
+				hook         : "wrapLLMCall",
+				context      : { chatRequest: thisChatRequest, dataPacket: capturedPacket },
+				innerFunction: () => sendChatRequest( thisChatRequest, capturedPacket )
+			)
+			thisChatRequest.fireMiddleware(
+				hook   : "afterLLMCall",
+				context: { chatRequest: thisChatRequest, result: result },
+				reverse: true
+			)
+
+			// No more tools — this is the final assistant turn.
+			if ( !( result.keyExists( "tool_calls" ) && result.tool_calls.len() ) ) {
+				return toString( result.text ?: "" )
+			}
+
+			// Cohere wants MORE tool calls (multi-step reasoning) — same guard chat() applies.
+			roundCount++
+			if ( roundCount >= maxAllowed ) {
+				writeLog(
+					text: "Max tool call interactions (#maxAllowed#) exceeded",
+					type: "error",
+					log : "ai"
+				)
+				throw(
+					type   : "MaxInteractionsExceeded",
+					message: "Tool calls exceeded maximum allowed interactions (#maxAllowed#). This may indicate an infinite loop."
+				);
+			}
+
+			// Preserve the completed exchange: same tools/chat_history/preamble/params, plus the
+			// new assistant tool calls. `priorToolResults` is what a suspension in this later round
+			// needs to replay everything already sent.
+			var nextAssistant = {
+				toolCalls       : result.tool_calls,
+				followUpTools   : currentAssistant.followUpTools ?: [],
+				chatHistory     : currentAssistant.chatHistory ?: [],
+				preamble        : currentAssistant.preamble ?: "",
+				tempParams      : currentAssistant.tempParams ?: {},
+				priorToolResults: pendingResults
+			}
+
+			var batchOutcome = executeStreamToolBatch(
+				thisChatRequest,
+				arguments.callback,
+				result.tool_calls,
+				nextAssistant,
+				arguments.tools
+			)
+			if ( batchOutcome.stopped ) {
+				return ""
+			}
+
+			// Carry the whole exchange forward so the next turn still sees what round 1 produced.
+			// A NEW array, so `nextAssistant.priorToolResults` keeps this round's snapshot intact.
+			var mergedResults = []
+			mergedResults.append( pendingResults, true )
+			mergedResults.append( batchOutcome.toolResults, true )
+			pendingResults   = mergedResults
+			currentAssistant = nextAssistant
 		}
-
-		return toString( result.text ?: "" )
 	}
 
 	/**

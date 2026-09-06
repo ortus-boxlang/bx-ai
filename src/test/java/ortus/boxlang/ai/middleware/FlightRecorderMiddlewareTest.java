@@ -854,6 +854,64 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "gotRawBody" ) ) ).isTrue();
 	}
 
+	@DisplayName( "record/replay: a BINARY stream body is taped base64 and replayed as a byte-equal binary" )
+	@Test
+	public void testRecordAndReplayBinaryStreamBody( @TempDir Path tempDir ) {
+		String fixturePath = tempDir.resolve( "stream-binary.json" ).toString().replace( "\\", "\\\\" );
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        // Stand-in for Bedrock's binary event-stream body: a byte[], which fails isSimpleValue()
+		        rawBody = toBinary( toBase64( "RAW-BINARY-EVENT-STREAM-BODY" ) );
+
+		        rec = new FlightRecorderMiddleware( mode: "record", fixturePath: "%s" );
+		        rec.beforeAgentRun( context: {} );
+
+		        returned = rec.wrapLLMCall(
+		            context : { stream: true, transport: "bedrock-event-stream", dataPacket: { model: "anthropic.claude" } },
+		            handler : function() { return rawBody; }
+		        );
+
+		        tape         = rec.getTape();
+		        oneEntry     = tape.interactions.len() == 1;
+		        markedStream = tape.interactions[1].stream == true;
+		        markedB64    = ( tape.interactions[1].encoding ?: "" ) == "base64";
+		        b64Recorded  = tape.interactions[1].response == toBase64( rawBody );
+		        binReturned  = isBinary( returned ) && toBase64( returned ) == toBase64( rawBody );
+
+		        rec.afterAgentRun( context: {} );
+
+		        // Replay from the fixture the recorder just wrote
+		        rep = new FlightRecorderMiddleware( mode: "replay", fixturePath: "%s" );
+		        rep.beforeAgentRun( context: {} );
+
+		        handlerCalled = false;
+		        replayed = rep.wrapLLMCall(
+		            context: { stream: true, dataPacket: {} },
+		            handler: function() { handlerCalled = true; return "LIVE"; }
+		        );
+
+		        noLiveCall     = !handlerCalled;
+		        replayedBinary = isBinary( replayed );
+		        byteEqual      = replayedBinary && toBase64( replayed ) == toBase64( rawBody );
+		    """.formatted( fixturePath, fixturePath ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "oneEntry" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "markedStream" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "markedB64" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "b64Recorded" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "binReturned" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noLiveCall" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "replayedBinary" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "byteEqual" ) ) ).isTrue();
+	}
+
 	@DisplayName( "record mode: an emit-based stream call is passthrough with no fixture entry" )
 	@Test
 	public void testRecordStreamEmitBasedIsPassthrough( @TempDir Path tempDir ) {

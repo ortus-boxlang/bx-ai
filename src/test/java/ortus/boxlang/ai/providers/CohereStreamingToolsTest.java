@@ -276,4 +276,163 @@ public class CohereStreamingToolsTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "blockedResult" ) ) ).isTrue();
 	}
 
+	@DisplayName( "A stream that truncates a tool call's JSON arguments throws instead of running the tool with defaults" )
+	@Test
+	public void testTruncatedStreamToolArgumentsThrowsAndNeverRunsTool() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        toolInvoked = 0
+		        weatherTool = aiTool( "getWeather", "Get the weather for a city", ( string city = "" ) => {
+		            toolInvoked++
+		            return "sunny"
+		        } )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "What is the weather in Paris?" ),
+		            { model: "command-a-03-2025", tools: [ weatherTool ] },
+		            { provider: "cohere" }
+		        )
+
+		        followUpCalls = 0
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                if( ctx.stream ?: false ){
+		                    // The stream dies mid-arguments: only '{"city":' ever arrives
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( {
+		                        "event_type"      : "tool-calls-chunk",
+		                        "tool_call_delta" : { "index": 0, "name": "getWeather", "parameters": '{"city":' }
+		                    } ) } )
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( {
+		                        "event_type"   : "stream-end",
+		                        "finish_reason": "MAX_TOKENS",
+		                        "response"     : { "meta": { "billed_units": { "input_tokens": 10, "output_tokens": 5 } } }
+		                    } ) } )
+		                    return {}
+		                }
+		                followUpCalls++
+		                return { "text": "should never be reached" }
+		            }
+		        } )
+
+		        threw        = false
+		        errorType    = ""
+		        errorMessage = ""
+		        try {
+		            provider.chatStream( chatRequest, ( chunk ) => {} )
+		        } catch( any e ){
+		            threw        = true
+		            errorType    = e.type
+		            errorMessage = e.message
+		        }
+
+		        namesTool    = errorMessage.findNoCase( "getWeather" ) > 0
+		        saysTruncated = errorMessage.findNoCase( "truncated" ) > 0
+		        saysNotRun   = errorMessage.findNoCase( "NOT executed" ) > 0
+		        toolNeverRan = toolInvoked == 0
+		        noFollowUp   = followUpCalls == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "errorType" ) ) ).isEqualTo( "CohereStreamError" );
+		assertThat( variables.getAsBoolean( Key.of( "namesTool" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "saysTruncated" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "saysNotRun" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolNeverRan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noFollowUp" ) ) ).isTrue();
+	}
+
+	@DisplayName( "A follow-up turn that asks for ANOTHER tool continues the same exchange instead of restarting it" )
+	@Test
+	public void testStreamMultiRoundFollowUpPreservesExchange() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B", () => { toolBCalls++; return "B done" } )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "run toolA then toolB" ),
+		            { model: "command-a-03-2025", tools: [ toolA, toolB ] },
+		            { provider: "cohere" }
+		        )
+
+		        llmCalls     = 0
+		        requestBodies = []
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                llmCalls++
+		                if( ctx.stream ?: false ){
+		                    // Round 1: the stream asks for toolA
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( {
+		                        "event_type": "tool-calls-generation",
+		                        "tool_calls": [ { "name": "toolA", "parameters": {} } ]
+		                    } ) } )
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( {
+		                        "event_type"   : "stream-end",
+		                        "finish_reason": "COMPLETE",
+		                        "response"     : { "meta": { "billed_units": { "input_tokens": 4, "output_tokens": 4 } } }
+		                    } ) } )
+		                    return {}
+		                }
+
+		                requestBodies.append( duplicate( ctx.dataPacket ?: {} ) )
+
+		                // Follow-up #1 asks for toolB; follow-up #2 answers.
+		                if( requestBodies.len() == 1 ){
+		                    return { "tool_calls": [ { "name": "toolB", "parameters": {} } ] }
+		                }
+		                return { "text": "Both tools ran." }
+		            }
+		        } )
+
+		        chunks = []
+		        provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+		        finalText = chunks
+		            .filter( c => isStruct( c ) && c.keyExists( "choices" ) )
+		            .map( c => c.choices.first().delta.content ?: "" )
+		            .toList( "" )
+
+		        sawMiddlewareStop = chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
+		        toolARanOnce      = toolACalls == 1
+		        toolBRanOnce      = toolBCalls == 1
+		        threeLLMCalls     = llmCalls == 3
+		        twoFollowUps      = requestBodies.len() == 2
+
+		        // The SECOND request (follow-up #1) must carry round 1's tool_results
+		        firstResults  = requestBodies[ 1 ].tool_results ?: []
+		        round1Carried = firstResults.len() == 1
+		            && ( firstResults.first().call.name ?: "" ) == "toolA"
+		            && ( firstResults.first().outputs.first().result ?: "" ) == "A done"
+
+		        // The THIRD request must still carry round 1 alongside round 2 — progress preserved
+		        secondResults  = requestBodies[ 2 ].tool_results ?: []
+		        exchangeKept   = secondResults.len() == 2
+		            && ( secondResults[ 1 ].call.name ?: "" ) == "toolA"
+		            && ( secondResults[ 2 ].call.name ?: "" ) == "toolB"
+
+		        isFinalText = finalText == "Both tools ran."
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sawMiddlewareStop" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "toolARanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolBRanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "threeLLMCalls" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "twoFollowUps" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "round1Carried" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "exchangeKept" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+	}
+
 }
