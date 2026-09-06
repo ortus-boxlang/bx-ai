@@ -3898,6 +3898,19 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
+	 * Resolve beforeToolCall edits in either the normalized arguments or the native tool call.
+	 * Prefer normalized edits when both changed, while retaining native HITL edit decisions.
+	 */
+	private struct function resolveToolArgs( required struct toolContext, required struct originalArgs ){
+		var resolved = isStruct( arguments.toolContext.toolArgs ?: "" ) ? arguments.toolContext.toolArgs : {};
+		var nativeArgs = toolCallArgs( arguments.toolContext.toolCall );
+		if ( resolved.equals( arguments.originalArgs ) && !nativeArgs.equals( arguments.originalArgs ) ) {
+			return nativeArgs;
+		}
+		return resolved;
+	}
+
+	/**
 	 * The arguments carried by one tool call, normalized to a struct. OpenAI serializes them as a
 	 * JSON string; Claude and the stream accumulator hand back a struct already.
 	 */
@@ -4597,6 +4610,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					toolName   : len( callName ) ? callName : tool.getName(),
 					toolArgs   : toolCallArgs( toolCall )
 				}
+				var originalToolArgs = duplicate( toolContext.toolArgs )
 				var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
 				if ( toolBeforeResult.isCancelled() ) {
@@ -4605,7 +4619,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					break
 				}
 
-				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: resolveToolArgs( toolContext, originalToolArgs ), result: toolBeforeResult } )
 			}
 
 			if ( isObject( terminalToolResult ) ) {
@@ -4669,10 +4683,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					continue
 				}
 
-				// Re-read the args fresh in case an "edit" decision mutated the tool call in
-				// place during pass 1 (matches OpenAIService.chat()).
+				// Use the resolved arguments from pass 1, including middleware replacements.
 				var capturedTool = entry.tool
-				var capturedArgs = toolCallArgs( entry.toolCall )
+				var capturedArgs = entry.toolArgs
 				var toolResult = thisChatRequest.fireWrapMiddleware(
 					"wrapToolCall",
 					{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: capturedArgs },
@@ -4790,10 +4803,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 			countTokensInput = { "converse": converseInput };
 		} else {
-			// CountTokensInput.invokeModel takes the raw vendor body as a STRING.
+			// The raw HTTP API models body as a blob: encode the vendor JSON bytes as base64.
 			// @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html
 			var invokeBody = buildBedrockChatPacket( arguments.chatRequest, modelId, "invoke" );
-			countTokensInput = { "invokeModel": { "body": jsonSerialize( invokeBody ) } };
+			countTokensInput = { "invokeModel": { "body": toBase64( charsetDecode( jsonSerialize( invokeBody ), "UTF-8" ) ) } };
 		}
 
 		var host     = getBedrockHost();
@@ -5482,6 +5495,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				toolName   : len( callName ) ? callName : tool.getName(),
 				toolArgs   : toolCallArgs( toolCall )
 			}
+			var originalToolArgs = duplicate( toolContext.toolArgs )
 			var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
 			// Cancel aborts the run outright — a cancelled run is never resumed, so nothing to batch.
@@ -5490,7 +5504,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				break
 			}
 
-			batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+			batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: resolveToolArgs( toolContext, originalToolArgs ), result: toolBeforeResult } )
 		}
 
 		if ( isObject( terminalToolResult ) ) {
@@ -5555,7 +5569,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 
 			var capturedTool = entry.tool
-			var capturedArgs = toolCallArgs( entry.toolCall )
+			var capturedArgs = entry.toolArgs
 			var toolResult = thisChatRequest.fireWrapMiddleware(
 				"wrapToolCall",
 				{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: capturedArgs },
@@ -5756,19 +5770,22 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// that leg's body was rebuilt from scratch against a different API, so every in-place edit
 		// the hook made to the Converse packet is gone. The flag is what lets middleware tell the
 		// two legs of one logical call apart (see chat()'s fallback for the sync mirror).
-		var streamLlmBefore = arguments.aiRequest.fireMiddleware(
-			"beforeLLMCall",
-			{
-				chatRequest  : arguments.aiRequest,
-				dataPacket   : arguments.dataPacket,
-				stream       : true,
-				transport    : "bedrock-event-stream",
-				fallbackRetry: arguments.isFallbackRetry
-			}
-		);
+		var streamContext = {
+			chatRequest  : arguments.aiRequest,
+			dataPacket   : arguments.dataPacket,
+			stream       : true,
+			transport    : "bedrock-event-stream",
+			fallbackRetry: arguments.isFallbackRetry
+		};
+		var streamLlmBefore = arguments.aiRequest.fireMiddleware( "beforeLLMCall", streamContext );
 		if( streamLlmBefore.isTerminal() ){
 			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
 			return { "terminated": true }
+		}
+
+		// A replacement packet must reach signing, logging and the transport wrapper too.
+		if ( isStruct( streamContext.dataPacket ?: "" ) ) {
+			arguments.dataPacket = streamContext.dataPacket;
 		}
 
 		// Serialize AFTER the hook, not before: middleware is handed `dataPacket` so it can
