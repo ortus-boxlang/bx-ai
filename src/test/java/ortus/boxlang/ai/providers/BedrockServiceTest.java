@@ -5457,7 +5457,12 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 				}
 
 				// shouldFallbackToInvoke is the single decision point, and is directly testable
-				fallbackOnUnsupported = provider.shouldFallbackToInvoke( "ValidationException: The model does not support tool use." )
+				// The sentence must name the OPERATION, not just "the model" — see the on-demand
+				// throughput case in testFallbackDecisionIgnoresModelIds().
+				fallbackOnUnsupported = provider.shouldFallbackToInvoke( "ValidationException: The model does not support the Converse operation." )
+				// A bare "the model does not support <feature>" is a feature-level 400: InvokeModel
+				// would reject it just as hard, so it is surfaced rather than retried.
+				fallbackOnFeature     = provider.shouldFallbackToInvoke( "ValidationException: The model does not support tool use." )
 				fallbackOnThrottle    = provider.shouldFallbackToInvoke( "ThrottlingException: too many requests" )
 				fallbackOnOtherValid  = provider.shouldFallbackToInvoke( "ValidationException: messages.0.content: field required" )
 			""".formatted( converseService() ),
@@ -5472,6 +5477,7 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "throttleCalls" ) ) ).isEqualTo( 1 );
 		assertThat( variables.getAsBoolean( Key.of( "threwProviderError" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "fallbackOnUnsupported" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "fallbackOnFeature" ) ) ).isFalse();
 		assertThat( variables.getAsBoolean( Key.of( "fallbackOnThrottle" ) ) ).isFalse();
 		assertThat( variables.getAsBoolean( Key.of( "fallbackOnOtherValid" ) ) ).isFalse();
 	}
@@ -5586,50 +5592,84 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "On the Converse path the NO_TOOL_SUPPORT_FAMILIES gate no longer fires" )
-	public void testConverseDropsCapabilityGate() {
+	@DisplayName( "G2: the Converse capability gate is narrowed, not dropped — Titan tools and forced-toolChoice structured output still pre-flight" )
+	public void testConverseCapabilityGateNarrowed() {
 		// @formatter:off
 		executeWithTimeoutHandling(
 			"""
 				provider = %s
 				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => "sunny" )
-				chatRequest = aiChatRequest(
+				okBody = ( ctx, handler ) => ( { "output": { "message": { "content": [ { "text": "ok" } ] } }, "stopReason": "end_turn" } )
+
+				// (1) Llama + tools on Converse: NOT gated any more. Converse has one
+				// model-agnostic toolConfig, and AWS is the authority on whether the model can use it.
+				llamaRequest = aiChatRequest(
+					aiMessage().user( "weather?" ),
+					{ model: "meta.llama3-70b-instruct-v1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				llamaRequest.addMiddleware( { "wrapLLMCall": okBody } )
+				llamaErrType = ""
+				try {
+					llamaAnswer = provider.chat( llamaRequest )
+				} catch ( any e ) {
+					llamaErrType = e.type
+				}
+
+				// (2) Titan + tools: still gated on BOTH APIs — Titan has no tool-use capability at all.
+				titanConverse = aiChatRequest(
 					aiMessage().user( "weather?" ),
 					{ model: "amazon.titan-text-express-v1", tools: [ tool ] },
 					{ provider: "bedrock" }
 				)
-				chatRequest.addMiddleware( {
-					"wrapLLMCall": ( ctx, handler ) => ( { "output": { "message": { "content": [ { "text": "ok" } ] } }, "stopReason": "end_turn" } )
-				} )
-				errType = ""
+				titanConverse.addMiddleware( { "wrapLLMCall": okBody } )
+				titanConverseErr = ""
 				try {
-					answer = provider.chat( chatRequest )
+					provider.chat( titanConverse )
 				} catch ( any e ) {
-					errType = e.type
+					titanConverseErr = e.type
 				}
 
-				// Same request pinned to the invoke API still throws — the gate describes the reach
-				// of the per-vendor transforms, and those are unchanged.
-				invokeRequest = aiChatRequest(
+				titanInvoke = aiChatRequest(
 					aiMessage().user( "weather?" ),
 					{ model: "amazon.titan-text-express-v1", tools: [ tool ] },
 					{ provider: "bedrock", providerOptions: { bedrockApi: "invoke" } }
 				)
-				invokeErrType = ""
+				titanInvoke.addMiddleware( { "wrapLLMCall": okBody } )
+				titanInvokeErr = ""
 				try {
-					provider.chat( invokeRequest )
+					provider.chat( titanInvoke )
 				} catch ( any e ) {
-					invokeErrType = e.type
+					titanInvokeErr = e.type
+				}
+
+				// (3) Schema-typed structured output on Llama over Converse: gated. This module
+				// implements it as a FORCED toolChoice, which Llama does not honour — the forced
+				// block would simply never arrive, after a paid round trip.
+				soRequest = aiChatRequest(
+					aiMessage().user( "weather?" ),
+					{ model: "meta.llama3-70b-instruct-v1:0" },
+					{ provider: "bedrock", schema: { "type": "object", "properties": { "city": { "type": "string" } }, "required": [ "city" ] } }
+				)
+				soRequest.addMiddleware( { "wrapLLMCall": okBody } )
+				soErrType = ""
+				try {
+					provider.chat( soRequest )
+				} catch ( any e ) {
+					soErrType = e.type
 				}
 			""".formatted( converseService() ),
 			context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEmpty();
-		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "ok" );
-		assertThat( variables.get( Key.of( "invokeErrType" ) ).toString() ).isEqualTo( "UnsupportedProviderCapability" );
+		assertThat( variables.get( Key.of( "llamaErrType" ) ).toString() ).isEmpty();
+		assertThat( variables.get( Key.of( "llamaAnswer" ) ).toString() ).isEqualTo( "ok" );
+		assertThat( variables.get( Key.of( "titanConverseErr" ) ).toString() ).isEqualTo( "UnsupportedProviderCapability" );
+		assertThat( variables.get( Key.of( "titanInvokeErr" ) ).toString() ).isEqualTo( "UnsupportedProviderCapability" );
+		assertThat( variables.get( Key.of( "soErrType" ) ).toString() ).isEqualTo( "UnsupportedProviderCapability" );
 	}
+
 	// ============================================================================================
 	// Converse review findings (#272 follow-up)
 	// ============================================================================================
@@ -5813,8 +5853,8 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "F4: a ConverseStream fallback fires beforeLLMCall ONCE, not once per API attempted" )
-	public void testStreamFallbackDoesNotRefireBeforeLLMCall() {
+	@DisplayName( "F4/G4: a ConverseStream fallback re-fires beforeLLMCall for the rebuilt invoke body, flagged fallbackRetry" )
+	public void testStreamFallbackRefiresBeforeLLMCallWithFlag() {
 		String claudeStream = streamBody(
 		    frame( chunkPayload( "{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"over invoke\"}}" ),
 		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
@@ -5833,8 +5873,14 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 				)
 				beforeCalls = 0
 				wrapCalls   = 0
+				firstFlag   = "unset"
+				secondFlag  = "unset"
 				chatRequest.addMiddleware( {
-					"beforeLLMCall": ( ctx ) => { beforeCalls++ },
+					"beforeLLMCall": ( ctx ) => {
+						beforeCalls++
+						if ( beforeCalls == 1 ) { firstFlag  = toString( ctx.fallbackRetry ?: "missing" ) }
+						if ( beforeCalls == 2 ) { secondFlag = toString( ctx.fallbackRetry ?: "missing" ) }
+					},
 					"wrapLLMCall": ( ctx, handler ) => {
 						wrapCalls++
 						if ( wrapCalls == 1 ) {
@@ -5858,7 +5904,11 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		assertThat( variables.getAsInteger( Key.of( "beforeCalls" ) ) ).isEqualTo( 1 );
+		// One logical call, two legs: the invoke leg's body was rebuilt from scratch, so the hook
+		// gets to see (and re-edit) it — told apart by ctx.fallbackRetry.
+		assertThat( variables.getAsInteger( Key.of( "beforeCalls" ) ) ).isEqualTo( 2 );
+		assertThat( variables.get( Key.of( "firstFlag" ) ).toString() ).isEqualTo( "false" );
+		assertThat( variables.get( Key.of( "secondFlag" ) ).toString() ).isEqualTo( "true" );
 		assertThat( variables.getAsInteger( Key.of( "wrapCalls" ) ) ).isEqualTo( 2 );
 		assertThat( variables.get( Key.of( "text" ) ).toString() ).isEqualTo( "over invoke" );
 	}
@@ -6260,5 +6310,1349 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "videoBytes" ) ).toString() ).isEqualTo( "QUJD" );
 		assertThat( variables.getAsInteger( Key.of( "toolBlocks" ) ) ).isEqualTo( 2 );
 		assertThat( variables.getAsBoolean( Key.of( "hasCachePoint" ) ) ).isTrue();
+	}
+
+	// ============================================================================================
+	// Converse review round 2 (#272 follow-up)
+	// ============================================================================================
+
+	@Test
+	@DisplayName( "G1: header-form guardrail providerOptions (and bedrockHeaders) still reach Converse's guardrailConfig" )
+	public void testConverseGuardrailFromHeaderForm() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				okBody = ( ctx, handler ) => ( { "output": { "message": { "content": [ { "text": "ok" } ] } }, "stopReason": "end_turn" } )
+
+				headerRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{ provider: "bedrock", providerOptions: {
+						"X-Amzn-Bedrock-GuardrailIdentifier" : "gr-header",
+						"X-Amzn-Bedrock-GuardrailVersion"    : "3",
+						"X-Amzn-Bedrock-Trace"               : "ENABLED"
+					} }
+				)
+				headerPacket = {}
+				headerRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => { headerPacket = ctx.dataPacket },
+					"wrapLLMCall"  : okBody
+				} )
+				provider.chat( headerRequest )
+				headerId      = headerPacket.guardrailConfig.guardrailIdentifier
+				headerVersion = headerPacket.guardrailConfig.guardrailVersion
+				headerTrace   = headerPacket.guardrailConfig.trace
+
+				shorthandRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{ provider: "bedrock", providerOptions: { bedrockHeaders: {
+						"X-Amzn-Bedrock-GuardrailIdentifier" : "gr-shorthand",
+						"X-Amzn-Bedrock-GuardrailVersion"    : "9"
+					} } }
+				)
+				shorthandPacket = {}
+				shorthandRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => { shorthandPacket = ctx.dataPacket },
+					"wrapLLMCall"  : okBody
+				} )
+				provider.chat( shorthandRequest )
+				shorthandId = shorthandPacket.guardrailConfig.guardrailIdentifier
+
+				// The camelCase form still wins when both are present
+				bothRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{ provider: "bedrock", providerOptions: {
+						guardrailIdentifier                  : "gr-camel",
+						guardrailVersion                     : "1",
+						"X-Amzn-Bedrock-GuardrailIdentifier" : "gr-header"
+					} }
+				)
+				bothPacket = {}
+				bothRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => { bothPacket = ctx.dataPacket },
+					"wrapLLMCall"  : okBody
+				} )
+				provider.chat( bothRequest )
+				camelWins = bothPacket.guardrailConfig.guardrailIdentifier
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "headerId" ) ).toString() ).isEqualTo( "gr-header" );
+		assertThat( variables.get( Key.of( "headerVersion" ) ).toString() ).isEqualTo( "3" );
+		assertThat( variables.get( Key.of( "headerTrace" ) ).toString() ).isEqualTo( "enabled" );
+		assertThat( variables.get( Key.of( "shorthandId" ) ).toString() ).isEqualTo( "gr-shorthand" );
+		assertThat( variables.get( Key.of( "camelWins" ) ).toString() ).isEqualTo( "gr-camel" );
+	}
+
+	@Test
+	@DisplayName( "G3: an InvokeModel-shaped body reaching the Converse transform is a hard BedrockError, not an empty green envelope" )
+	public void testConverseTransformRejectsInvokeShapedBody() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{ provider: "bedrock" }
+				)
+				// A Claude InvokeModel body — the exact shape a replay fixture recorded against the
+				// other API hands back.
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => ( { "content": [ { "type": "text", "text": "invoke shaped" } ], "stop_reason": "end_turn" } )
+				} )
+				errType = ""
+				errMsg  = ""
+				try {
+					provider.chat( chatRequest )
+				} catch ( any e ) {
+					errType = e.type
+					errMsg  = e.message
+				}
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "BedrockError" );
+		assertThat( variables.get( Key.of( "errMsg" ) ).toString() ).contains( "not a Converse body" );
+	}
+
+	@Test
+	@DisplayName( "G3b: a wrapLLMCall middleware returning a STRING for a sync call fails naming the contract" )
+	public void testSyncWrapLLMCallMustReturnStruct() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => "just some text" } )
+				errType = ""
+				errMsg  = ""
+				try {
+					provider.chat( chatRequest )
+				} catch ( any e ) {
+					errType = e.type
+					errMsg  = e.message
+				}
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "BedrockError" );
+		assertThat( variables.get( Key.of( "errMsg" ) ).toString() ).contains( "NON-STREAMING" );
+	}
+
+	@Test
+	@DisplayName( "G4a: the sync fallback re-fires beforeLLMCall over the REBUILT invoke body, flagged fallbackRetry" )
+	public void testSyncFallbackRefiresBeforeLLMCallWithFlag() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", max_tokens: 64 },
+					{ provider: "bedrock" }
+				)
+				beforeCalls = 0
+				wrapCalls   = 0
+				firstFlag   = "unset"
+				secondFlag  = "unset"
+				retryPacket = {}
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						beforeCalls++
+						if ( beforeCalls == 1 ) { firstFlag = toString( ctx.fallbackRetry ?: "missing" ) }
+						if ( beforeCalls == 2 ) {
+							secondFlag = toString( ctx.fallbackRetry ?: "missing" )
+							ctx.dataPacket[ "mwMarker" ] = "edited-on-retry"
+						}
+					},
+					"wrapLLMCall": ( ctx, handler ) => {
+						wrapCalls++
+						if ( wrapCalls == 1 ) {
+							return { "error": {
+								"message"    : "Bedrock request failed with status 400: ValidationException: The model does not support Converse.",
+								"statusCode" : 400
+							} }
+						}
+						retryPacket = ctx.dataPacket
+						return { "content": [ { "type": "text", "text": "over invoke" } ], "stop_reason": "end_turn" }
+					}
+				} )
+				answer = provider.chat( chatRequest )
+
+				retryHasEdit      = retryPacket.keyExists( "mwMarker" )
+				retryIsInvokeBody = retryPacket.keyExists( "max_tokens" ) && !retryPacket.keyExists( "inferenceConfig" )
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "over invoke" );
+		assertThat( variables.getAsInteger( Key.of( "beforeCalls" ) ) ).isEqualTo( 2 );
+		assertThat( variables.get( Key.of( "firstFlag" ) ).toString() ).isEqualTo( "false" );
+		assertThat( variables.get( Key.of( "secondFlag" ) ).toString() ).isEqualTo( "true" );
+		assertThat( variables.getAsInteger( Key.of( "wrapCalls" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsBoolean( Key.of( "retryHasEdit" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "retryIsInvokeBody" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "G4b: a middleware-substituted call that errors on BOTH legs announces onAIError exactly once" )
+	public void testFallbackAnnouncesErrorExactlyOnce() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				errorEvents = 0
+				BoxRegisterInterceptor( function( data ) { errorEvents++ }, "onAIError" )
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => ( { "error": {
+						"message"    : "Bedrock request failed with status 400: ValidationException: The model does not support Converse.",
+						"statusCode" : 400
+					} } )
+				} )
+				errType = ""
+				try {
+					provider.chat( chatRequest )
+				} catch ( any e ) {
+					errType = e.type
+				}
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "ProviderError" );
+		assertThat( variables.getAsInteger( Key.of( "errorEvents" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "S3: a runtime fallback STICKS — turn 2 of the tool loop goes out over InvokeModel, not Converse again" )
+	public void testFallbackSticksForTheNextTurn() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				toolRuns = 0
+				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => { toolRuns++; return "sunny in " & city } )
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather in Paris?" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				wrapCalls  = 0
+				turn2Body  = {}
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						wrapCalls++
+						if ( wrapCalls == 1 ) {
+							return { "error": {
+								"message"    : "Bedrock request failed with status 400: ValidationException: The model does not support Converse.",
+								"statusCode" : 400
+							} }
+						}
+						if ( wrapCalls == 2 ) {
+							// The invoke (Claude) leg asks for a tool
+							return {
+								"content" : [ { "type": "tool_use", "id": "tu_1", "name": "getWeather", "input": { "city": "Paris" } } ],
+								"stop_reason" : "tool_use"
+							}
+						}
+						turn2Body = ctx.dataPacket
+						return { "content": [ { "type": "text", "text": "Sunny." } ], "stop_reason": "end_turn" }
+					}
+				} )
+				answer = provider.chat( chatRequest )
+
+				// Turn 2's body is a Claude InvokeModel body, NOT a Converse one — the fallback stuck.
+				turn2IsInvoke = turn2Body.keyExists( "anthropic_version" ) && !turn2Body.keyExists( "inferenceConfig" )
+				stickyApi     = provider.resolveBedrockApi( chatRequest, "anthropic.claude-3-sonnet-20240229-v1:0" )
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "Sunny." );
+		assertThat( variables.getAsInteger( Key.of( "toolRuns" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "wrapCalls" ) ) ).isEqualTo( 3 );
+		assertThat( variables.getAsBoolean( Key.of( "turn2IsInvoke" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "stickyApi" ) ).toString() ).isEqualTo( "invoke" );
+	}
+
+	@Test
+	@DisplayName( "S2: a resume reads the dialect the suspended turn was BUILT in, not whatever the config resolves to now" )
+	public void testResumeUsesPersistedDialect() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				toolRuns = 0
+				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => { toolRuns++; return "sunny in " & city } )
+
+				// The recorded assistant turn is in the CLAUDE (invoke) dialect, because that run
+				// fell back at request time. The service default is still Converse.
+				claudeTurn = {
+					"role"    : "assistant",
+					"content" : [
+						{ "type": "text", "text": "Let me check." },
+						{ "type": "tool_use", "id": "tu_1", "name": "getWeather", "input": { "city": "Paris" } }
+					]
+				}
+
+				resumeRequest = aiChatRequest(
+					aiMessage().user( "weather in Paris?" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ tool ] },
+					{
+						provider: "bedrock",
+						_resumeContext: {
+							assistantMessage: claudeTurn,
+							resumeLedger    : [ { toolName: "getWeather", status: "execute" } ],
+							suspendData     : { bedrockApi: "invoke", toolDialect: "claude" }
+						}
+					}
+				)
+				followUp = {}
+				resumeRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						followUp = ctx.dataPacket
+						return { "content": [ { "type": "text", "text": "Sunny." } ], "stop_reason": "end_turn" }
+					}
+				} )
+				answer = provider.chat( resumeRequest )
+				followUpIsInvoke = followUp.keyExists( "anthropic_version" ) && !followUp.keyExists( "inferenceConfig" )
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		// Without the persisted dialect the resume re-resolves "converse", reads ZERO tool calls
+		// off a Claude-shaped turn, and the approved tool is silently skipped.
+		assertThat( variables.getAsInteger( Key.of( "toolRuns" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "Sunny." );
+		assertThat( variables.getAsBoolean( Key.of( "followUpIsInvoke" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "S2b: a resume ledger that does not match the recorded turn's tool calls throws ResumeLedgerMismatch" )
+	public void testResumeLedgerMismatchThrows() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				toolRuns = 0
+				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => { toolRuns++; return "sunny" } )
+
+				claudeTurn = {
+					"role"    : "assistant",
+					"content" : [
+						{ "type": "tool_use", "id": "tu_1", "name": "getWeather", "input": { "city": "Paris" } },
+						{ "type": "tool_use", "id": "tu_2", "name": "getWeather", "input": { "city": "Rome" } }
+					]
+				}
+
+				resumeRequest = aiChatRequest(
+					aiMessage().user( "weather?" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ tool ] },
+					{
+						provider: "bedrock",
+						_resumeContext: {
+							assistantMessage: claudeTurn,
+							resumeLedger    : [ { toolName: "getWeather", status: "execute" } ],
+							suspendData     : { bedrockApi: "invoke", toolDialect: "claude" }
+						}
+					}
+				)
+				resumeRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => ( { "content": [ { "type": "text", "text": "x" } ], "stop_reason": "end_turn" } ) } )
+				errType = ""
+				try {
+					provider.chat( resumeRequest )
+				} catch ( any e ) {
+					errType = e.type
+				}
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "ResumeLedgerMismatch" );
+		assertThat( variables.getAsInteger( Key.of( "toolRuns" ) ) ).isEqualTo( 0 );
+	}
+
+	@Test
+	@DisplayName( "T2: model ids and ARNs in an AWS message no longer veto (or break) the fallback decision" )
+	public void testFallbackDecisionIgnoresModelIds() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+
+				// (a) the veto words live inside MODEL IDS, not in a field reference
+				titanImage  = provider.shouldFallbackToInvoke( "ValidationException: The model amazon.titan-image-generator-v1 does not support the Converse operation." )
+				stableImage = provider.shouldFallbackToInvoke( "ValidationException: Model stability.stable-image-core-v1:0 is not supported by Converse." )
+
+				// (b) a dotted model id between the subject and the verb no longer breaks the window
+				cohereText  = provider.shouldFallbackToInvoke( "ValidationException: The model cohere.command-text-v14 doesn't support the Converse operation." )
+				arnForm     = provider.shouldFallbackToInvoke( "ValidationException: The model arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-text-express-v1 does not support Converse." )
+
+				// feature-level 400s still veto — AWS is describing THIS request accurately
+				featureToolChoice = provider.shouldFallbackToInvoke( "ValidationException: This model does not support toolChoice." )
+				featureToolResult = provider.shouldFallbackToInvoke( "ValidationException: toolResult.status is not supported by this model." )
+				featureImages     = provider.shouldFallbackToInvoke( "ValidationException: This model does not support image content blocks." )
+				featureSystem     = provider.shouldFallbackToInvoke( "ValidationException: system messages are not supported by this model." )
+				unrelated         = provider.shouldFallbackToInvoke( "ValidationException: messages.0.content: field required" )
+				notValidation     = provider.shouldFallbackToInvoke( "ThrottlingException: Too many requests, the model is not supported right now" )
+
+				// R1: the single most common Bedrock 400 there is. It is a ValidationException, it
+				// says "isn't supported", and the subject reads as "model ID <id>" — but it is
+				// about THROUGHPUT MODE, not about the API. InvokeModel rejects it identically, and
+				// falling back throws away AWS's own remediation ("use an inference profile").
+				onDemandThroughput = provider.shouldFallbackToInvoke(
+					"ValidationException: Invocation of model ID anthropic.claude-3-5-sonnet-20241022-v2:0 with on-demand throughput isn't supported. Retry your request with the ID or ARN of an inference profile that contains this model."
+				)
+				// The same message shape without the hyphen, and the provisioned-throughput sibling
+				onDemandNoHyphen   = provider.shouldFallbackToInvoke(
+					"ValidationException: Invocation of model ID meta.llama3-70b-instruct-v1:0 with on demand throughput isn't supported."
+				)
+				provisioned        = provider.shouldFallbackToInvoke(
+					"ValidationException: The provided model doesn't support provisioned throughput for the Converse operation."
+				)
+				// IAM denials are not an API-capability statement either
+				notAuthorized      = provider.shouldFallbackToInvoke(
+					"ValidationException: You are not authorized to perform the Converse operation with this model."
+				)
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "titanImage" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "stableImage" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "cohereText" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "arnForm" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "featureToolChoice" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "featureToolResult" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "featureImages" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "featureSystem" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "unrelated" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "notValidation" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "onDemandThroughput" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "onDemandNoHyphen" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "provisioned" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "notAuthorized" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "M1: an AWS 400 whose exception name came from the x-amzn-errortype HEADER still triggers the fallback" )
+	public void testHeaderOnlyErrorTypeTriggersFallback() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				// The message shape sendBedrockRequest() now builds when the body carries only
+				// {"message":...} and the exception name arrived in the response header.
+				headerShaped = provider.shouldFallbackToInvoke(
+					"Bedrock request failed with status 400 [ValidationException]: {""message"":""This model does not support the Converse operation.""}"
+				)
+				// A header-typed throttle is still not a fallback trigger
+				throttleShaped = provider.shouldFallbackToInvoke(
+					"Bedrock request failed with status 429 [ThrottlingException]: {""message"":""Too many requests""}"
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{ provider: "bedrock" }
+				)
+				wrapCalls = 0
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						wrapCalls++
+						if ( wrapCalls == 1 ) {
+							return { "error": {
+								"message"    : "Bedrock request failed with status 400 [ValidationException]: {""message"":""This model does not support the Converse operation.""}",
+								"statusCode" : 400
+							} }
+						}
+						return { "content": [ { "type": "text", "text": "recovered" } ], "stop_reason": "end_turn" }
+					}
+				} )
+				answer = provider.chat( chatRequest )
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "headerShaped" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "throttleShaped" ) ) ).isFalse();
+		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "recovered" );
+		assertThat( variables.getAsInteger( Key.of( "wrapCalls" ) ) ).isEqualTo( 2 );
+	}
+
+	@Test
+	@DisplayName( "T1: Cohere folds only the TRAILING tool exchange into tool_results, and synthesizes unique ids per turn" )
+	public void testCohereFoldsOnlyTrailingToolExchange() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService( "bedrock", { awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s", bedrockApi: "invoke" } )
+				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => "sunny in " & city )
+
+				// A conversation that ALREADY contains two completed tool exchanges plus a third
+				// awaiting its follow-up turn.
+				history = [
+					{ role: "user", content: "turn 1" },
+					{ role: "assistant", content: "", tool_calls: [ { id: "c1", type: "function", function: { name: "getWeather", arguments: "{""city"":""Paris""}" } } ] },
+					{ role: "tool", tool_call_id: "c1", content: "sunny in Paris" },
+					{ role: "assistant", content: "It is sunny in Paris." },
+					{ role: "user", content: "turn 2" },
+					{ role: "assistant", content: "", tool_calls: [ { id: "c2", type: "function", function: { name: "getWeather", arguments: "{""city"":""Rome""}" } } ] },
+					{ role: "tool", tool_call_id: "c2", content: "rainy in Rome" },
+					{ role: "assistant", content: "It is rainy in Rome." },
+					{ role: "user", content: "turn 3" },
+					{ role: "assistant", content: "", tool_calls: [ { id: "c3", type: "function", function: { name: "getWeather", arguments: "{""city"":""Oslo""}" } } ] },
+					{ role: "tool", tool_call_id: "c3", content: "snowy in Oslo" }
+				]
+
+				chatRequest = aiChatRequest(
+					history,
+					{ model: "cohere.command-r-v1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				packet = {}
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => { packet = ctx.dataPacket },
+					"wrapLLMCall"  : ( ctx, handler ) => ( { "text": "ok", "finish_reason": "COMPLETE" } )
+				} )
+				provider.chat( chatRequest )
+
+				resultCount  = ( packet.tool_results ?: [] ).len()
+				resultCity   = resultCount ? packet.tool_results.first().call.parameters.city : ""
+				resultOutput = resultCount ? packet.tool_results.first().outputs.first().result : ""
+				// Nothing from the earlier turns is replayed as a tool RESULT — but the earlier
+				// rounds are narrated into chat_history as CHATBOT turns, so turn 3 still knows
+				// what turns 1 and 2 asked for and were told (R12).
+				historyRoles = ( packet.chat_history ?: [] ).map( h => h.role ).toList( "," )
+				narratedTurn1 = ( packet.chat_history ?: [] ).some( h => ( h.message ?: "" ).findNoCase( "Tool getWeather returned: sunny in Paris" ) > 0 )
+				narratedTurn2 = ( packet.chat_history ?: [] ).some( h => ( h.message ?: "" ).findNoCase( "Tool getWeather returned: rainy in Rome" ) > 0 )
+				// Turn 3 is the TRAILING exchange: it is tool_results, never chat_history
+				narratedTurn3 = ( packet.chat_history ?: [] ).some( h => ( h.message ?: "" ).findNoCase( "snowy in Oslo" ) > 0 )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "resultCount" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "resultCity" ) ).toString() ).isEqualTo( "Oslo" );
+		assertThat( variables.get( Key.of( "resultOutput" ) ).toString() ).isEqualTo( "snowy in Oslo" );
+		// Per completed round: the narrated tool result, then the assistant's own prose.
+		assertThat( variables.get( Key.of( "historyRoles" ) ).toString() ).isEqualTo( "USER,CHATBOT,CHATBOT,USER,CHATBOT,CHATBOT,USER" );
+		assertThat( variables.getAsBoolean( Key.of( "narratedTurn1" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "narratedTurn2" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "narratedTurn3" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "T1b: synthesized Cohere tool-call ids do not collide across tool-loop turns" )
+	public void testCohereSyntheticToolIdsAreUniquePerTurn() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService( "bedrock", { awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s", bedrockApi: "invoke" } )
+				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => "sunny in " & city )
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather?" ),
+					{ model: "cohere.command-r-v1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				wrapCalls = 0
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						wrapCalls++
+						if ( wrapCalls <= 2 ) {
+							return { "tool_calls": [ { "name": "getWeather", "parameters": { "city": "Paris" } } ], "finish_reason": "TOOL_CALL" }
+						}
+						return { "text": "done", "finish_reason": "COMPLETE" }
+					}
+				} )
+				provider.chat( chatRequest )
+
+				toolIds = chatRequest.getMessages()
+					.filter( m => isStruct( m ) && ( m.role ?: "" ) == "tool" )
+					.map( m => m.tool_call_id ?: "" )
+				idCount    = toolIds.len()
+				idsUnique  = toolIds.len() == toolIds.toList( "," ).listToArray( "," ).len() && toolIds.first() != toolIds.last()
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "idCount" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsBoolean( Key.of( "idsUnique" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "M5: a string event-stream replay matches frames whatever order jsonSerialize put the keys in" )
+	public void testStringFrameReplayIsKeyOrderIndependent() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				// Frames built the way a replaying middleware builds them: jsonSerialize(), which
+				// emits struct keys ALPHABETICALLY — "bytes" before "eventType".
+				frames = [
+					{ "eventType": "messageStart",      "bytes": toBase64( '{"role":"assistant"}' ) },
+					{ "eventType": "contentBlockDelta", "bytes": toBase64( '{"contentBlockIndex":0,"delta":{"text":"Hello from replay"}}' ) },
+					{ "eventType": "contentBlockStop",  "bytes": toBase64( '{"contentBlockIndex":0}' ) },
+					{ "eventType": "messageStop",       "bytes": toBase64( '{"stopReason":"end_turn"}' ) }
+				].map( f => jsonSerialize( f ) ).toList( "" )
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{ provider: "bedrock" }
+				)
+				replayBody = frames
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => replayBody } )
+
+				chunks = []
+				provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+				text = chunks
+					.filter( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() )
+					.map( c => c.choices.first().delta.content ?: "" )
+					.toList( "" )
+				sawStop = chunks.some( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() && ( c.choices.first().finish_reason ?: "" ) == "stop" )
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "text" ) ).toString() ).isEqualTo( "Hello from replay" );
+		assertThat( variables.getAsBoolean( Key.of( "sawStop" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "S1: an invoke Claude stream records the WHOLE assistant turn — signed thinking, then text, then tool_use" )
+	public void testInvokeClaudeStreamRecordsFullAssistantTurn() {
+		String	toolStream	= streamBody(
+		    frame( chunkPayload( "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"weighing it up\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload( "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"sig-abc\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload( "{\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"text_delta\",\"text\":\"Let me check.\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame(
+		        chunkPayload(
+		            "{\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"tool_use\",\"id\":\"tu_1\",\"name\":\"getWeather\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload(
+		        "{\"type\":\"content_block_delta\",\"index\":2,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"city\\\":\\\"Paris\\\"}\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload( "{\"type\":\"content_block_stop\",\"index\":2}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload( "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" )
+		);
+		String	textStream	= streamBody(
+		    frame( chunkPayload( "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Sunny.\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload( "{\"type\":\"message_stop\"}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService( "bedrock", { awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s", bedrockApi: "invoke" } )
+				toolRuns = 0
+				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => { toolRuns++; return "sunny in " & city } )
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather?" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				wrapCalls = 0
+				followUp  = {}
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => { if ( wrapCalls == 1 ) { followUp = ctx.dataPacket } },
+					"wrapLLMCall": ( ctx, handler ) => {
+						wrapCalls++
+						return binaryDecode( wrapCalls == 1 ? "%s" : "%s", "base64" )
+					}
+				} )
+				chunks = []
+				provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+				// followUp.messages: [ user, assistant(turn), user(tool_result) ]
+				assistantTurn  = followUp.messages[ 2 ].content
+				blockCount     = assistantTurn.len()
+				firstType      = assistantTurn[ 1 ].type
+				firstSignature = assistantTurn[ 1 ].signature ?: ""
+				firstThinking  = assistantTurn[ 1 ].thinking ?: ""
+				secondType     = assistantTurn[ 2 ].type
+				secondText     = assistantTurn[ 2 ].text ?: ""
+				thirdType      = assistantTurn[ 3 ].type
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION, toolStream, textStream ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "toolRuns" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "blockCount" ) ) ).isEqualTo( 3 );
+		assertThat( variables.get( Key.of( "firstType" ) ).toString() ).isEqualTo( "thinking" );
+		assertThat( variables.get( Key.of( "firstThinking" ) ).toString() ).isEqualTo( "weighing it up" );
+		assertThat( variables.get( Key.of( "firstSignature" ) ).toString() ).isEqualTo( "sig-abc" );
+		assertThat( variables.get( Key.of( "secondType" ) ).toString() ).isEqualTo( "text" );
+		assertThat( variables.get( Key.of( "secondText" ) ).toString() ).isEqualTo( "Let me check." );
+		assertThat( variables.get( Key.of( "thirdType" ) ).toString() ).isEqualTo( "tool_use" );
+	}
+
+	@Test
+	@DisplayName( "M2/M3/M6: a scalar image_url, an ARRAY params.system, and numeric-STRING inference params all survive the Converse transform" )
+	public void testConverseTransformCoercions() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				chatRequest = aiChatRequest(
+					[ { role: "user", content: [ { type: "image_url", image_url: "data:image/jpeg;base64,QUJD" } ] } ],
+					{
+						model       : "anthropic.claude-3-sonnet-20240229-v1:0",
+						system      : [ { type: "text", text: "You are terse.", cache_control: { type: "ephemeral" } } ],
+						max_tokens  : "512",
+						temperature : "0.7",
+						top_p       : "0.9"
+					},
+					{ provider: "bedrock" }
+				)
+				packet = {}
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => { packet = ctx.dataPacket },
+					"wrapLLMCall"  : ( ctx, handler ) => ( { "output": { "message": { "content": [ { "text": "ok" } ] } }, "stopReason": "end_turn" } )
+				} )
+				provider.chat( chatRequest )
+
+				imageFormat = packet.messages.first().content.first().image.format
+				imageBytes  = packet.messages.first().content.first().image.source.bytes
+				systemCount = packet.system.len()
+				systemText  = packet.system.first().text
+				systemCache = packet.system.last().keyExists( "cachePoint" )
+				serialized  = jsonSerialize( packet.inferenceConfig )
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "imageFormat" ) ).toString() ).isEqualTo( "jpeg" );
+		assertThat( variables.get( Key.of( "imageBytes" ) ).toString() ).isEqualTo( "QUJD" );
+		assertThat( variables.getAsInteger( Key.of( "systemCount" ) ) ).isEqualTo( 2 );
+		assertThat( variables.get( Key.of( "systemText" ) ).toString() ).isEqualTo( "You are terse." );
+		assertThat( variables.getAsBoolean( Key.of( "systemCache" ) ) ).isTrue();
+		// Typed JSON numbers, not strings — Converse's inferenceConfig is a typed shape
+		String inference = variables.get( Key.of( "serialized" ) ).toString();
+		assertThat( inference ).contains( "512" );
+		assertThat( inference ).doesNotContain( "\"512\"" );
+		assertThat( inference ).doesNotContain( "\"0.7\"" );
+		assertThat( inference ).doesNotContain( "\"0.9\"" );
+	}
+
+	@Test
+	@DisplayName( "M8: a catch-all (non openai.*) model gets max_tokens, not max_completion_tokens" )
+	public void testCatchAllFamilyEmitsMaxTokens() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService( "bedrock", { awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s", bedrockApi: "invoke" } )
+				okBody = ( ctx, handler ) => ( { "choices": [ { "message": { "role": "assistant", "content": "ok" }, "finish_reason": "stop" } ] } )
+
+				catchAll = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "deepseek.r1-v1:0", max_tokens: 128 },
+					{ provider: "bedrock" }
+				)
+				catchAllPacket = {}
+				catchAll.addMiddleware( { "beforeLLMCall": ( ctx ) => { catchAllPacket = ctx.dataPacket }, "wrapLLMCall": okBody } )
+				provider.chat( catchAll )
+
+				openAI = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "openai.gpt-oss-120b-1:0", max_tokens: 128 },
+					{ provider: "bedrock" }
+				)
+				openAIPacket = {}
+				openAI.addMiddleware( { "beforeLLMCall": ( ctx ) => { openAIPacket = ctx.dataPacket }, "wrapLLMCall": okBody } )
+				provider.chat( openAI )
+
+				catchAllKey   = catchAllPacket.keyExists( "max_tokens" ) && !catchAllPacket.keyExists( "max_completion_tokens" )
+				openAIKey     = openAIPacket.keyExists( "max_completion_tokens" ) && !openAIPacket.keyExists( "max_tokens" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "catchAllKey" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "openAIKey" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "T3: a caller-supplied tool result with no status is NOT sniffed for marker text and flagged as an error" )
+	public void testToolResultWithoutStatusIsNotAnError() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				history = [
+					{ role: "user", content: "run it" },
+					{ role: "assistant", content: "", tool_calls: [ { id: "c1", type: "function", function: { name: "lookup", arguments: "{}" } } ] },
+					{ role: "tool", tool_call_id: "c1", content: "[Tool call blocked: this is legitimate OUTPUT text, not a marker]" }
+				]
+				chatRequest = aiChatRequest( history, { model: "anthropic.claude-3-sonnet-20240229-v1:0" }, { provider: "bedrock" } )
+				packet = {}
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => { packet = ctx.dataPacket },
+					"wrapLLMCall"  : ( ctx, handler ) => ( { "output": { "message": { "content": [ { "text": "ok" } ] } }, "stopReason": "end_turn" } )
+				} )
+				provider.chat( chatRequest )
+				resultBlock = packet.messages.last().content.first().toolResult
+				hasStatus   = resultBlock.keyExists( "status" )
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasStatus" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "M4: a ConverseStream stopReason reaches afterLLMCall as the NORMALIZED finish reason" )
+	public void testConverseStreamFinishReasonNormalized() {
+		String body = streamBody(
+		    converseFrame( "messageStart", "{\"role\":\"assistant\"}" ),
+		    converseFrame( "contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"text\":\"cut off\"}}" ),
+		    converseFrame( "contentBlockStop", "{\"contentBlockIndex\":0}" ),
+		    converseFrame( "messageStop", "{\"stopReason\":\"max_tokens\"}" )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{ provider: "bedrock" }
+				)
+				seenFinish = ""
+				seenRaw    = ""
+				chatRequest.addMiddleware( {
+					"afterLLMCall": ( ctx ) => {
+						seenFinish = ctx.streamState.finishReason ?: ""
+						seenRaw    = ctx.streamState.stopReason ?: ""
+					},
+					"wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" )
+				} )
+				provider.chatStream( chatRequest, ( chunk ) => {} )
+			""".formatted( converseService(), body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "seenFinish" ) ).toString() ).isEqualTo( "length" );
+		assertThat( variables.get( Key.of( "seenRaw" ) ).toString() ).isEqualTo( "max_tokens" );
+	}
+
+	@Test
+	@DisplayName( "Converse sync chat(): malformed_model_output/malformed_tool_use map to finish_reason 'stop' and never start a tool loop" )
+	public void testConverseSyncMalformedStopReasonsFinishAndSkipToolLoop() {
+		// Both reasons signal the model itself produced something unusable (a broken message, or a
+		// broken tool-call payload) — there are no toolUse content blocks to run, and CONVERSE_STOP_REASONS
+		// maps both onto "stop" rather than "tool_calls" or an error finish.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => "sunny in " & city )
+				expected = { "malformed_model_output": "stop", "malformed_tool_use": "stop" }
+				mismatches = []
+				for ( key in expected ) {
+					wrapCalls = 0
+					chatRequest = aiChatRequest(
+						aiMessage().user( "weather in Paris?" ),
+						{ model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ tool ] },
+						{ provider: "bedrock", returnFormat: "raw" }
+					)
+					chatRequest.addMiddleware( {
+						"wrapLLMCall": ( ctx, handler ) => {
+							wrapCalls++
+							return {
+								"output": { "message": { "role": "assistant", "content": [ { "text": "incomplete" } ] } },
+								"stopReason": key,
+								"usage": { "inputTokens": 5, "outputTokens": 2, "totalTokens": 7 }
+							}
+						}
+					} )
+					result = provider.chat( chatRequest )
+					got = result.choices[ 1 ].finish_reason
+					hasToolCalls = result.choices[ 1 ].message.keyExists( "tool_calls" )
+					if ( got != expected[ key ] || wrapCalls != 1 || hasToolCalls ) {
+						mismatches.append( "#key# -> finish=#got# wrapCalls=#wrapCalls# hasToolCalls=#hasToolCalls#" )
+					}
+				}
+				mismatchCount   = mismatches.len()
+				mismatchSummary = mismatches.toList( char( 10 ) )
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		if ( variables.getAsInteger( Key.of( "mismatchCount" ) ) > 0 ) {
+			System.out.println( variables.get( Key.of( "mismatchSummary" ) ) );
+		}
+		assertThat( variables.getAsInteger( Key.of( "mismatchCount" ) ) ).isEqualTo( 0 );
+	}
+
+	@Test
+	@DisplayName( "ConverseStream: malformed_model_output/malformed_tool_use messageStop emits finish_reason 'stop'" )
+	public void testConverseStreamMalformedStopReasonsEmitStop() {
+		String	malformedModelOutputBody	= streamBody(
+		    converseFrame( "messageStart", "{\"role\":\"assistant\"}" ),
+		    converseFrame( "contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"text\":\"incomplete\"}}" ),
+		    converseFrame( "contentBlockStop", "{\"contentBlockIndex\":0}" ),
+		    converseFrame( "messageStop", "{\"stopReason\":\"malformed_model_output\"}" )
+		);
+		String	malformedToolUseBody		= streamBody(
+		    converseFrame( "messageStart", "{\"role\":\"assistant\"}" ),
+		    converseFrame( "contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"text\":\"incomplete\"}}" ),
+		    converseFrame( "contentBlockStop", "{\"contentBlockIndex\":0}" ),
+		    converseFrame( "messageStop", "{\"stopReason\":\"malformed_tool_use\"}" )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+
+				chunks1 = []
+				req1 = aiChatRequest( aiMessage().user( "hi" ), { model: "anthropic.claude-3-sonnet-20240229-v1:0" }, { provider: "bedrock" } )
+				req1.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" ) } )
+				provider.chatStream( req1, ( chunk ) => { chunks1.append( chunk ) } )
+				sawStop1 = chunks1.some( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() && ( c.choices.first().finish_reason ?: "" ) == "stop" )
+
+				chunks2 = []
+				req2 = aiChatRequest( aiMessage().user( "hi" ), { model: "anthropic.claude-3-sonnet-20240229-v1:0" }, { provider: "bedrock" } )
+				req2.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" ) } )
+				provider.chatStream( req2, ( chunk ) => { chunks2.append( chunk ) } )
+				sawStop2 = chunks2.some( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() && ( c.choices.first().finish_reason ?: "" ) == "stop" )
+			""".formatted( converseService(), malformedModelOutputBody, malformedToolUseBody ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sawStop1" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawStop2" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "ConverseStream: model_context_window_exceeded -> 'length' and guardrail_intervened -> 'content_filter'" )
+	public void testConverseStreamContextWindowAndGuardrailStopReasons() {
+		String	contextWindowBody	= streamBody(
+		    converseFrame( "messageStart", "{\"role\":\"assistant\"}" ),
+		    converseFrame( "contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"text\":\"too much\"}}" ),
+		    converseFrame( "contentBlockStop", "{\"contentBlockIndex\":0}" ),
+		    converseFrame( "messageStop", "{\"stopReason\":\"model_context_window_exceeded\"}" )
+		);
+		String	guardrailBody		= streamBody(
+		    converseFrame( "messageStart", "{\"role\":\"assistant\"}" ),
+		    converseFrame( "contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"text\":\"blocked\"}}" ),
+		    converseFrame( "contentBlockStop", "{\"contentBlockIndex\":0}" ),
+		    converseFrame( "messageStop", "{\"stopReason\":\"guardrail_intervened\"}" )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+
+				chunks1 = []
+				req1 = aiChatRequest( aiMessage().user( "hi" ), { model: "anthropic.claude-3-sonnet-20240229-v1:0" }, { provider: "bedrock" } )
+				req1.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" ) } )
+				provider.chatStream( req1, ( chunk ) => { chunks1.append( chunk ) } )
+				sawLength = chunks1.some( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() && ( c.choices.first().finish_reason ?: "" ) == "length" )
+
+				chunks2 = []
+				req2 = aiChatRequest( aiMessage().user( "hi" ), { model: "anthropic.claude-3-sonnet-20240229-v1:0" }, { provider: "bedrock" } )
+				req2.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" ) } )
+				provider.chatStream( req2, ( chunk ) => { chunks2.append( chunk ) } )
+				sawContentFilter = chunks2.some( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() && ( c.choices.first().finish_reason ?: "" ) == "content_filter" )
+			""".formatted( converseService(), contextWindowBody, guardrailBody ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sawLength" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawContentFilter" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "R2a: a runtime fallback never mutates the caller's providerOptions struct, and the NEXT request re-resolves Converse" )
+	public void testFallbackDoesNotPinCallerProviderOptions() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+
+				// ONE providerOptions struct, reused for two requests — exactly what
+				// AiBaseRunnable.getMergedOptions() does for every turn of an agent run.
+				sharedProviderOptions = {}
+				sharedOptions         = { provider: "bedrock", providerOptions: sharedProviderOptions }
+
+				req1 = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					sharedOptions
+				)
+				calls = 0
+				req1.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						calls++
+						if ( calls == 1 ) {
+							return { "error": {
+								"message"    : "Bedrock request failed with status 400: ValidationException: The model does not support the Converse operation.",
+								"statusCode" : 400
+							} }
+						}
+						return { "content": [ { "type": "text", "text": "ok" } ], "stop_reason": "end_turn" }
+					}
+				} )
+				provider.chat( req1 )
+
+				// The caller's own struct must be untouched — a pin here outlives the request
+				pinnedOnCaller = sharedProviderOptions.keyExists( "bedrockApi" )
+				// ...while the decision is still sticky for the request that made it
+				stuckOnReq1    = provider.resolveBedrockApi( req1, "anthropic.claude-3-sonnet-20240229-v1:0" )
+
+				req2 = aiChatRequest(
+					aiMessage().user( "hi again" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					sharedOptions
+				)
+				apiForReq2 = provider.resolveBedrockApi( req2, "anthropic.claude-3-sonnet-20240229-v1:0" )
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "calls" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsBoolean( Key.of( "pinnedOnCaller" ) ) ).isFalse();
+		assertThat( variables.get( Key.of( "stuckOnReq1" ) ).toString() ).isEqualTo( "invoke" );
+		assertThat( variables.get( Key.of( "apiForReq2" ) ).toString() ).isEqualTo( "converse" );
+	}
+
+	@Test
+	@DisplayName( "R2b: an explicit providerOptions.bedrockApi = converse pin survives a fallback and still governs the next request" )
+	public void testExplicitConversePinSurvivesFallback() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+
+				sharedProviderOptions = { bedrockApi: "converse" }
+				sharedOptions         = { provider: "bedrock", providerOptions: sharedProviderOptions }
+
+				req1 = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					sharedOptions
+				)
+				calls = 0
+				req1.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						calls++
+						if ( calls == 1 ) {
+							return { "error": {
+								"message"    : "Bedrock request failed with status 400: ValidationException: The model does not support the Converse operation.",
+								"statusCode" : 400
+							} }
+						}
+						return { "content": [ { "type": "text", "text": "ok" } ], "stop_reason": "end_turn" }
+					}
+				} )
+				provider.chat( req1 )
+
+				// The pin the caller wrote is still the pin the caller wrote
+				pinStillConverse = sharedProviderOptions.bedrockApi
+				// The runtime decision outranks it for THIS request only
+				stuckOnReq1      = provider.resolveBedrockApi( req1, "anthropic.claude-3-sonnet-20240229-v1:0" )
+
+				req2 = aiChatRequest(
+					aiMessage().user( "hi again" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					sharedOptions
+				)
+				apiForReq2 = provider.resolveBedrockApi( req2, "anthropic.claude-3-sonnet-20240229-v1:0" )
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "pinStillConverse" ) ).toString() ).isEqualTo( "converse" );
+		assertThat( variables.get( Key.of( "stuckOnReq1" ) ).toString() ).isEqualTo( "invoke" );
+		assertThat( variables.get( Key.of( "apiForReq2" ) ).toString() ).isEqualTo( "converse" );
+	}
+
+	@Test
+	@DisplayName( "R4b: the OpenAI-shaped invoke packet holds a COPY of the messages, not the live conversation array" )
+	public void testOpenAiTransformCopiesMessages() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s", bedrockApi: "invoke" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "openai.gpt-oss-20b-1:0" },
+					{ provider: "bedrock" }
+				)
+				capturedPacket = {}
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						capturedPacket = ctx.dataPacket
+						return { "choices": [ { "message": { "role": "assistant", "content": "ok" }, "finish_reason": "stop" } ] }
+					}
+				} )
+				provider.chat( chatRequest )
+
+				lengthAtCapture = capturedPacket.messages.len()
+				// The tool loop appends to the request's own array after the call; a packet that
+				// ALIASED it would grow too, and anything holding the packet (a FlightRecorder
+				// tape, a serialized suspend payload) would describe a request never sent.
+				chatRequest.getMessages().append( { "role": "user", "content": "sent later" } )
+				lengthAfterMutation = capturedPacket.messages.len()
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "lengthAtCapture" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "lengthAfterMutation" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "R6: Cohere Command R is gated for schema-typed structured output on the CONVERSE path too" )
+	public void testCohereStructuredOutputGatedOnConverse() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract: John Doe, age 30" ),
+					{ model: "cohere.command-r-plus-v1:0" },
+					{
+						provider: "bedrock",
+						schema: {
+							"type": "object",
+							"properties": { "name": { "type": "string" } },
+							"required": [ "name" ]
+						}
+					}
+				)
+				caughtType = ""
+				caughtMsg  = ""
+				try {
+					provider.chat( chatRequest )
+				} catch( any e ) {
+					caughtType = e.type
+					caughtMsg  = e.message
+				}
+
+				// Plain TOOL CALLING on Command R over Converse is untouched by the gate
+				toolRequest = aiChatRequest(
+					aiMessage().user( "weather?" ),
+					{ model: "cohere.command-r-plus-v1:0", tools: [ aiTool( "getWeather", "Get the weather", ( required string city ) => "sunny" ) ] },
+					{ provider: "bedrock" }
+				)
+				toolRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => ( {
+						"output": { "message": { "role": "assistant", "content": [ { "text": "it is sunny" } ] } },
+						"stopReason": "end_turn"
+					} )
+				} )
+				toolsThrew = false
+				try {
+					provider.chat( toolRequest )
+				} catch( any e ) {
+					toolsThrew = true
+				}
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "caughtType" ) ).toString() ).isEqualTo( "UnsupportedProviderCapability" );
+		assertThat( variables.get( Key.of( "caughtMsg" ) ).toString() ).contains( "structured output" );
+		// The message must no longer send the caller to Command R as the fix for this
+		assertThat( variables.get( Key.of( "caughtMsg" ) ).toString() ).doesNotContain( "or Cohere Command R" );
+		assertThat( variables.getAsBoolean( Key.of( "toolsThrew" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "R8: a beforeLLMCall middleware that REPLACES context.dataPacket has its replacement sent on the first leg" )
+	public void testBeforeLLMCallPacketReplacementIsSentOnFirstLeg() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				announcedPacket = {}
+				BoxRegisterInterceptor( function( data ) { announcedPacket = data.dataPacket }, "onAIChatRequest" )
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{ provider: "bedrock", timeout: 1 }
+				)
+				// A REPLACEMENT, not an in-place edit: the middleware hands back a whole new struct.
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						ctx.dataPacket = { "messages": [ { "role": "user", "content": [ { "text": "replaced body" } ] } ], "_marker": "replaced" }
+					}
+				} )
+				// The transport is deliberately NOT substituted — onAIChatRequest fires inside it,
+				// with the packet that is actually about to go on the wire. The call itself then
+				// fails (dummy credentials / no route), which is irrelevant to this assertion.
+				try {
+					provider.chat( chatRequest )
+				} catch ( any e ) {
+				}
+				sentMarker = announcedPacket._marker ?: ""
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "sentMarker" ) ).toString() ).isEqualTo( "replaced" );
+	}
+
+	@Test
+	@DisplayName( "R9: an errored call that no transport ever ran (middleware-substituted, no fallback possible) still announces onAIError" )
+	public void testSubstitutedErrorAnnouncesWhenNoFallbackPossible() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				errorEvents = 0
+				BoxRegisterInterceptor( function( data ) { errorEvents++ }, "onAIError" )
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{ provider: "bedrock" }
+				)
+				wrapCalls = 0
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						wrapCalls++
+						return { "error": {
+							"message"    : "Bedrock request failed with status 400: ValidationException: messages.0.content: field required",
+							"statusCode" : 400
+						} }
+					}
+				} )
+				errType = ""
+				try {
+					// interactionCount > 0 makes mayFallback FALSE, so the transport was told to
+					// announce its own error — but the middleware substituted the call, so no
+					// transport ever ran and nobody announced anything.
+					provider.chat( chatRequest, 1 )
+				} catch ( any e ) {
+					errType = e.type
+				}
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "wrapCalls" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "ProviderError" );
+		assertThat( variables.getAsInteger( Key.of( "errorEvents" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "R12: earlier Cohere tool rounds are narrated into chat_history; only the trailing round is tool_results" )
+	public void testCohereEarlierToolRoundsSurviveInChatHistory() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s", bedrockApi: "invoke" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather in Paris?" ),
+					{ model: "cohere.command-r-plus-v1:0" },
+					{ provider: "bedrock" }
+				)
+				// Three completed tool rounds, in the OpenAI shape the shared tool loop records.
+				chatRequest.setMessages( [
+					{ "role": "user", "content": "weather in Paris?" },
+					{ "role": "assistant", "tool_calls": [ { "id": "c1", "type": "function", "function": { "name": "getWeather", "arguments": '{"city":"Paris"}' } } ] },
+					{ "role": "tool", "tool_call_id": "c1", "content": "sunny in Paris" },
+					{ "role": "user", "content": "and London?" },
+					{ "role": "assistant", "tool_calls": [ { "id": "c2", "type": "function", "function": { "name": "getWeather", "arguments": '{"city":"London"}' } } ] },
+					{ "role": "tool", "tool_call_id": "c2", "content": "rainy in London" },
+					{ "role": "user", "content": "and Berlin?" },
+					{ "role": "assistant", "tool_calls": [ { "id": "c3", "type": "function", "function": { "name": "getWeather", "arguments": '{"city":"Berlin"}' } } ] },
+					{ "role": "tool", "tool_call_id": "c3", "content": "cold in Berlin" }
+				] )
+				capturedPacket = {}
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						capturedPacket = ctx.dataPacket
+						return { "text": "ok", "finish_reason": "COMPLETE" }
+					}
+				} )
+				provider.chat( chatRequest )
+
+				history        = capturedPacket.chat_history ?: []
+				toolResultsLen = ( capturedPacket.tool_results ?: [] ).len()
+				// Round 1's result is remembered as a CHATBOT turn rather than vanishing
+				sawTurn1 = history.some( h => ( h.role ?: "" ) == "CHATBOT" && ( h.message ?: "" ).findNoCase( "sunny in Paris" ) > 0 )
+				sawTurn2 = history.some( h => ( h.role ?: "" ) == "CHATBOT" && ( h.message ?: "" ).findNoCase( "rainy in London" ) > 0 )
+				// ...and it names the tool that produced it
+				namesTool = history.some( h => ( h.role ?: "" ) == "CHATBOT" && ( h.message ?: "" ).findNoCase( "Tool getWeather returned" ) > 0 )
+				// Only the TRAILING round is replayed as tool_results
+				sawTurn3AsResult = history.some( h => ( h.message ?: "" ).findNoCase( "cold in Berlin" ) > 0 )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "toolResultsLen" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsBoolean( Key.of( "sawTurn1" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawTurn2" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "namesTool" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawTurn3AsResult" ) ) ).isFalse();
 	}
 }

@@ -15,12 +15,19 @@
 package ortus.boxlang.ai.providers;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
+import ortus.boxlang.runtime.types.exceptions.BoxRuntimeException;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 /**
  * Deterministic tests for BaseService.populateStructuredOutput()'s lenient JSON recovery.
@@ -210,6 +217,145 @@ public class StructuredOutputParsingTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		assertThat( variables.get( Key.of( "caughtType" ) ) ).isEqualTo( "StructuredOutputError" );
+	}
+
+	// -------------------------------------------------------------------------
+	// extractJSONContent() — "nothing found" vs a legitimate empty object
+	// -------------------------------------------------------------------------
+
+	/** Current byte length of the module's ai.log, or -1 when it does not exist yet. */
+	private long aiLogLength() throws IOException {
+		Path log = Path.of( runtime.getRuntimeHome().toString(), "logs", "ai.log" );
+		return Files.exists( log ) ? Files.size( log ) : -1L;
+	}
+
+	/** Everything appended to ai.log since `from` bytes. */
+	private String aiLogSince( long from ) throws IOException {
+		Path log = Path.of( runtime.getRuntimeHome().toString(), "logs", "ai.log" );
+		if ( !Files.exists( log ) ) {
+			return "";
+		}
+		String	all	= Files.readString( log );
+		byte[]	raw	= all.getBytes();
+		if ( from < 0 || from > raw.length ) {
+			return all;
+		}
+		return new String( raw, ( int ) from, raw.length - ( int ) from );
+	}
+
+	private String jsonReturnFormatScript( String contentExpr ) {
+		// @formatter:off
+		return """
+			provider    = aiService( "openai", { apiKey: "dummy-key" } )
+			chatRequest = aiChatRequest(
+				aiMessage().user( "Give me an object" ),
+				{ model: "gpt-4o-mini" },
+				{ provider: "openai", returnFormat: "json" }
+			)
+			cannedContent = """ + contentExpr + """
+
+			chatRequest.addMiddleware( {
+				"wrapLLMCall": ( ctx, handler ) => {
+					return {
+						"choices": [ { "index": 0, "message": { "role": "assistant", "content": cannedContent } } ],
+						"usage": { "prompt_tokens": 5, "completion_tokens": 8, "total_tokens": 13 }
+					}
+				}
+			} )
+			result        = provider.chat( chatRequest )
+			isEmptyStruct = isStruct( result ) && structIsEmpty( result )
+			""";
+		// @formatter:on
+	}
+
+	@DisplayName( "returnFormat json: a literal {} reply is an empty struct and does NOT warn" )
+	@Test
+	public void testLiteralEmptyObjectDoesNotFalseWarn() throws IOException {
+		// A reply of `{}` and a reply of pure prose both deserialize to an empty struct in lenient
+		// mode; only the second is an extraction failure, so only the second may warn.
+		String	marker		= "no parseable JSON found in model reply";
+
+		// Negative control first: prose with no JSON MUST warn, otherwise this environment is not
+		// writing the ai log at all and the positive assertion below would be vacuous.
+		long	beforeProse	= aiLogLength();
+		runtime.executeSource( jsonReturnFormatScript( "'I am sorry, I cannot help with that.'" ), context );
+		assumeTrue( aiLogSince( beforeProse ).contains( marker ), "ai.log is not observable in this environment" );
+		assertThat( variables.getAsBoolean( Key.of( "isEmptyStruct" ) ) ).isTrue();
+
+		long before = aiLogLength();
+		runtime.executeSource( jsonReturnFormatScript( "'{}'" ), context );
+
+		assertThat( variables.getAsBoolean( Key.of( "isEmptyStruct" ) ) ).isTrue();
+		assertThat( aiLogSince( before ) ).doesNotContain( marker );
+	}
+
+	@DisplayName( "returnFormat json: prose-wrapped {} is also a legitimate result, not a warning" )
+	@Test
+	public void testProseWrappedEmptyObjectDoesNotFalseWarn() throws IOException {
+		String	marker		= "no parseable JSON found in model reply";
+
+		long	beforeProse	= aiLogLength();
+		runtime.executeSource( jsonReturnFormatScript( "'Nothing at all here.'" ), context );
+		assumeTrue( aiLogSince( beforeProse ).contains( marker ), "ai.log is not observable in this environment" );
+
+		long before = aiLogLength();
+		runtime.executeSource( jsonReturnFormatScript( "'Here you go: {} Nothing matched.'" ), context );
+
+		assertThat( variables.getAsBoolean( Key.of( "isEmptyStruct" ) ) ).isTrue();
+		assertThat( aiLogSince( before ) ).doesNotContain( marker );
+	}
+
+	@DisplayName( "returnFormat json: a reply with NO JSON at all does warn" )
+	@Test
+	public void testNoJSONAtAllWarns() throws IOException {
+		// Regression: `foundJSON = false` written unqualified inside the catch resolved to the
+		// variables scope, leaving the local still true — so this warning never fired at all.
+		String	marker	= "no parseable JSON found in model reply";
+		long	before	= aiLogLength();
+
+		runtime.executeSource( jsonReturnFormatScript( "'I am sorry, I cannot help with that.'" ), context );
+
+		assertThat( variables.getAsBoolean( Key.of( "isEmptyStruct" ) ) ).isTrue();
+		assertThat( aiLogSince( before ) ).contains( marker );
+	}
+
+	@DisplayName( "returnFormat json: a top-level JSON array is returned intact and does NOT warn" )
+	@Test
+	public void testTopLevelArrayIsReturnedIntact() throws IOException {
+		// extractJSONContent() is documented to return whatever the reply parsed to - struct,
+		// array or scalar. An array reply is a legitimate result, so it must neither be flattened
+		// nor logged as an extraction failure.
+		String	marker	= "no parseable JSON found in model reply";
+		long	before	= aiLogLength();
+
+		runtime.executeSource(
+		    jsonReturnFormatScript( "'[ { \"name\": \"a\" }, { \"name\": \"b\" } ]'" )
+		        + "\nisTwoItemArray = isArray( result ) && result.len() == 2 && result[ 1 ].name == 'a'",
+		    context
+		);
+
+		assertThat( variables.getAsBoolean( Key.of( "isTwoItemArray" ) ) ).isTrue();
+		assertThat( aiLogSince( before ) ).doesNotContain( marker );
+	}
+
+	@DisplayName( "structuredOutput: a malformed extraction surfaces as StructuredOutputError, not a raw JSON error" )
+	@Test
+	public void testMalformedExtractionSurfacesAsStructuredOutputError() {
+		// The extractor's returnRaw hands back a string it BELIEVED was JSON. When jsonDeserialize
+		// then rejects it, that must still be the documented StructuredOutputError rather than a
+		// bare parse error escaping the provider.
+		// @formatter:off
+		runtime.executeSource(
+			cannedContentScript(
+				"'Result: { \"name\": \"John\", \"age\": } and that is all.'",
+				""
+			),
+			context
+		);
+		// @formatter:on
+
+		var thrown = assertThrows( BoxRuntimeException.class, () -> runtime.executeSource( "provider.chat( chatRequest )", context ) );
+		assertThat( thrown.getType() ).isEqualTo( "StructuredOutputError" );
 	}
 
 	@DisplayName( "Prose-wrapped JSON array populates an array structured output schema" )

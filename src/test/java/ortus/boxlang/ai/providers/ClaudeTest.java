@@ -16,6 +16,12 @@ package ortus.boxlang.ai.providers;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+
+import com.sun.net.httpserver.HttpServer;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -373,6 +379,193 @@ public class ClaudeTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "caughtMsg" ) ).toString() ).contains( "truncated" );
 	}
 
+	@DisplayName( "beforeToolCall rewriting ctx.toolArgs is honoured when the tool is invoked" )
+	@Test
+	public void testBeforeToolCallArgsRewriteIsHonoured() {
+		// Pass 1 stores the (possibly rewritten) args on the batch entry; pass 2 used to invoke
+		// with the RAW toolCall.input instead, silently discarding validation/coercion edits.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				seenCity = ""
+				weather  = aiTool( "get_weather", "Get the weather", ( required string city ) => {
+					seenCity = arguments.city
+					return "sunny in " & arguments.city
+				} )
+
+				provider    = aiService( "claude", { apiKey: "dummy-key" } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather?" ),
+					{ model: "claude-sonnet-4-5", tools: [ weather ] },
+					{ provider: "claude" }
+				)
+
+				llmCalls = 0
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						llmCalls++
+						if( llmCalls == 1 ){
+							return {
+								"content": [ {
+									"type":  "tool_use",
+									"id":    "toolu_1",
+									"name":  "get_weather",
+									"input": { "city": "RAW-CITY" }
+								} ],
+								"stop_reason": "tool_use",
+								"usage": { "input_tokens": 5, "output_tokens": 8 }
+							}
+						}
+						return {
+							"content": [ { "type": "text", "text": "Done." } ],
+							"stop_reason": "end_turn",
+							"usage": { "input_tokens": 5, "output_tokens": 8 }
+						}
+					},
+					"beforeToolCall": ( ctx ) => {
+						ctx.toolArgs = { "city": "REWRITTEN-CITY" }
+					}
+				} )
+
+				result = provider.chat( chatRequest )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "seenCity" ) ).toString() ).isEqualTo( "REWRITTEN-CITY" );
+	}
+
+	@DisplayName( "beforeToolCall patching ctx.toolCall.input (HITL edit shape) reaches the tool - chat()" )
+	@Test
+	public void testBeforeToolCallInputPatchIsHonoured() {
+		// HumanInTheLoopMiddleware.applyEditedArguments() replaces the provider-shaped
+		// ctx.toolCall.input rather than the normalized ctx.toolArgs, so honouring only
+		// ctx.toolArgs dropped every human "edit" decision.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				seenCity = ""
+				weather  = aiTool( "get_weather", "Get the weather", ( required string city ) => {
+					seenCity = arguments.city
+					return "sunny in " & arguments.city
+				} )
+
+				provider    = aiService( "claude", { apiKey: "dummy-key" } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather?" ),
+					{ model: "claude-sonnet-4-5", tools: [ weather ] },
+					{ provider: "claude" }
+				)
+
+				llmCalls = 0
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						llmCalls++
+						if( llmCalls == 1 ){
+							return {
+								"content": [ {
+									"type":  "tool_use",
+									"id":    "toolu_1",
+									"name":  "get_weather",
+									"input": { "city": "RAW-CITY" }
+								} ],
+								"stop_reason": "tool_use",
+								"usage": { "input_tokens": 5, "output_tokens": 8 }
+							}
+						}
+						return {
+							"content": [ { "type": "text", "text": "Done." } ],
+							"stop_reason": "end_turn",
+							"usage": { "input_tokens": 5, "output_tokens": 8 }
+						}
+					},
+					"beforeToolCall": ( ctx ) => {
+						ctx.toolCall.input = { "city": "EDITED-CITY" }
+					}
+				} )
+
+				result = provider.chat( chatRequest )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "seenCity" ) ).toString() ).isEqualTo( "EDITED-CITY" );
+	}
+
+	@DisplayName( "beforeToolCall patching ctx.toolCall.input (HITL edit shape) reaches the tool - chatStream()" )
+	@Test
+	public void testStreamBeforeToolCallInputPatchIsHonoured() throws Exception {
+		// chatStream() has no wrapLLMCall seam around its SSE transport, so a local server stands
+		// in for Anthropic and streams the tool_use turn; the follow-up turn goes through chat(),
+		// which IS wrapLLMCall-wrapped.
+		String		sse		= String.join( "\n\n",
+		    "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"claude-sonnet-4-5\"}}",
+		    "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"get_weather\",\"input\":{}}}",
+		    "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"city\\\": \\\"RAW-CITY\\\"}\"}}",
+		    "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}",
+		    "data: [DONE]",
+		    "" );
+
+		HttpServer	server	= HttpServer.create( new InetSocketAddress( "127.0.0.1", 0 ), 0 );
+		server.createContext( "/v1/messages", exchange -> {
+			byte[] body = sse.getBytes( StandardCharsets.UTF_8 );
+			exchange.getResponseHeaders().set( "Content-Type", "text/event-stream" );
+			exchange.sendResponseHeaders( 200, body.length );
+			try ( OutputStream os = exchange.getResponseBody() ) {
+				os.write( body );
+			}
+		} );
+		server.start();
+
+		try {
+			String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/messages";
+			// @formatter:off
+			runtime.executeSource(
+				"""
+					seenCity = ""
+					weather  = aiTool( "get_weather", "Get the weather", ( required string city ) => {
+						seenCity = arguments.city
+						return "sunny in " & arguments.city
+					} )
+
+					provider = aiService( "claude", { apiKey: "dummy-key" } )
+					provider.setChatURL( "%s" )
+
+					chatRequest = aiChatRequest(
+						aiMessage().user( "weather?" ),
+						{ model: "claude-sonnet-4-5", tools: [ weather ] },
+						{ provider: "claude" }
+					)
+
+					chatRequest.addMiddleware( {
+						// Only the follow-up turn after the tool result is sent back is wrapped
+						"wrapLLMCall": ( ctx, handler ) => {
+							return {
+								"content": [ { "type": "text", "text": "Done." } ],
+								"stop_reason": "end_turn",
+								"usage": { "input_tokens": 5, "output_tokens": 8 }
+							}
+						},
+						"beforeToolCall": ( ctx ) => {
+							ctx.toolCall.input = { "city": "EDITED-CITY" }
+						}
+					} )
+
+					chunks = []
+					provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+				""".formatted( url ),
+				context
+			);
+			// @formatter:on
+
+			assertThat( variables.get( Key.of( "seenCity" ) ).toString() ).isEqualTo( "EDITED-CITY" );
+		} finally {
+			server.stop( 0 );
+		}
+	}
+
 	@DisplayName( "Test streaming chat with Claude" )
 	@Test
 	public void testChatStream() {
@@ -545,6 +738,231 @@ public class ClaudeTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "isStruct" ) ) ).isTrue();
 		assertThat( variables.get( Key.of( "name" ) ).toString() ).isEqualTo( "John Doe" );
 		assertThat( variables.getAsInteger( Key.of( "age" ) ) ).isEqualTo( 30 );
+	}
+
+	@DisplayName( "A second structured_output block RESETS the accumulator instead of concatenating" )
+	@Test
+	public void testStreamStructuredOutputResetsBufferOnNewBlock() {
+		// Two forced blocks in one stream (a retry/continuation): without a reset the second
+		// block's fragments were appended to the first's, producing "{...}{...}" — never valid JSON.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService( "claude", { apiKey: "dummy-key" } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract: John Doe, age 30" ),
+					{ model: "claude-sonnet-4-5" },
+					{
+						provider: "claude",
+						schema: {
+							"type": "object",
+							"properties": { "name": { "type": "string" }, "age": { "type": "integer" } },
+							"required": [ "name", "age" ]
+						}
+					}
+				)
+
+				soState = provider.newStructuredOutputStreamState()
+				events  = [
+					{ "type": "content_block_start", "index": 0,
+					  "content_block": { "type": "tool_use", "id": "toolu_1", "name": "structured_output", "input": {} } },
+					{ "type": "content_block_delta", "index": 0,
+					  "delta": { "type": "input_json_delta", "partial_json": '{"name": "Stale", "age": 1}' } },
+					{ "type": "content_block_start", "index": 1,
+					  "content_block": { "type": "tool_use", "id": "toolu_2", "name": "structured_output", "input": {} } },
+					{ "type": "content_block_delta", "index": 1,
+					  "delta": { "type": "input_json_delta", "partial_json": '{"name": "John Doe", "age": 30}' } },
+					{ "type": "message_delta", "delta": { "stop_reason": "tool_use" } }
+				]
+
+				for( evt in events ){
+					provider.accumulateStructuredOutputChunk( evt, soState )
+				}
+
+				bufferIsSecondBlockOnly = soState.buffer == '{"name": "John Doe", "age": 30}'
+				result = provider.finalizeStructuredOutputStream( soState, chatRequest, "tool_use" )
+				name   = result.name
+				age    = result.age
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "bufferIsSecondBlockOnly" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "name" ) ).toString() ).isEqualTo( "John Doe" );
+		assertThat( variables.getAsInteger( Key.of( "age" ) ) ).isEqualTo( 30 );
+	}
+
+	@DisplayName( "A seed input on content_block_start MERGES with the streamed deltas" )
+	@Test
+	public void testStreamStructuredOutputMergesSeedAndBuffer() {
+		// Anthropic normally sends an empty {} on content_block_start, but a non-empty seed plus
+		// deltas is not a choice between the two — the buffer's keys win, the seed's survive.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService( "claude", { apiKey: "dummy-key" } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract: John Doe, age 30" ),
+					{ model: "claude-sonnet-4-5" },
+					{
+						provider: "claude",
+						schema: {
+							"type": "object",
+							"properties": { "name": { "type": "string" }, "age": { "type": "integer" } },
+							"required": [ "name", "age" ]
+						}
+					}
+				)
+
+				soState = provider.newStructuredOutputStreamState()
+				provider.accumulateStructuredOutputChunk(
+					{ "type": "content_block_start", "index": 0,
+					  "content_block": { "type": "tool_use", "id": "toolu_1", "name": "structured_output",
+					                     "input": { "name": "John Doe", "age": 1 } } },
+					soState
+				)
+				provider.accumulateStructuredOutputChunk(
+					{ "type": "content_block_delta", "index": 0,
+					  "delta": { "type": "input_json_delta", "partial_json": '{"age": 30}' } },
+					soState
+				)
+
+				result     = provider.finalizeStructuredOutputStream( soState, chatRequest, "tool_use" )
+				mergedName = result.name
+				mergedAge  = result.age
+			""",
+			context
+		);
+		// @formatter:on
+
+		// seed key survives, buffer key wins
+		assertThat( variables.get( Key.of( "mergedName" ) ).toString() ).isEqualTo( "John Doe" );
+		assertThat( variables.getAsInteger( Key.of( "mergedAge" ) ) ).isEqualTo( 30 );
+	}
+
+	@DisplayName( "A seed plus a CONTINUATION fragment that is not valid JSON alone is stitched together" )
+	@Test
+	public void testStreamStructuredOutputStitchesSeedContinuation() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService( "claude", { apiKey: "dummy-key" } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract: John Doe, age 30" ),
+					{ model: "claude-sonnet-4-5" },
+					{
+						provider: "claude",
+						schema: {
+							"type": "object",
+							"properties": { "name": { "type": "string" }, "age": { "type": "integer" } },
+							"required": [ "name", "age" ]
+						}
+					}
+				)
+
+				soState = provider.newStructuredOutputStreamState()
+				provider.accumulateStructuredOutputChunk(
+					{ "type": "content_block_start", "index": 0,
+					  "content_block": { "type": "tool_use", "id": "toolu_1", "name": "structured_output",
+					                     "input": { "name": "John Doe" } } },
+					soState
+				)
+				// Fragment alone is NOT valid JSON — it continues the seed's object
+				provider.accumulateStructuredOutputChunk(
+					{ "type": "content_block_delta", "index": 0,
+					  "delta": { "type": "input_json_delta", "partial_json": '"age": 30}' } },
+					soState
+				)
+
+				result       = provider.finalizeStructuredOutputStream( soState, chatRequest, "tool_use" )
+				stitchedName = result.name
+				stitchedAge  = result.age
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "stitchedName" ) ).toString() ).isEqualTo( "John Doe" );
+		assertThat( variables.getAsInteger( Key.of( "stitchedAge" ) ) ).isEqualTo( 30 );
+	}
+
+	@DisplayName( "afterLLMCall middleware can rewrite the streamed structured output before it is emitted" )
+	@Test
+	public void testStreamStructuredOutputMiddlewareMutationIsHonoured() throws Exception {
+		// The hook used to fire AFTER the userCallback had already been handed the original value,
+		// so a guard that rewrote streamState.structuredOutput changed the return value only and
+		// the stream still carried the unredacted original. A tiny local SSE server stands in for
+		// Anthropic so the whole chatStream() path runs offline.
+		String		sse		= String.join( "\n\n",
+		    "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"claude-sonnet-4-5\"}}",
+		    "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"structured_output\",\"input\":{}}}",
+		    "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"name\\\": \\\"John Doe\\\", \\\"age\\\": 30}\"}}",
+		    "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}",
+		    "data: [DONE]",
+		    "" );
+
+		HttpServer	server	= HttpServer.create( new InetSocketAddress( "127.0.0.1", 0 ), 0 );
+		server.createContext( "/v1/messages", exchange -> {
+			byte[] body = sse.getBytes( StandardCharsets.UTF_8 );
+			exchange.getResponseHeaders().set( "Content-Type", "text/event-stream" );
+			exchange.sendResponseHeaders( 200, body.length );
+			try ( OutputStream os = exchange.getResponseBody() ) {
+				os.write( body );
+			}
+		} );
+		server.start();
+
+		try {
+			String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/messages";
+			// @formatter:off
+			runtime.executeSource(
+				"""
+					provider = aiService( "claude", { apiKey: "dummy-key" } )
+					provider.setChatURL( "%s" )
+
+					chatRequest = aiChatRequest(
+						aiMessage().user( "Extract: John Doe, age 30" ),
+						{ model: "claude-sonnet-4-5", max_tokens: 200 },
+						{
+							provider: "claude",
+							schema: {
+								"type": "object",
+								"properties": { "name": { "type": "string" }, "age": { "type": "integer" } },
+								"required": [ "name", "age" ]
+							}
+						}
+					)
+
+					chatRequest.addMiddleware( {
+						"afterLLMCall": ( ctx ) => {
+							if( ctx.keyExists( "streamState" ) && isStruct( ctx.streamState ) && ctx.streamState.keyExists( "structuredOutput" ) ){
+								ctx.streamState.structuredOutput = { "name": "REDACTED", "age": 99 }
+							}
+						}
+					} )
+
+					emitted = []
+					returned = provider.chatStream( chatRequest, ( chunk ) => {
+						if( isStruct( chunk ) && ( chunk.choices ?: [] ).len() && ( chunk.choices[ 1 ].delta ?: {} ).keyExists( "structured_output" ) ){
+							emitted.append( chunk.choices[ 1 ].delta.structured_output )
+						}
+					} )
+
+					emittedOnce     = emitted.len() == 1
+					emittedName     = emittedOnce ? ( emitted[ 1 ].name ?: "" ) : ""
+					returnedName    = isStruct( returned ) ? ( returned.name ?: "" ) : ""
+				""".formatted( url ),
+				context
+			);
+			// @formatter:on
+
+			assertThat( variables.getAsBoolean( Key.of( "emittedOnce" ) ) ).isTrue();
+			assertThat( variables.get( Key.of( "emittedName" ) ).toString() ).isEqualTo( "REDACTED" );
+			assertThat( variables.get( Key.of( "returnedName" ) ).toString() ).isEqualTo( "REDACTED" );
+		} finally {
+			server.stop( 0 );
+		}
 	}
 
 	@DisplayName( "Streamed structured output throws when the forced block never arrives" )

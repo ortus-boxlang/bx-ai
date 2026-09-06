@@ -547,7 +547,7 @@ public class ClosureToolTest extends BaseIntegrationTest {
 				import bxModules.bxai.models.tools.ClosureTool;
 
 				gotChatRequest = false
-				tool = new ClosureTool( "ctxTool", "Needs conversation context", ( required string id ) => {
+				tool = new ClosureTool( "ctxTool", "Needs conversation context", ( required string id, any _chatRequest ) => {
 					gotChatRequest = arguments.keyExists( "_chatRequest" ) && !isNull( arguments._chatRequest )
 					return "ok"
 				} )
@@ -567,6 +567,44 @@ public class ClosureToolTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "callableSawChatRequest" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "originalUntouched" ) ) ).isTrue();
 		assertThat( variables.get( Key.of( "originalKeyCount" ) ) ).isEqualTo( 1 );
+	}
+
+	@DisplayName( "doInvoke() injects _chatRequest ONLY into callables that declare the parameter" )
+	@Test
+	public void testDoInvokeInjectsChatRequestOnlyWhenDeclared() {
+		// Injecting it unconditionally handed every closure an argument it never asked for, which
+		// leaks straight through any callable that forwards its own argumentCollection.
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+
+				declaringKeys = []
+				declaringTool = new ClosureTool( "wantsCtx", "Declares the param", ( required string id, any _chatRequest ) => {
+					declaringKeys = arguments.keyArray()
+					return "ok"
+				} )
+
+				plainKeys = []
+				plainTool = new ClosureTool( "noCtx", "Does not declare the param", ( required string id ) => {
+					plainKeys = arguments.keyArray()
+					return "ok"
+				} )
+
+				chatRequest = aiChatRequest( aiMessage().user( "hi" ), {}, {} )
+
+				declaringTool.doInvoke( { id: "5" }, chatRequest )
+				plainTool.doInvoke( { id: "5" }, chatRequest )
+
+				declaringGotIt = declaringKeys.findNoCase( "_chatRequest" ) > 0
+				plainDidNot    = plainKeys.findNoCase( "_chatRequest" ) == 0
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "declaringGotIt" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "plainDidNot" ) ) ).isTrue();
 	}
 
 	@DisplayName( "doInvoke() JSON-coerces a struct arg for the callable only — the caller's struct keeps its native value" )

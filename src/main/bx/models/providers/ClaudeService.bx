@@ -383,6 +383,31 @@ class extends="BaseService" implements="IAiChatService" {
 		if( usingStructuredOutput ){
 			var structuredResult = finalizeStructuredOutputStream( soStreamState, arguments.chatRequest, streamState.stopReason );
 
+			// afterLLMCall runs BEFORE the result leaves this method. A named context struct is
+			// kept so an OutputGuard-style middleware that rewrites (or redacts) streamState
+			// .structuredOutput actually changes what the caller sees — firing it after the
+			// userCallback had already been handed the original meant the mutation reached the
+			// return value only, and never the stream.
+			var soContext = {
+				chatRequest: arguments.chatRequest,
+				streamState: {
+					"content"          : streamState.content,
+					"reasoning"        : streamState.reasoning ?: "",
+					"finishReason"     : streamState.stopReason,
+					"toolCalls"        : streamState.toolCalls,
+					"structuredOutput" : structuredResult,
+					"usage"            : streamState.usage
+				}
+			};
+
+			arguments.chatRequest.fireMiddleware(
+				hook   : "afterLLMCall",
+				context: soContext,
+				reverse: true
+			)
+
+			var finalStructuredResult = soContext.streamState.structuredOutput;
+
 			userCallback({
 				"id": streamState.messageId,
 				"provider": "Claude",
@@ -394,29 +419,13 @@ class extends="BaseService" implements="IAiChatService" {
 						"finish_reason": "stop",
 						"delta": {
 							"role": "assistant",
-							"structured_output": structuredResult
+							"structured_output": finalStructuredResult
 						}
 					}
 				]
 			});
 
-			arguments.chatRequest.fireMiddleware(
-				hook   : "afterLLMCall",
-				context: {
-					chatRequest: arguments.chatRequest,
-					streamState: {
-						"content"          : streamState.content,
-						"reasoning"        : streamState.reasoning ?: "",
-						"finishReason"     : streamState.stopReason,
-						"toolCalls"        : streamState.toolCalls,
-						"structuredOutput" : structuredResult,
-						"usage"            : streamState.usage
-					}
-				},
-				reverse: true
-			)
-
-			return structuredResult;
+			return finalStructuredResult;
 		}
 
 		if( streamState.stopReason == "tool_use" && streamState.toolCalls.len() ){
@@ -502,6 +511,7 @@ class extends="BaseService" implements="IAiChatService" {
 					toolName   : toolCall.name ?: tool.getName(),
 					toolArgs   : toolCall.input ?: {}
 				}
+				var originalToolArgs = duplicate( toolCall.input ?: {} )
 				var toolBeforeResult = runtimeChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
 				// Cancel means abort the run outright — hard-stop immediately, exactly as before.
@@ -511,7 +521,7 @@ class extends="BaseService" implements="IAiChatService" {
 					break
 				}
 
-				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: resolveToolArgs( toolContext, originalToolArgs ), result: toolBeforeResult } )
 			}
 
 			if ( isObject( claudeStreamTerminalResult ) ) {
@@ -581,10 +591,14 @@ class extends="BaseService" implements="IAiChatService" {
 
 				var capturedTool     = entry.tool
 				var capturedToolCall = entry.toolCall
+				// entry.toolArgs, not toolCall.input: beforeToolCall middleware is allowed to
+				// rewrite ctx.toolArgs (validation, coercion, redaction) and pass 1 stored the
+				// result on the entry. Invoking with the raw toolCall.input discarded that edit.
+				var capturedToolArgs = entry.toolArgs ?: ( entry.toolCall.input ?: {} )
 				var toolResult = runtimeChatRequest.fireWrapMiddleware(
 					"wrapToolCall",
-					{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: runtimeChatRequest, toolName: entry.toolName, toolArgs: entry.toolCall.input ?: {} },
-					() => capturedTool.invoke( args: capturedToolCall.input, chatRequest: runtimeChatRequest )
+					{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: runtimeChatRequest, toolName: entry.toolName, toolArgs: capturedToolArgs },
+					() => capturedTool.invoke( args: capturedToolArgs, chatRequest: runtimeChatRequest )
 				);
 
 				runtimeChatRequest.fireMiddleware(
@@ -915,6 +929,7 @@ class extends="BaseService" implements="IAiChatService" {
 					toolName   : toolCall.name ?: tool.getName(),
 					toolArgs   : toolCall.input ?: {}
 				}
+				var originalToolArgs = duplicate( toolCall.input ?: {} )
 				var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
 				if ( toolBeforeResult.isCancelled() ) {
@@ -930,7 +945,7 @@ class extends="BaseService" implements="IAiChatService" {
 					break
 				}
 
-				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: resolveToolArgs( toolContext, originalToolArgs ), result: toolBeforeResult } )
 			}
 
 			if ( isObject( terminalToolResult ) ) {
@@ -999,10 +1014,14 @@ class extends="BaseService" implements="IAiChatService" {
 
 				var capturedTool     = entry.tool
 				var capturedToolCall = entry.toolCall
+				// entry.toolArgs, not toolCall.input: beforeToolCall middleware is allowed to
+				// rewrite ctx.toolArgs (validation, coercion, redaction) and pass 1 stored the
+				// result on the entry. Invoking with the raw toolCall.input discarded that edit.
+				var capturedToolArgs = entry.toolArgs ?: ( entry.toolCall.input ?: {} )
 				var toolResult = thisChatRequest.fireWrapMiddleware(
 					"wrapToolCall",
-					{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: entry.toolCall.input ?: {} },
-					() => capturedTool.invoke( args: capturedToolCall.input, chatRequest: thisChatRequest )
+					{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: capturedToolArgs },
+					() => capturedTool.invoke( args: capturedToolArgs, chatRequest: thisChatRequest )
 				);
 
 				thisChatRequest.fireMiddleware(
@@ -1120,9 +1139,13 @@ class extends="BaseService" implements="IAiChatService" {
 			&& ( arguments.parsedChunk.content_block?.type ?: "" ) == "tool_use"
 			&& ( arguments.parsedChunk.content_block?.name ?: "" ) == static.STRUCTURED_OUTPUT_TOOL
 		){
-			arguments.soState.seen  = true;
-			arguments.soState.index = toString( arguments.parsedChunk.index ?: 0 );
-			arguments.soState.input = arguments.parsedChunk.content_block.input ?: {};
+			// A NEW structured_output block starts a NEW accumulation: reset the buffer (and the
+			// seed input) so fragments from a previous block are not concatenated onto this one,
+			// which produced unparseable "{...}{...}" JSON.
+			arguments.soState.seen   = true;
+			arguments.soState.index  = toString( arguments.parsedChunk.index ?: 0 );
+			arguments.soState.buffer = "";
+			arguments.soState.input  = arguments.parsedChunk.content_block.input ?: {};
 			return true;
 		}
 
@@ -1171,12 +1194,88 @@ class extends="BaseService" implements="IAiChatService" {
 		}
 
 		// Anthropic sends the input entirely as input_json_delta fragments; content_block_start
-		// carries an empty {}. Fall back to that only when nothing was streamed.
-		var payload = arguments.soState.buffer.len()
-			? arguments.soState.buffer
-			: jsonSerialize( arguments.soState.input );
+		// normally carries an empty {}. Three cases:
+		//   - deltas only            -> the buffer IS the payload
+		//   - seed only              -> serialize the seed
+		//   - BOTH seed and deltas   -> neither alone is the answer. If the buffer parses on its
+		//     own, its keys win over the seed (it is the later, more complete value); otherwise
+		//     the buffer is a continuation of a partially-populated seed, so concatenating the
+		//     serialized seed's opening with the buffer is the only reading that keeps both.
+		var soBuffer = arguments.soState.buffer;
+		var soSeed   = arguments.soState.input;
+		var hasSeed  = isStruct( soSeed ) && !soSeed.isEmpty();
 
-		return populateStructuredOutput( payload, arguments.chatRequest );
+		if( !soBuffer.len() ){
+			return populateStructuredOutput( jsonSerialize( soSeed ), arguments.chatRequest );
+		}
+
+		if( !hasSeed ){
+			return populateStructuredOutput( soBuffer, arguments.chatRequest );
+		}
+
+		// isJSON() is not a reliable gate here (it accepts a leading JSON token followed by junk,
+		// e.g. `"age": 30}`), so parse-or-fail is the only trustworthy test.
+		var bufferParse = tryParseJSON( soBuffer );
+		if( bufferParse.ok && isStruct( bufferParse.value ) ){
+			var merged = duplicate( soSeed );
+			merged.append( bufferParse.value, true );
+			return populateStructuredOutput( jsonSerialize( merged ), arguments.chatRequest );
+		}
+		if( bufferParse.ok && isArray( bufferParse.value ) ){
+			// An array cannot be merged into a seed struct — the streamed value is authoritative.
+			return populateStructuredOutput( soBuffer, arguments.chatRequest );
+		}
+
+		// A scalar (or failed) parse means the buffer is not a document of its own — jsonDeserialize
+		// happily reads `"age": 30}` as the string "age" and drops the rest. Read it as a
+		// CONTINUATION of the seed's serialization instead.
+		var seedJSON = jsonSerialize( soSeed ).trim();
+		var seedHead = seedJSON.endsWith( "}" ) ? seedJSON.left( seedJSON.len() - 1 ) : seedJSON;
+		var bufTail  = soBuffer.trim();
+		bufTail      = bufTail.startsWith( "{" ) ? bufTail.right( bufTail.len() - 1 ) : bufTail;
+		var stitchParse = tryParseJSON( seedHead & "," & bufTail );
+		if( stitchParse.ok && isStruct( stitchParse.value ) ){
+			return populateStructuredOutput( seedHead & "," & bufTail, arguments.chatRequest );
+		}
+
+		return populateStructuredOutput( soBuffer, arguments.chatRequest );
+	}
+
+	/**
+	 * Parse-or-fail JSON probe. isJSON() accepts a valid leading token followed by trailing junk,
+	 * so it cannot answer "is this whole string JSON?" — only jsonDeserialize() can.
+	 *
+	 * @candidate The string to parse
+	 *
+	 * @return { ok: boolean, value: any } — value is meaningless when ok is false
+	 */
+	/**
+	 * Decide which arguments a tool call should actually be invoked with once beforeToolCall has run.
+	 *
+	 * Middleware can move the arguments in either of two places: the normalized `ctx.toolArgs`
+	 * (GuardrailMiddleware-style rewrites) or the provider-shaped `ctx.toolCall.input`
+	 * (HumanInTheLoopMiddleware's "edit" decision replaces that struct outright). Both start out as
+	 * the SAME struct, so whichever no longer matches the pre-hook snapshot is the edit; `toolArgs`
+	 * wins when both moved.
+	 *
+	 * @toolContext   The context struct that was handed to beforeToolCall
+	 * @originalArgs The snapshot of the tool call's arguments taken before the hook fired
+	 */
+	private any function resolveToolArgs( required struct toolContext, required struct originalArgs ){
+		var resolved = isStruct( arguments.toolContext.toolArgs ?: "" ) ? arguments.toolContext.toolArgs : {}
+		var callArgs = arguments.toolContext.toolCall.input ?: ""
+		if ( isStruct( callArgs ) && resolved.equals( arguments.originalArgs ) && !callArgs.equals( arguments.originalArgs ) ) {
+			return callArgs
+		}
+		return resolved
+	}
+
+	private struct function tryParseJSON( required string candidate ){
+		try {
+			return { "ok": true, "value": jsonDeserialize( arguments.candidate ) };
+		} catch( any e ){
+			return { "ok": false, "value": {} };
+		}
 	}
 
 	/**

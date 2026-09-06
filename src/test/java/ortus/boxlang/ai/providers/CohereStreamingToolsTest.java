@@ -435,4 +435,529 @@ public class CohereStreamingToolsTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
 	}
 
+	@DisplayName( "A resumed batch whose follow-up asks for ANOTHER tool continues the exchange instead of restarting it" )
+	@Test
+	public void testStreamResumeMultiRoundFollowUpDoesNotRestart() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B", () => { toolBCalls++; return "B done" } )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "please run toolA" ),
+		            { model: "command-a-03-2025", tools: [ toolA, toolB ] },
+		            {
+		                provider: "cohere",
+		                _resumeContext: {
+		                    assistantMessage: {
+		                        toolCalls    : [ { name: "toolA", parameters: {} } ],
+		                        followUpTools: [],
+		                        chatHistory  : [],
+		                        preamble     : "",
+		                        tempParams   : {}
+		                    },
+		                    resumeLedger: [ { toolName: "toolA", status: "execute" } ]
+		                }
+		            }
+		        )
+
+		        llmCalls      = 0
+		        sawStreamCall = false
+		        requestBodies = []
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                if( ctx.stream ?: false ){
+		                    sawStreamCall = true
+		                    return {}
+		                }
+		                llmCalls++
+		                requestBodies.append( duplicate( ctx.dataPacket ?: {} ) )
+		                // Follow-up #1 asks for toolB; follow-up #2 answers.
+		                if( llmCalls == 1 ){
+		                    return { "tool_calls": [ { "name": "toolB", "parameters": {} } ] }
+		                }
+		                return { "text": "Both tools ran." }
+		            }
+		        } )
+
+		        chunks = []
+		        provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+		        finalText = chunks
+		            .filter( c => isStruct( c ) && c.keyExists( "choices" ) )
+		            .map( c => c.choices.first().delta.content ?: "" )
+		            .toList( "" )
+
+		        sawMiddlewareStop = chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
+		        toolARanOnce      = toolACalls == 1
+		        toolBRanOnce      = toolBCalls == 1
+		        twoLLMCalls       = llmCalls == 2
+		        isFinalText       = finalText == "Both tools ran."
+
+		        // The SECOND follow-up must still carry round 1's toolA result alongside toolB's
+		        secondResults = requestBodies[ 2 ].tool_results ?: []
+		        exchangeKept  = secondResults.len() == 2
+		            && ( secondResults[ 1 ].call.name ?: "" ) == "toolA"
+		            && ( secondResults[ 2 ].call.name ?: "" ) == "toolB"
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sawStreamCall" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "sawMiddlewareStop" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "toolARanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolBRanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "twoLLMCalls" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "exchangeKept" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+	}
+
+	@DisplayName( "A resumed batch whose LATER round suspends again emits exactly ONE middleware_stop" )
+	@Test
+	public void testStreamResumeLaterRoundSuspendEmitsSingleStop() {
+		// resumeToolBatchStream() passes the streaming callback straight into resumeToolBatch() as
+		// the emit adapter, so executeStreamToolBatch() already pushed the middleware_stop for the
+		// round-2 suspension. Returning that same terminal must NOT emit it a second time.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "please run toolA" ),
+		            { model: "command-a-03-2025", tools: [ toolA, toolB ] },
+		            {
+		                provider: "cohere",
+		                _resumeContext: {
+		                    assistantMessage: {
+		                        toolCalls    : [ { name: "toolA", parameters: {} } ],
+		                        followUpTools: [],
+		                        chatHistory  : [],
+		                        preamble     : "",
+		                        tempParams   : {}
+		                    },
+		                    resumeLedger: [ { toolName: "toolA", status: "execute" } ]
+		                }
+		            }
+		        )
+
+		        llmCalls = 0
+		        chatRequest.addMiddleware( [
+		            new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolB" ], mode: "web" ),
+		            {
+		                "wrapLLMCall": ( ctx, handler ) => {
+		                    if( ctx.stream ?: false ){
+		                        return {}
+		                    }
+		                    llmCalls++
+		                    // The resumed follow-up asks for toolB, which needs approval -> round 2 suspends.
+		                    return { "tool_calls": [ { "name": "toolB", "parameters": {} } ] }
+		                }
+		            }
+		        ] )
+
+		        chunks = []
+		        provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+		        stopChunks    = chunks.filter( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
+		        exactlyOneStop = stopChunks.len() == 1
+		        stopChunk      = stopChunks.first()
+		        isSuspended    = !isNull( stopChunk ) && stopChunk.result.isSuspended()
+		        toolARanOnce   = toolACalls == 1
+		        toolBNeverRan  = toolBCalls == 0
+		        oneLLMCall     = llmCalls == 1
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "exactlyOneStop" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isSuspended" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolARanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolBNeverRan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "oneLLMCall" ) ) ).isTrue();
+	}
+
+	@DisplayName( "chat(): a follow-up that asks for ANOTHER tool continues the exchange instead of restarting it" )
+	@Test
+	public void testSyncMultiRoundFollowUpPreservesExchange() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B", () => { toolBCalls++; return "B done" } )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "run toolA then toolB" ),
+		            { model: "command-a-03-2025", tools: [ toolA, toolB ] },
+		            { provider: "cohere" }
+		        )
+
+		        llmCalls      = 0
+		        requestBodies = []
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                llmCalls++
+		                requestBodies.append( duplicate( ctx.dataPacket ?: {} ) )
+		                if( llmCalls == 1 ){
+		                    return { "tool_calls": [ { "name": "toolA", "parameters": {} } ] }
+		                }
+		                if( llmCalls == 2 ){
+		                    return { "tool_calls": [ { "name": "toolB", "parameters": {} } ] }
+		                }
+		                return { "text": "Both tools ran." }
+		            }
+		        } )
+
+		        answer = provider.chat( chatRequest )
+
+		        toolARanOnce  = toolACalls == 1
+		        toolBRanOnce  = toolBCalls == 1
+		        threeLLMCalls = llmCalls == 3
+		        isFinalText   = answer == "Both tools ran."
+
+		        // The third request must carry BOTH rounds' results — the exchange, not a restart
+		        secondResults = requestBodies[ 3 ].tool_results ?: []
+		        exchangeKept  = secondResults.len() == 2
+		            && ( secondResults[ 1 ].call.name ?: "" ) == "toolA"
+		            && ( secondResults[ 2 ].call.name ?: "" ) == "toolB"
+
+		        // A restart would have re-sent the original user prompt with no tool results at all
+		        noRestart = !( requestBodies[ 3 ].keyExists( "message" ) )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "toolARanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolBRanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "threeLLMCalls" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "exchangeKept" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noRestart" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+	}
+
+	@DisplayName( "A resumed stream with returnFormat all still delivers a terminating chunk to the consumer" )
+	@Test
+	public void testStreamResumeNonSimpleReturnFormatStillTerminates() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        toolACalls = 0
+		        toolA = aiTool( "toolA", "Tool A", () => { toolACalls++; return "A done" } )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "please run toolA" ),
+		            { model: "command-a-03-2025", tools: [ toolA ] },
+		            {
+		                provider     : "cohere",
+		                returnFormat : "all",
+		                _resumeContext: {
+		                    assistantMessage: {
+		                        toolCalls    : [ { name: "toolA", parameters: {} } ],
+		                        followUpTools: [],
+		                        chatHistory  : [],
+		                        preamble     : "",
+		                        tempParams   : {}
+		                    },
+		                    resumeLedger: [ { toolName: "toolA", status: "execute" } ]
+		                }
+		            }
+		        )
+
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                if( ctx.stream ?: false ){
+		                    return {}
+		                }
+		                return { "text": "toolA ran.", "generation_id": "gen-9" }
+		            }
+		        } )
+
+		        chunks = []
+		        provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+		        contentChunks = chunks.filter( c => isStruct( c ) && c.keyExists( "choices" ) )
+		        gotChunks     = contentChunks.len() > 0
+		        sawTerminator = contentChunks.some( c => ( c.choices.first().finish_reason ?: "" ) == "stop" )
+		        deliveredText = contentChunks
+		            .map( c => c.choices.first().delta.content ?: "" )
+		            .toList( "" )
+		        contentDelivered = deliveredText.findNoCase( "toolA ran." ) > 0
+		        toolRanOnce      = toolACalls == 1
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "gotChunks" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawTerminator" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "contentDelivered" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolRanOnce" ) ) ).isTrue();
+	}
+
+	@DisplayName( "A streamed tool call with arguments but no name throws instead of being silently dropped" )
+	@Test
+	public void testNamelessStreamToolCallBufferThrows() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        toolInvoked = 0
+		        weatherTool = aiTool( "getWeather", "Get the weather for a city", ( string city = "" ) => {
+		            toolInvoked++
+		            return "sunny"
+		        } )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "What is the weather in Paris?" ),
+		            { model: "command-a-03-2025", tools: [ weatherTool ] },
+		            { provider: "cohere" }
+		        )
+
+		        followUpCalls = 0
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                if( ctx.stream ?: false ){
+		                    // Complete arguments arrive, but the tool name never does
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( {
+		                        "event_type"      : "tool-calls-chunk",
+		                        "tool_call_delta" : { "index": 0, "parameters": '{"city":"Paris"}' }
+		                    } ) } )
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( {
+		                        "event_type"   : "stream-end",
+		                        "finish_reason": "COMPLETE",
+		                        "response"     : { "meta": { "billed_units": { "input_tokens": 4, "output_tokens": 4 } } }
+		                    } ) } )
+		                    return {}
+		                }
+		                followUpCalls++
+		                return { "text": "should never be reached" }
+		            }
+		        } )
+
+		        chunks       = []
+		        threw        = false
+		        errorType    = ""
+		        errorMessage = ""
+		        try {
+		            provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+		        } catch( any e ){
+		            threw        = true
+		            errorType    = e.type
+		            errorMessage = e.message
+		        }
+
+		        // The consumer was already told this turn called tools, so a silent drop is a lie
+		        sawToolCallsFinish = chunks.some( c => isStruct( c ) && c.keyExists( "choices" ) && ( c.choices.first().finish_reason ?: "" ) == "tool_calls" )
+		        namesIndex   = errorMessage.findNoCase( "index [0]" ) > 0
+		        saysNotRun   = errorMessage.findNoCase( "NOT executed" ) > 0
+		        toolNeverRan = toolInvoked == 0
+		        noFollowUp   = followUpCalls == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sawToolCallsFinish" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "errorType" ) ) ).isEqualTo( "CohereStreamError" );
+		assertThat( variables.getAsBoolean( Key.of( "namesIndex" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "saysNotRun" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolNeverRan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noFollowUp" ) ) ).isTrue();
+	}
+
+	@DisplayName( "beforeToolCall's replacement of ctx.toolArgs is what the tool actually receives (stream)" )
+	@Test
+	public void testStreamBeforeToolCallArgReplacementReachesTool() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+		        capturedCity = ""
+		        weatherTool  = aiTool( "getWeather", "Get the weather for a city", ( required string city ) => {
+		            capturedCity = arguments.city
+		            return "sunny"
+		        } )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "What is the weather in Paris?" ),
+		            { model: "command-a-03-2025", tools: [ weatherTool ] },
+		            { provider: "cohere" }
+		        )
+
+		        wrappedArgs = {}
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                if( ctx.stream ?: false ){
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( {
+		                        "event_type": "tool-calls-generation",
+		                        "tool_calls": [ { "name": "getWeather", "parameters": { "city": "Paris" } } ]
+		                    } ) } )
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( {
+		                        "event_type"   : "stream-end",
+		                        "finish_reason": "COMPLETE"
+		                    } ) } )
+		                    return {}
+		                }
+		                return { "text": "done" }
+		            },
+		            "beforeToolCall": ( ctx ) => {
+		                ctx.toolArgs = { "city": "London" }
+		                return AiMiddlewareResult::continue()
+		            },
+		            "wrapToolCall": ( ctx, handler ) => {
+		                wrappedArgs = ctx.toolArgs ?: {}
+		                return handler( ctx )
+		            }
+		        } )
+
+		        provider.chatStream( chatRequest, ( chunk ) => {} )
+
+		        toolSawReplacement = capturedCity == "London"
+		        wrapSawReplacement = ( wrappedArgs.city ?: "" ) == "London"
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "wrapSawReplacement" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolSawReplacement" ) ) ).isTrue();
+	}
+
+	@DisplayName( "beforeToolCall's replacement of ctx.toolArgs is what the tool actually receives (chat)" )
+	@Test
+	public void testSyncBeforeToolCallArgReplacementReachesTool() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+		        capturedCity = ""
+		        weatherTool  = aiTool( "getWeather", "Get the weather for a city", ( required string city ) => {
+		            capturedCity = arguments.city
+		            return "sunny"
+		        } )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "What is the weather in Paris?" ),
+		            { model: "command-a-03-2025", tools: [ weatherTool ] },
+		            { provider: "cohere" }
+		        )
+
+		        llmCalls = 0
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                llmCalls++
+		                if( llmCalls == 1 ){
+		                    return { "tool_calls": [ { "name": "getWeather", "parameters": { "city": "Paris" } } ] }
+		                }
+		                return { "text": "done" }
+		            },
+		            "beforeToolCall": ( ctx ) => {
+		                ctx.toolArgs = { "city": "London" }
+		                return AiMiddlewareResult::continue()
+		            }
+		        } )
+
+		        answer             = provider.chat( chatRequest )
+		        toolSawReplacement = capturedCity == "London"
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "toolSawReplacement" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "answer" ) ) ).isEqualTo( "done" );
+	}
+
+	@DisplayName( "Resuming a batch whose tool is no longer bound yields a Tool not found result instead of throwing" )
+	@Test
+	public void testStreamResumeWithMissingToolDoesNotThrow() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        renamedCalls = 0
+		        // The tool was renamed between suspend and resume — the ledger still names the old one
+		        renamedTool = aiTool( "toolARenamed", "Tool A, renamed", () => { renamedCalls++; return "A done" } )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "please run toolA" ),
+		            { model: "command-a-03-2025", tools: [ renamedTool ] },
+		            {
+		                provider: "cohere",
+		                _resumeContext: {
+		                    assistantMessage: {
+		                        toolCalls    : [ { name: "toolA", parameters: {} } ],
+		                        followUpTools: [],
+		                        chatHistory  : [],
+		                        preamble     : "",
+		                        tempParams   : {}
+		                    },
+		                    resumeLedger: [ { toolName: "toolA", status: "execute" } ]
+		                }
+		            }
+		        )
+
+		        capturedResults = []
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                if( ctx.stream ?: false ){
+		                    return {}
+		                }
+		                capturedResults = ctx.dataPacket.tool_results ?: []
+		                return { "text": "I could not run that tool." }
+		            }
+		        } )
+
+		        threw     = false
+		        errorMsg  = ""
+		        chunks    = []
+		        try {
+		            provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+		        } catch( any e ){
+		            threw    = true
+		            errorMsg = e.message
+		        }
+
+		        finalText = chunks
+		            .filter( c => isStruct( c ) && c.keyExists( "choices" ) )
+		            .map( c => c.choices.first().delta.content ?: "" )
+		            .toList( "" )
+
+		        notFoundResult = capturedResults.len() == 1
+		            && ( capturedResults.first().outputs.first().result ?: "" ).findNoCase( "not found" ) > 0
+		        nothingRan  = renamedCalls == 0
+		        isFinalText = finalText == "I could not run that tool."
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "notFoundResult" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "nothingRan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+	}
+
 }

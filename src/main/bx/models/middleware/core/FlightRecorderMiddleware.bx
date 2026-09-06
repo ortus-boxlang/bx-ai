@@ -68,8 +68,10 @@
  *     replayed byte-for-byte
  *   - emit-based transports (push chunks via e.g. `emitSSEChunk` and return nothing useful) are
  *     passthrough-only: nothing is taped, and the recorder logs the gap once
- * In replay, a stream call with no matching `stream: true` interaction falls through to the real
- * handler rather than throwing ReplayExhausted.
+ * In replay, a stream call is matched against the recorded transport/request, so one provider can
+ * never consume another's raw body. With no matching `stream: true` interaction, strict replay
+ * throws FlightRecorder.StreamReplayUnsupported (a strict replay promises zero live calls) while
+ * lenient replay falls through to the real handler.
  */
 import bxModules.bxai.models.middleware.BaseAiMiddleware;
 import bxModules.bxai.models.middleware.AiMiddlewareResult;
@@ -196,7 +198,7 @@ class extends="BaseAiMiddleware" {
 	AiMiddlewareResult function beforeAgentRun( required struct context ) {
 		variables._agentName = context.agent?.getAgentName() ?: "default"
 
-		if ( variables.mode == "record" || variables.mode == "observe" ) {
+		if ( _isCapturing() ) {
 			_initTape( variables._agentName )
 		} else if ( variables.mode == "replay" ) {
 			_assertFixturePath()
@@ -240,11 +242,13 @@ class extends="BaseAiMiddleware" {
 			return _wrapStreamLLMCall( arguments.context, arguments.handler )
 		}
 
-		if ( variables.mode == "record" || variables.mode == "observe" ) {
+		if ( _isCapturing() ) {
 			var response = arguments.handler()
+			// duplicate(): providers hand over an alias of the live messages array, which the tool
+			// loop keeps appending to — an aliased tape would fingerprint the FINAL turn, not this one.
 			_appendInteraction( {
 				"type"    : "llm",
-				"request" : context.dataPacket ?: {},
+				"request" : duplicate( context.dataPacket ?: {} ),
 				"response": response
 			} )
 			return response
@@ -277,7 +281,7 @@ class extends="BaseAiMiddleware" {
 		var rawArgs  = context.toolCall?.function?.arguments ?: "{}"
 		var toolArgs = isStruct( rawArgs ) ? rawArgs : jsonDeserialize( rawArgs )
 
-		if ( variables.mode == "record" || variables.mode == "observe" ) {
+		if ( _isCapturing() ) {
 			var result = arguments.handler()
 			_appendInteraction( {
 				"type"    : "tool",
@@ -314,7 +318,7 @@ class extends="BaseAiMiddleware" {
 	 * @return The handler's return value, or the recorded raw body during replay
 	 */
 	private any function _wrapStreamLLMCall( required struct context, required function handler ) {
-		if ( variables.mode == "record" || variables.mode == "observe" ) {
+		if ( _isCapturing() ) {
 			var response = arguments.handler()
 
 			// Binary raw body (Bedrock's event stream) — fails isSimpleValue(), so tape it
@@ -324,7 +328,8 @@ class extends="BaseAiMiddleware" {
 					"type"    : "llm",
 					"stream"  : true,
 					"encoding": "base64",
-					"request" : context.dataPacket ?: {},
+					"transport": context.transport ?: "",
+					"request" : duplicate( context.dataPacket ?: {} ),
 					"response": toBase64( response )
 				} )
 				return response
@@ -334,7 +339,8 @@ class extends="BaseAiMiddleware" {
 				_appendInteraction( {
 					"type"    : "llm",
 					"stream"  : true,
-					"request" : context.dataPacket ?: {},
+					"transport": context.transport ?: "",
+					"request" : duplicate( context.dataPacket ?: {} ),
 					"response": response
 				} )
 				return response
@@ -353,12 +359,26 @@ class extends="BaseAiMiddleware" {
 			return isNull( response ) ? javacast( "null", "" ) : response
 		}
 
-		// replay — only a recorded raw stream body can satisfy a stream call
-		var recorded = _peekStreamInteraction()
+		// replay — only a recorded raw stream body FOR THIS TRANSPORT/REQUEST can satisfy a stream call
+		var recorded = _peekStreamInteraction( arguments.context )
 		if ( !isNull( recorded ) ) {
 			return ( recorded.encoding ?: "" ) == "base64"
 				? toBinary( recorded.response )
 				: recorded.response
+		}
+
+		// Strict replay is a promise of zero live calls: an emit-based transport (nothing was ever
+		// taped) or a tape belonging to a different provider/request must fail loudly rather than
+		// quietly hitting the network. Lenient replay keeps the historical passthrough.
+		if ( variables.strict ) {
+			var wantedTransport = context.transport ?: ""
+			throw(
+				type   : "FlightRecorder.StreamReplayUnsupported",
+				message: "Flight recorder replay found no recorded stream interaction matching this call " &
+					"(transport '#wantedTransport#', seq #variables._playbackSeq#). Streaming for this " &
+					"provider may be emit-based (nothing is taped), or the fixture was recorded from a " &
+					"different provider/request. Set strict=false to fall through to the live transport."
+			)
 		}
 
 		return arguments.handler()
@@ -366,11 +386,18 @@ class extends="BaseAiMiddleware" {
 
 	/**
 	 * Look ahead for the next unplayed `stream: true` llm interaction carrying a simple-value
-	 * response, consuming it (advancing the playback cursor) only on a match.
+	 * response AND belonging to this call (same transport and same request shape), consuming it
+	 * (advancing the playback cursor) only on a match.
+	 *
+	 * The transport/request discriminator is what stops one provider replaying another provider's
+	 * raw body — e.g. an emit-based Cohere stream swallowing Bedrock's binary event stream, which
+	 * looks like a valid `stream: true` interaction to a type-only check.
+	 *
+	 * @context The streaming LLM call context
 	 *
 	 * @return The matching interaction, or null when there is none
 	 */
-	private any function _peekStreamInteraction() {
+	private any function _peekStreamInteraction( required struct context ) {
 		var interactions = variables._tape.interactions ?: []
 
 		for ( var i = variables._playbackSeq + 1; i <= interactions.len(); i++ ) {
@@ -380,6 +407,7 @@ class extends="BaseAiMiddleware" {
 				&& ( candidate.stream ?: false ) == true
 				&& !isNull( candidate.response ?: javacast( "null", "" ) )
 				&& isSimpleValue( candidate.response ?: {} )
+				&& _streamInteractionMatches( candidate, arguments.context )
 			) {
 				variables._playbackSeq = i
 				return candidate
@@ -391,6 +419,48 @@ class extends="BaseAiMiddleware" {
 		}
 
 		return javacast( "null", "" )
+	}
+
+	/**
+	 * Whether a recorded `stream: true` interaction belongs to the call being replayed.
+	 *
+	 * A tape recorded before the transport marker existed carries neither key and still matches
+	 * anything (backwards compatible); once a transport was recorded it must be the same one, and
+	 * a recorded request must fingerprint-match the request now being made.
+	 *
+	 * @candidate The recorded interaction
+	 * @context   The streaming LLM call context
+	 *
+	 * @return true when the interaction may satisfy this call
+	 */
+	private boolean function _streamInteractionMatches( required struct candidate, required struct context ) {
+		var recordedTransport = arguments.candidate.transport ?: ""
+		if ( len( recordedTransport ) && recordedTransport != ( arguments.context.transport ?: "" ) ) {
+			return false
+		}
+
+		var recordedRequest = arguments.candidate.request ?: {}
+		var liveRequest     = arguments.context.dataPacket ?: {}
+		if ( !isStruct( recordedRequest ) || recordedRequest.isEmpty() || !isStruct( liveRequest ) || liveRequest.isEmpty() ) {
+			return true
+		}
+
+		return _requestFingerprint( recordedRequest ) == _requestFingerprint( liveRequest )
+	}
+
+	/**
+	 * Cheap, stable fingerprint of a request data packet: the model plus the number of messages.
+	 * Deliberately coarse — enough to tell two providers (or two turns) apart without making a
+	 * fixture brittle against incidental payload differences.
+	 *
+	 * @request The provider data packet
+	 *
+	 * @return Fingerprint string
+	 */
+	private string function _requestFingerprint( required struct request ) {
+		var modelId  = arguments.request.model ?: ( arguments.request.modelId ?: "" )
+		var messages = arguments.request.messages ?: []
+		return lCase( isSimpleValue( modelId ) ? modelId : "" ) & "|" & ( isArray( messages ) ? messages.len() : 0 )
 	}
 
 	// ==================== Public Utility Methods ====================
@@ -434,7 +504,7 @@ class extends="BaseAiMiddleware" {
 		if ( variables._initialized ) {
 			return
 		}
-		if ( variables.mode == "record" || variables.mode == "observe" ) {
+		if ( _isCapturing() ) {
 			_initTape( variables._agentName )
 		} else if ( variables.mode == "replay" ) {
 			_assertFixturePath()
@@ -505,6 +575,12 @@ class extends="BaseAiMiddleware" {
 	 * Invoke `storageCallback( tape, interaction )`, if configured, guarding against any
 	 * exception it throws so a misbehaving callback never breaks the underlying call.
 	 *
+	 * CONTRACT: the tape handed to the callback is a point-in-time snapshot whose interaction
+	 * entries are SHARED with the live tape — treat both the entries and `interaction` as
+	 * read-only. Only the `interactions` array itself is copied, so later appends never appear in
+	 * an earlier snapshot; a deep copy is deliberately avoided because every streamed interaction
+	 * carries a base64 body and duplicating them per interaction is O(bytes) per call.
+	 *
 	 * @interaction The interaction struct just appended to the tape
 	 */
 	private void function _fireStorageCallback( required struct interaction ) {
@@ -512,10 +588,25 @@ class extends="BaseAiMiddleware" {
 			return
 		}
 		try {
-			variables.storageCallback( variables._tape.copy(), arguments.interaction )
+			variables.storageCallback( _tapeSnapshot(), arguments.interaction )
 		} catch ( any e ) {
 			writeLog( text: "FlightRecorder storageCallback error: #e.message#", type: "warning", log: "ai" )
 		}
+	}
+
+	/**
+	 * Point-in-time view of the tape for the storage callback: a shallow struct copy whose
+	 * `interactions` is a NEW array holding the same entry references. O(interactions), not
+	 * O(bytes) — see the contract on _fireStorageCallback().
+	 *
+	 * @return The snapshot struct
+	 */
+	private struct function _tapeSnapshot() {
+		var snapshot = structCopy( variables._tape )
+		var frozen   = []
+		frozen.append( variables._tape.interactions ?: [], true )
+		snapshot[ "interactions" ] = frozen
+		return snapshot
 	}
 
 	/**
@@ -555,6 +646,15 @@ class extends="BaseAiMiddleware" {
 					message: "Flight recorder type mismatch at seq #variables._playbackSeq#: expected '#arguments.expectedType#' but tape has '#interaction.type#'"
 				)
 			}
+			// A `stream: true` llm entry is a raw provider body, not a chat round trip — handing it
+			// back to the sync path yields garbage (or a crash) downstream.
+			if ( _isRawStreamInteraction( arguments.expectedType, interaction ) ) {
+				throw(
+					type   : "FlightRecorder.TypeMismatch",
+					message: "Flight recorder type mismatch at seq #variables._playbackSeq#: expected a non-streaming " &
+						"'llm' interaction but tape has a raw stream body (stream: true)"
+				)
+			}
 			return interaction
 		}
 
@@ -562,7 +662,7 @@ class extends="BaseAiMiddleware" {
 		var searchFrom = variables._playbackSeq + 1
 		var found      = 0
 		for ( var i = searchFrom; i <= interactions.len(); i++ ) {
-			if ( interactions[ i ].type == arguments.expectedType ) {
+			if ( interactions[ i ].type == arguments.expectedType && !_isRawStreamInteraction( arguments.expectedType, interactions[ i ] ) ) {
 				found = i
 				break
 			}
@@ -575,6 +675,27 @@ class extends="BaseAiMiddleware" {
 		}
 		variables._playbackSeq = found
 		return interactions[ found ]
+	}
+
+	/**
+	 * Whether an interaction is a recorded raw STREAM body being requested by the sync llm path.
+	 *
+	 * @expectedType The type the caller asked for
+	 * @interaction  The candidate interaction
+	 *
+	 * @return true when a sync "llm" request landed on a `stream: true` entry
+	 */
+	private boolean function _isRawStreamInteraction( required string expectedType, required struct interaction ) {
+		return arguments.expectedType == "llm" && ( arguments.interaction.stream ?: false ) == true
+	}
+
+	/**
+	 * Whether this recorder is currently capturing interactions (record or observe mode).
+	 *
+	 * @return true in "record" or "observe" mode
+	 */
+	private boolean function _isCapturing() {
+		return variables.mode == "record" || variables.mode == "observe"
 	}
 
 	/**
