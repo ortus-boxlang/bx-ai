@@ -247,6 +247,69 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | Perplexity          | ✅               | ✅              | ❌               | ❌               | ❌                  |
 | Voyage              | ❌               | ❌              | ✅ (Specialized) | ❌               | ❌                  |
 
+> **AWS Bedrock — two runtime APIs.** Bedrock exposes a model-agnostic **Converse** /
+> **ConverseStream** operation and the older per-vendor **InvokeModel** /
+> **InvokeModelWithResponseStream** bodies. This module speaks **Converse by default**, and keeps
+> InvokeModel as an explicitly selectable — and automatically applied — fallback.
+>
+> ```javascript
+> // Per request
+> aiChatRequest(
+>     aiMessage().user( "hi" ),
+>     { model: "amazon.nova-pro-v1:0" },
+>     { provider: "bedrock", providerOptions: { bedrockApi: "invoke" } }
+> )
+>
+> // Per service / module settings — settings.providers.Bedrock.options
+> aiService( "bedrock", { region: "us-east-1", bedrockApi: "converse" } )
+> ```
+>
+> Resolution order, highest first: `providerOptions.bedrockApi` → the
+> `BOXLANG_MODULES_BXAI_BEDROCK_API` environment variable → the `bxai_bedrockApi` application-scope
+> key → the configured module/service setting → `converse`. An unrecognized value falls through to
+> the next source rather than throwing.
+>
+> **Automatic fallback to InvokeModel** happens when Converse cannot serve the request at all:
+>
+> - the model id is a known text-completion model with no `messages[]` representation
+>   (`cohere.command-text-*`, `cohere.command-light-text-*`, `ai21.j2-*`);
+> - the request carries `providerOptions.rawBody` — an InvokeModel-only escape hatch whose struct
+>   replaces the request transform wholesale;
+> - Converse answered with a `ValidationException` saying the model or operation is unsupported, in
+>   which case the request is rebuilt and retried **once** over InvokeModel. No other error class
+>   ever falls back. Each fallback is logged at `info` on the `ai` log, once per model id.
+>
+> **On the Converse path** one transform serves every family: typed content blocks (`text`,
+> `image`, `document`, `toolUse`, `toolResult`, `reasoningContent`, `cachePoint`), `system[]`,
+> `inferenceConfig`, a model-agnostic `toolConfig` with `toolChoice`, first-class `guardrailConfig`
+> and `performanceConfig`, and `additionalModelRequestFields` for everything Converse does not model
+> itself (Claude's `thinking`, `top_k`, `anthropic_beta`, `reasoning_effort`, …). `cache_control` on
+> a system message or a message becomes a sibling `cachePoint` block. Structured output is the
+> forced `structured_output` tool for **all** families, and `usage` reports
+> `cache_read_input_tokens` / `cache_creation_input_tokens` alongside the OpenAI-shaped totals.
+> `countTokens( chatRequest )` exposes Bedrock's `CountTokens` operation.
+>
+> Multimodal content must carry its **bytes**: a `data:` URI or an Anthropic `source.base64` block
+> becomes an `image`/`document` block. Converse has no URL source, so a remote `http(s)` image URL
+> is dropped with a warning instead of being silently faked — embed the file, or use
+> `bedrockApi: "invoke"`.
+>
+> **On the InvokeModel path** the per-vendor shapes still apply, and tool calling is wired up
+> family by family:
+>
+> | Bedrock family | Converse | Tools (sync) | Tools (streaming) | Schema-typed structured output |
+> |---|---|---|---|---|
+> | `anthropic.claude-*` (and opaque `arn:` inference profiles) | ✅ | ✅ | ✅ | ✅ (forced `structured_output` tool) |
+> | `openai.gpt-oss-*` — and the OpenAI-shaped catch-all: Nova, DeepSeek, Qwen, AI21 Jamba, modern Mistral, GLM, Kimi, Nemotron, Gemma | ✅ | ✅ | ✅ | ✅ (`response_format` json_schema) |
+> | `cohere.command-r*` (Command R / R+) | ✅ | ✅ (`tools` / `tool_results`) | ✅ (`tool-calls-generation`) | Converse ✅ · invoke ❌ — Bedrock's Cohere body documents no `response_format` |
+> | `amazon.titan-*`, `meta.llama*`, legacy `mistral.*` (7B / Mixtral / *-2402) | ✅ | ❌ | ❌ | Converse ✅ · invoke ❌ |
+> | `cohere.command-text-*`, `cohere.command-light-text-*` (legacy), `ai21.j2-*` | ❌ (always InvokeModel) | ❌ | ❌ | ❌ |
+>
+> The `UnsupportedProviderCapability` gate applies **only to the InvokeModel path** — it describes
+> the reach of this module's per-vendor transforms, not the models. On Converse there is one
+> `toolConfig` for every family, so a model that genuinely cannot do tools says so itself and AWS's
+> `ValidationException` message is surfaced verbatim.
+
 ### 🔍 Provider Capability Discovery
 
 Every provider exposes a **runtime capability API** so you can introspect what it supports without consulting documentation — and without risking cryptic errors when you call an unsupported operation. 🛡️

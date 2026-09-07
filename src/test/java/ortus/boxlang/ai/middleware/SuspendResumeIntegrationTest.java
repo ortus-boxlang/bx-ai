@@ -879,7 +879,8 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		            {
 		                awsAccessKeyId    : "AKIAIOSFODNN7EXAMPLE",
 		                awsSecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-		                region            : "us-east-1"
+		                region            : "us-east-1",
+		                bedrockApi        : "invoke"
 		            }
 		        )
 
@@ -940,7 +941,8 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		            {
 		                awsAccessKeyId    : "AKIAIOSFODNN7EXAMPLE",
 		                awsSecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-		                region            : "us-east-1"
+		                region            : "us-east-1",
+		                bedrockApi        : "invoke"
 		            }
 		        )
 
@@ -999,7 +1001,8 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		            {
 		                awsAccessKeyId    : "AKIAIOSFODNN7EXAMPLE",
 		                awsSecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-		                region            : "us-east-1"
+		                region            : "us-east-1",
+		                bedrockApi        : "invoke"
 		            }
 		        )
 		        model = new AiModel( service: provider, params: { model: "anthropic.claude-3-sonnet-20240229-v1:0" } )
@@ -1377,7 +1380,8 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 	                                                          {
 	                                                              awsAccessKeyId    : "AKIAIOSFODNN7EXAMPLE",
 	                                                              awsSecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-	                                                              region            : "us-east-1"
+	                                                              region            : "us-east-1",
+	                                                              bedrockApi        : "invoke"
 	                                                          }
 	                                                      )
 	                                                      """;

@@ -336,4 +336,136 @@ public class PromptSecurityRedactTest extends BaseIntegrationTest {
 		// @formatter:on
 		assertThat( variables.getAsBoolean( Key.of( "ok" ) ) ).isTrue();
 	}
+
+	@DisplayName( "getResponseText: resolves a Bedrock Converse body, joining text blocks and skipping toolUse/reasoning" )
+	@Test
+	public void testGetResponseTextConverse() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.security.PromptSecurity;
+		        ctx = { "result": {
+		            "output": { "message": { "role": "assistant", "content": [
+		                { "reasoningContent": { "reasoningText": { "text": "thinking out loud", "signature": "sig-1" } } },
+		                { "text": "first part" },
+		                { "toolUse": { "toolUseId": "tu-1", "name": "lookup", "input": { "q": "x" } } },
+		                { "text": "second part" }
+		            ] } },
+		            "stopReason": "end_turn"
+		        } };
+		        text = PromptSecurity::getResponseText( ctx );
+		        ok   = text == "first part" & char( 10 ) & "second part";
+		    """,
+		    context
+		);
+		// @formatter:on
+		assertThat( variables.getAsBoolean( Key.of( "ok" ) ) ).isTrue();
+	}
+
+	@DisplayName( "getResponseText: Converse body with no text blocks reads empty" )
+	@Test
+	public void testGetResponseTextConverseEmpty() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.security.PromptSecurity;
+		        emptyCtx = { "result": { "output": { "message": { "role": "assistant", "content": [] } } } };
+		        toolCtx  = { "result": { "output": { "message": { "role": "assistant", "content": [
+		            { "toolUse": { "toolUseId": "tu-1", "name": "lookup", "input": {} } }
+		        ] } } } };
+		        ok = PromptSecurity::getResponseText( emptyCtx ) == ""
+		             && PromptSecurity::getResponseText( toolCtx ) == "";
+		    """,
+		    context
+		);
+		// @formatter:on
+		assertThat( variables.getAsBoolean( Key.of( "ok" ) ) ).isTrue();
+	}
+
+	@DisplayName( "setResponseText: Converse collapses text blocks into the first, preserving toolUse/reasoning in order" )
+	@Test
+	public void testSetResponseTextConverse() {
+		// Round trip: the getter joins every text block, so the redacted string must replace them
+		// all. Non-text blocks are re-sent verbatim as the assistant turn on the tool-call path —
+		// Bedrock rejects a modified reasoning block — so they must come back byte-identical.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.security.PromptSecurity;
+		        ctx = { "result": {
+		            "output": { "message": { "role": "assistant", "content": [
+		                { "reasoningContent": { "reasoningText": { "text": "thinking out loud", "signature": "sig-1" } } },
+		                { "text": "the ssn is 123-45-6789" },
+		                { "toolUse": { "toolUseId": "tu-1", "name": "lookup", "input": { "q": "x" } } },
+		                { "text": "and again 123-45-6789" }
+		            ] } }
+		        } };
+		        written  = PromptSecurity::setResponseText( ctx, "[REDACTED]" );
+		        blocks   = ctx.result.output.message.content;
+		        readBack = PromptSecurity::getResponseText( ctx );
+		        ok = written
+		             && blocks.len() == 3
+		             && blocks[ 1 ].reasoningContent.reasoningText.text == "thinking out loud"
+		             && blocks[ 1 ].reasoningContent.reasoningText.signature == "sig-1"
+		             && blocks[ 2 ].text == "[REDACTED]"
+		             && blocks[ 3 ].toolUse.toolUseId == "tu-1"
+		             && blocks[ 3 ].toolUse.name == "lookup"
+		             && readBack == "[REDACTED]";
+		    """,
+		    context
+		);
+		// @formatter:on
+		assertThat( variables.getAsBoolean( Key.of( "ok" ) ) ).isTrue();
+	}
+
+	@DisplayName( "setResponseText: an empty redaction drops the Converse text block rather than leaving it blank" )
+	@Test
+	public void testSetResponseTextConverseEmptyRedaction() {
+		// An empty text block is rejected by Bedrock when the array is re-sent as the assistant turn.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.security.PromptSecurity;
+		        ctx = { "result": { "output": { "message": { "content": [
+		            { "text": "![x](https://evil.com?d=1)" },
+		            { "toolUse": { "toolUseId": "tu-1", "name": "lookup", "input": {} } }
+		        ] } } } };
+		        written = PromptSecurity::setResponseText( ctx, "" );
+		        blocks  = ctx.result.output.message.content;
+		        ok = written && blocks.len() == 1 && blocks[ 1 ].keyExists( "toolUse" );
+		    """,
+		    context
+		);
+		// @formatter:on
+		assertThat( variables.getAsBoolean( Key.of( "ok" ) ) ).isTrue();
+	}
+
+	@DisplayName( "get/setResponseText: Bedrock native Titan, Llama and Mistral shapes round-trip" )
+	@Test
+	public void testResponseTextBedrockNativeShapes() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.security.PromptSecurity;
+		        titan   = { "result": { "results": [ { "outputText": "titan says", "completionReason": "FINISH" } ] } };
+		        llama   = { "result": { "generation": "llama says" } };
+		        mistral = { "result": { "outputs": [ { "text": "mistral says" } ] } };
+
+		        readOk = PromptSecurity::getResponseText( titan ) == "titan says"
+		                 && PromptSecurity::getResponseText( llama ) == "llama says"
+		                 && PromptSecurity::getResponseText( mistral ) == "mistral says";
+
+		        writeOk = PromptSecurity::setResponseText( titan, "[R]" )
+		                  && PromptSecurity::setResponseText( llama, "[R]" )
+		                  && PromptSecurity::setResponseText( mistral, "[R]" )
+		                  && titan.result.results[ 1 ].outputText == "[R]"
+		                  && llama.result.generation == "[R]"
+		                  && mistral.result.outputs[ 1 ].text == "[R]";
+		    """,
+		    context
+		);
+		// @formatter:on
+		assertThat( variables.getAsBoolean( Key.of( "readOk" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "writeOk" ) ) ).isTrue();
+	}
 }
