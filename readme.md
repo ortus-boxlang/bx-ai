@@ -287,7 +287,17 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 > a system message or a message becomes a sibling `cachePoint` block. Structured output is the
 > forced `structured_output` tool for **all** families, and `usage` reports
 > `cache_read_input_tokens` / `cache_creation_input_tokens` alongside the OpenAI-shaped totals.
-> `countTokens( chatRequest )` exposes Bedrock's `CountTokens` operation.
+> `countTokens( chatRequest )` exposes Bedrock's `CountTokens` operation, counting whichever body
+> the request would actually send (`input.converse` or `input.invokeModel`). AWS currently serves it
+> only for a **bare Anthropic foundation-model id** (`anthropic.claude-haiku-4-5-20251001-v1:0`);
+> an inference profile (`global.`/`eu.`/`us.` prefix) or another vendor's model answers
+> `400 The provided model doesn't support counting tokens`, surfaced as a `ProviderError` whose
+> message names the restriction.
+>
+> Guardrail and performance-config provider options are accepted under **either** spelling —
+> `guardrailIdentifier` / `guardrailVersion` / `guardrailTrace`, or the
+> `X-Amzn-Bedrock-Guardrail*` / `X-Amzn-Bedrock-Trace` header names (including inside the
+> `bedrockHeaders` shorthand) — and are mapped onto Converse's `guardrailConfig` either way.
 >
 > Multimodal content must carry its **bytes**: a `data:` URI or an Anthropic `source.base64` block
 > becomes an `image`/`document` block. Converse has no URL source, so a remote `http(s)` image URL
@@ -301,14 +311,22 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 > |---|---|---|---|---|
 > | `anthropic.claude-*` (and opaque `arn:` inference profiles) | ✅ | ✅ | ✅ | ✅ (forced `structured_output` tool) |
 > | `openai.gpt-oss-*` — and the OpenAI-shaped catch-all: Nova, DeepSeek, Qwen, AI21 Jamba, modern Mistral, GLM, Kimi, Nemotron, Gemma | ✅ | ✅ | ✅ | ✅ (`response_format` json_schema) |
-> | `cohere.command-r*` (Command R / R+) | ✅ | ✅ (`tools` / `tool_results`) | ✅ (`tool-calls-generation`) | Converse ✅ · invoke ❌ — Bedrock's Cohere body documents no `response_format` |
-> | `amazon.titan-*`, `meta.llama*`, legacy `mistral.*` (7B / Mixtral / *-2402) | ✅ | ❌ | ❌ | Converse ✅ · invoke ❌ |
+> | `cohere.command-r*` (Command R / R+) | ✅ | ✅ (`tools` / `tool_results`) | ✅ (`tool-calls-generation`) | ❌ — invoke: Bedrock's Cohere body documents no `response_format`; Converse: a forced `toolChoice` is honoured for Anthropic / Mistral Large / Nova only |
+> | `meta.llama*`, legacy `mistral.*` (7B / Mixtral / *-2402) | ✅ | Converse ✅ (AWS decides) · invoke ❌ | Converse ✅ (AWS decides) · invoke ❌ | ❌ |
+> | `amazon.titan-*` | ✅ (text only) | ❌ | ❌ | ❌ |
 > | `cohere.command-text-*`, `cohere.command-light-text-*` (legacy), `ai21.j2-*` | ❌ (always InvokeModel) | ❌ | ❌ | ❌ |
 >
-> The `UnsupportedProviderCapability` gate applies **only to the InvokeModel path** — it describes
-> the reach of this module's per-vendor transforms, not the models. On Converse there is one
-> `toolConfig` for every family, so a model that genuinely cannot do tools says so itself and AWS's
-> `ValidationException` message is surfaced verbatim.
+> The `UnsupportedProviderCapability` gate is mostly an **InvokeModel** gate — it describes the
+> reach of this module's per-vendor transforms, not the models — so on Converse a model that
+> genuinely cannot do tools says so itself and AWS's `ValidationException` is surfaced verbatim.
+> Two cases stay gated on Converse too, because they are known-unserviceable rather than merely
+> unknown: **tools on Titan** (no tool-use capability at all) and **schema-typed structured
+> output on Titan / Llama / Mistral / Cohere**, which this module implements on Converse as
+> a *forced* `toolChoice` — a model that does not honour a forced tool choice simply never returns
+> the block, and the failure would arrive after a paid round trip. Cohere is gated for the whole
+> family, Command R included: AWS documents `toolChoice` support for Anthropic, Mistral Large and
+> Nova only. Command R still does plain **tool calling** on both APIs; it is only the forced-choice
+> structured-output path that is refused.
 
 ### 🔍 Provider Capability Discovery
 
@@ -394,7 +412,9 @@ Whatever the provider calls it on the wire (Anthropic `thinking_delta`, DeepSeek
 
 ```javascript
 aiChatStream( "Why is the sky blue?", ( chunk ) => {
-    var delta     = chunk.choices?.first()?.delta ?: {}
+    // A chunk may carry zero choices (usage-only frames): guard on len(), not on `?.` —
+    // safe navigation short-circuits a null, not an empty array, and first() throws on one.
+    var delta     = ( chunk.choices ?: [] ).len() ? chunk.choices.first().delta : {}
     var reasoning = delta.reasoning ?: ""   // the model's thinking
     var content   = delta.content   ?: ""   // the actual answer
 } )

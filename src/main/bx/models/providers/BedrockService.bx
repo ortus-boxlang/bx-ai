@@ -127,6 +127,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		AWS_SERVICE = "bedrock";
 		// Synthetic tool name used to force Claude into structured-output mode on Bedrock
 		STRUCTURED_OUTPUT_TOOL = "structured_output";
+		// The request-owned runtime slot the Converse -> InvokeModel fallback records its decision
+		// in (see stickBedrockApi). NOT a providerOption: that struct belongs to the caller.
+		RUNTIME_BEDROCK_API_KEY = "_bxaiRuntimeBedrockApi";
 		// Cohere's Bedrock embed API accepts at most this many texts per InvokeModel call
 		COHERE_EMBED_BATCH_SIZE = 96;
 		// After a failed container/IMDS credential resolution attempt (e.g. off-EC2, no role
@@ -201,12 +204,36 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// "…images"). Those are accurate messages about a request that InvokeModel would reject
 		// just as hard, and re-sending them over the other API only replaces AWS's diagnosis with
 		// this module's own UnsupportedProviderCapability. So the sentence must ALSO name the
-		// model/operation/Converse itself (within ~40 characters, i.e. the same clause), and must
-		// NOT name a request feature.
-		CONVERSE_UNSUPPORTED_PATTERN = "(?:(model|operation|converse)[^.]{0,40}?(does ?n[o']?t support|is ?n[o']?t supported|isn't supported|not supported|unsupported))|(?:(does ?n[o']?t support|is ?n[o']?t supported|isn't supported|not supported|unsupported)[^.]{0,40}?(model|operation|converse))";
+		// operation/Converse itself (within the same clause), and must NOT name a request feature.
+		//
+		// The subject is deliberately NOT a bare "model". "Invocation of model ID <id> with
+		// on-demand throughput isn't supported" — the single most common Bedrock 400 there is — is
+		// a sentence about THROUGHPUT MODE, not about the API: InvokeModel rejects it exactly as
+		// hard, and re-sending it there only replaces AWS's actionable "use an inference profile"
+		// with a generic failure. Requiring the unsupported thing to be named as the operation
+		// ("does not support the Converse operation", "is not supported by Converse") keeps every
+		// genuine api-level message matching while that whole family of messages falls through.
+		CONVERSE_UNSUPPORTED_PATTERN = "(?:(converse(-?stream)?|operation)[^;\n]{0,60}?(does ?n[o']?t support|is ?n[o']?t supported|isn't supported|not supported|unsupported))|(?:(does ?n[o']?t support|is ?n[o']?t supported|isn't supported|not supported|unsupported)[^;\n]{0,60}?(converse(-?stream)?|operation))";
+		// Checked against the RAW message BEFORE the model-id scrub, and vetoes the fallback
+		// outright. Each of these names a condition InvokeModel is subject to just as much as
+		// Converse is — a throughput mode the model has no on-demand entitlement for, an IAM
+		// denial, a throttle. Retrying them over the other API cannot help, and swallowing AWS's
+		// own remediation text ("Retry your request with the ID or ARN of an inference profile")
+		// is strictly worse than surfacing it.
+		CONVERSE_FALLBACK_VETO_PATTERN = "on-?demand throughput|inference profile|provisioned throughput|not authorized|AccessDenied|Throttling";
+		// Model ids and ARNs are stripped out of the message before the pattern above is applied
+		// (see shouldFallbackToInvoke). They are the reason the proximity window cannot simply
+		// exclude "." — "The model cohere.command-text-v14 doesn't support Converse" puts two dots
+		// between the subject and the verb — and the reason the feature veto below has to be
+		// anchored: "amazon.titan-image-generator-v1" is not a message about image blocks.
+		CONVERSE_MODEL_ID_PATTERN = "arn:[^\s]+|[A-Za-z0-9-]+\.[A-Za-z0-9.\-]+(:[0-9]+)?";
 		// A Converse 400 naming any of these is about the REQUEST, not about the API: surface the
 		// AWS message verbatim rather than falling back and mistranslating it.
-		CONVERSE_FEATURE_ERROR_PATTERN = "(toolChoice|toolResult|toolConfig|image|document|system)";
+		// Anchored to FIELD context: a bare "image"/"system"/"document" also occurs inside model
+		// ids (amazon.titan-image-generator-v1, stability.stable-image-core-v1:0), and vetoing on
+		// those turned "this model is not supported" into "surface the AWS error" — exactly the
+		// case the fallback exists for.
+		CONVERSE_FEATURE_ERROR_PATTERN = "(toolConfig|toolChoice|toolResult\.status|image (block|content|format)|document (block|content|format)|system (prompt|message|content))";
 		// Model ids already logged as having fallen back, so the info line is emitted once per
 		// model id per JVM rather than once per request. Static for the same reason
 		// CREDENTIAL_CACHE is: aiService() builds a fresh provider per call.
@@ -1211,8 +1238,14 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	/**
 	 * Decide which Bedrock runtime API this request speaks: "converse" or "invoke".
 	 *
-	 * Configured precedence, highest first — the same shape every other Bedrock setting uses,
-	 * with the per-request providerOption on top:
+	 * Configured precedence, highest first. NOTE this is NOT the shape the other Bedrock settings
+	 * use: region and credentials resolve caller > module setting > environment, whereas
+	 * bedrockApi ranks the ENVIRONMENT above the module setting, so an operator can force one API
+	 * for a deployment without editing the module config:
+	 *   0. a runtime decision already settled on for THIS request (a Converse -> InvokeModel
+	 *      fallback, or a resume restoring the API the conversation was built in). It outranks
+	 *      even the caller's option because AWS has already refused to honour that option, and it
+	 *      is cleared at the top of the next logical call so the caller's pin governs again.
 	 *   1. `providerOptions.bedrockApi` on the request itself
 	 *   2. the `BOXLANG_MODULES_BXAI_BEDROCK_API` environment variable
 	 *   3. the `bxai_bedrockApi` key in the application scope, when there is one
@@ -1237,8 +1270,20 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 *
 	 * @return "converse" or "invoke"
 	 */
-	public string function resolveBedrockApi( required AiBaseRequest chatRequest, required string modelId ){
+	public string function resolveBedrockApi( required AiBaseRequest chatRequest, required string modelId, boolean honourRuntimeDecision = true ){
 		var sources = [
+			// 0. The RUNTIME decision, ranked above even the caller's own option. A Converse ->
+			// InvokeModel fallback records the API it settled on in the request's private runtime
+			// slot (stickBedrockApi()). That is what makes the decision sticky: every later
+			// resolve on this request — the tool-loop recursion, the resume path, the dialect
+			// helpers — sees the API the conversation is actually being built in rather than
+			// re-resolving "converse" and rebuilding Converse-dialect blocks the invoke body
+			// cannot express. It outranks the caller option because by the time it is set, AWS has
+			// already refused to honour that option; it is cleared at the top of the next logical
+			// call, so the caller's pin governs again from the next request on.
+			// honourRuntimeDecision=false is countTokens(): it counts what the NEXT logical call
+			// will send, and that call clears the stick before it resolves.
+			arguments.honourRuntimeDecision ? stuckBedrockApi( arguments.chatRequest ) : "",
 			arguments.chatRequest.getProviderOption( "bedrockApi", "" ),
 			variables.bedrockApiFromEnv ?: "",
 			applicationScopeSetting( "bxai_bedrockApi" ),
@@ -1271,6 +1316,77 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		}
 
 		return "converse";
+	}
+
+	/**
+	 * Record the runtime-chosen Bedrock API on the REQUEST, so every later resolveBedrockApi()
+	 * for this request returns it.
+	 *
+	 * Written to the request's OWN runtime slot, never to providerOptions. providerOptions is an
+	 * alias of the caller's struct (AiChatRequest.init() takes it by reference, and
+	 * AiBaseRunnable.getMergedOptions() hands the same struct to every request built from those
+	 * options), so writing `bedrockApi` there pinned "invoke" permanently onto the caller's own
+	 * options — every subsequent request skipped Converse, and an explicit caller pin of
+	 * "converse" was silently overwritten by one transient AWS ValidationException.
+	 *
+	 * @chatRequest The request the decision belongs to
+	 * @bedrockApi  "converse" or "invoke"
+	 */
+	private void function stickBedrockApi( required AiBaseRequest chatRequest, required string bedrockApi ){
+		if ( structKeyExists( arguments.chatRequest, "setRuntimeOption" ) ) {
+			arguments.chatRequest.setRuntimeOption( static.RUNTIME_BEDROCK_API_KEY, arguments.bedrockApi );
+		}
+	}
+
+	/**
+	 * The runtime-chosen Bedrock API for this request, or "" when none has been settled on.
+	 *
+	 * @chatRequest The request to read
+	 */
+	private string function stuckBedrockApi( required AiBaseRequest chatRequest ){
+		if ( !structKeyExists( arguments.chatRequest, "getRuntimeOption" ) ) {
+			return "";
+		}
+		var stuckValue = arguments.chatRequest.getRuntimeOption( static.RUNTIME_BEDROCK_API_KEY, "" );
+		return isSimpleValue( stuckValue ) ? stuckValue : "";
+	}
+
+	/**
+	 * Drop any runtime API decision left on this request, so a fresh logical call re-resolves from
+	 * the configured chain instead of inheriting the previous run's fallback. Called at the top of
+	 * chat()/chatStream() for the FIRST turn of a run only — a resume deliberately restores the
+	 * persisted decision (see the `bedrockApi` suspend payload), and turns 2+ of a tool loop must
+	 * keep speaking whatever dialect turn 1 settled on.
+	 *
+	 * @chatRequest The request starting a new logical call
+	 */
+	private void function clearStuckBedrockApi( required AiBaseRequest chatRequest ){
+		if ( structKeyExists( arguments.chatRequest, "clearRuntimeOption" ) ) {
+			arguments.chatRequest.clearRuntimeOption( static.RUNTIME_BEDROCK_API_KEY );
+		}
+	}
+
+	/**
+	 * One simple value out of a resume context, accepted either at its top level or inside the
+	 * `suspendData` the checkpointer round-tripped (AiAgent.resume() hands back the whole saved
+	 * state, with the suspend payload under `suspendData`).
+	 *
+	 * @resumeCtx The resume context
+	 * @key       The key to read
+	 */
+	private string function resumeSuspendValue( required struct resumeCtx, required string key ){
+		var direct = arguments.resumeCtx[ arguments.key ] ?: "";
+		if ( isSimpleValue( direct ) && len( direct ) ) {
+			return direct;
+		}
+		var suspendData = arguments.resumeCtx.suspendData ?: "";
+		if ( isStruct( suspendData ) ) {
+			var nested = suspendData[ arguments.key ] ?: "";
+			if ( isSimpleValue( nested ) && len( nested ) ) {
+				return nested;
+			}
+		}
+		return "";
 	}
 
 	/**
@@ -1350,10 +1466,22 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// A feature-level 400 is AWS accurately describing THIS request. Falling back would send
 		// the same unsupported feature over InvokeModel and replace the accurate message with a
 		// generic one, so the AWS text is surfaced verbatim instead.
+		// Checked against the RAW message: the veto words are field paths (toolResult.status), and
+		// stripping model ids would take them with it.
 		if ( reFindNoCase( static.CONVERSE_FEATURE_ERROR_PATTERN, arguments.errorMessage ) > 0 ) {
 			return false;
 		}
-		return reFindNoCase( static.CONVERSE_UNSUPPORTED_PATTERN, arguments.errorMessage ) > 0;
+		// Conditions InvokeModel is subject to as well (throughput mode, IAM, throttling). Also
+		// checked RAW: the scrub eats "on-demand" and the model id the message is complaining
+		// about, and an inference-profile ARN is exactly what CONVERSE_MODEL_ID_PATTERN removes.
+		if ( reFindNoCase( static.CONVERSE_FALLBACK_VETO_PATTERN, arguments.errorMessage ) > 0 ) {
+			return false;
+		}
+		// Model ids and ARNs out first: they are dotted, so they broke the proximity window
+		// between the subject ("the model ...") and the verb ("does not support"), and they carry
+		// words ("image", "document") that read as request features.
+		var scrubbed = reReplaceNoCase( arguments.errorMessage, static.CONVERSE_MODEL_ID_PATTERN, " ", "all" );
+		return reFindNoCase( static.CONVERSE_UNSUPPORTED_PATTERN, scrubbed ) > 0;
 	}
 
 	/**
@@ -1511,15 +1639,6 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		string modelId    = "",
 		string bedrockApi = "invoke"
 	){
-		// The Converse path has ONE model-agnostic toolConfig, so this module no longer has an
-		// opinion about which family can carry tools — that gate only ever described the reach of
-		// the per-vendor InvokeModel transforms. A model that genuinely cannot do tools now says
-		// so itself, and AWS's ValidationException message is surfaced verbatim (see
-		// sendBedrockRequest()'s error branch) rather than being replaced by this module's guess.
-		if ( arguments.bedrockApi == "converse" ) {
-			return;
-		}
-
 		var params        = arguments.chatRequest.getParams();
 		var hasTools      = isStruct( params ) && params.keyExists( "tools" ) && isArray( params.tools ) && params.tools.len() > 0;
 		var hasStructured = arguments.chatRequest.isStructuredOutput();
@@ -1529,6 +1648,48 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		}
 
 		var legacyCohere  = ( arguments.modelFamily == "cohere" && isLegacyCohere( arguments.modelId ) );
+
+		if ( arguments.bedrockApi == "converse" ) {
+			// Converse has ONE model-agnostic toolConfig, so this module no longer has an opinion
+			// about most families — a model that cannot do tools says so itself and AWS's
+			// ValidationException is surfaced verbatim. But two cases are known-unserviceable
+			// rather than merely unknown, and letting them through only swaps a clear pre-flight
+			// error for an AWS 400 on a request that could never have worked:
+			//   (a) TOOLS on Titan (no tool-use capability at all) and on legacy Cohere Command
+			//       (text-completion models, which resolveBedrockApi() routes off Converse
+			//       entirely — so a Converse tool request against one is a contradiction).
+			//   (b) SCHEMA-TYPED STRUCTURED OUTPUT, which this module implements on Converse as a
+			//       FORCED toolChoice. Titan/Llama/Mistral, legacy Cohere AND Cohere Command R do
+			//       not honour a forced tool choice, so the forced block never arrives and chat()
+			//       throws StructuredOutputError after a paid round trip.
+			//       Cohere is gated for the WHOLE family, Command R included: AWS documents
+			//       toolChoice support for Anthropic, Mistral Large and Nova only, so Command R
+			//       takes the toolConfig and then answers with prose whenever it feels like it.
+			//       Command R keeps working for plain TOOLS (which it does support) — this gates
+			//       only the forced-choice structured-output path.
+			// @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_ToolChoice.html
+			var converseToolsGated      = hasTools && ( arguments.modelFamily == "titan" || legacyCohere );
+			var converseStructuredGated = hasStructured
+				&& ( static.NO_TOOL_SUPPORT_FAMILIES.contains( arguments.modelFamily ) || arguments.modelFamily == "cohere" );
+			if ( !converseToolsGated && !converseStructuredGated ) {
+				return;
+			}
+			var converseCapability = converseToolsGated && converseStructuredGated
+				? "tools and schema-typed structured output"
+				: ( converseToolsGated ? "tools" : "schema-typed structured output (a forced toolChoice)" );
+			var converseLabel = legacyCohere ? "legacy cohere Command" : arguments.modelFamily;
+			writeLog(
+				text: "Bedrock model family '#converseLabel#' does not support #converseCapability# over the Converse API",
+				type: "error",
+				log : "ai"
+			);
+			throw(
+				type   : "UnsupportedProviderCapability",
+				message: "Bedrock model family '#converseLabel#' does not support #converseCapability# on the Converse API. "
+					& capabilityRemediation( converseStructuredGated )
+			);
+		}
+
 		var familyGated   = static.NO_TOOL_SUPPORT_FAMILIES.contains( arguments.modelFamily ) || legacyCohere;
 		// Cohere Command R/R+ takes `tools`, but Bedrock's Cohere chat body documents no
 		// response_format — schema-typed structured output stays gated for the whole family
@@ -1556,9 +1717,29 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		throw(
 			type   : "UnsupportedProviderCapability",
 			message: "Bedrock model family '#label#' does not support #capability#. "
-				& "Use a Claude (anthropic.claude-*), OpenAI-shaped (openai.gpt-oss-*) or Cohere Command R "
-				& "(cohere.command-r*) model on Bedrock for tool calling or schema-typed structured output."
+				& capabilityRemediation( blockedStructured )
 		);
+	}
+
+	/**
+	 * The "use one of these instead" half of an UnsupportedProviderCapability message.
+	 *
+	 * Cohere Command R is only recommended for TOOL CALLING. It is not a way out of a
+	 * structured-output gate on either API: Bedrock honours a forced toolChoice for Anthropic,
+	 * Mistral Large and Nova only, so Command R takes the forced block and then answers with
+	 * prose — recommending it there just moved the failure to a StructuredOutputError one paid
+	 * round trip later.
+	 *
+	 * @structuredBlocked Whether schema-typed structured output is (part of) what was refused
+	 */
+	private string function capabilityRemediation( required boolean structuredBlocked ){
+		if ( arguments.structuredBlocked ) {
+			return "Use a Claude (anthropic.claude-*) or OpenAI-shaped (openai.gpt-oss-*) model on Bedrock for "
+				& "schema-typed structured output; Cohere Command R (cohere.command-r*) supports tool calling but "
+				& "does not honour the forced tool choice structured output is built on.";
+		}
+		return "Use a Claude (anthropic.claude-*), OpenAI-shaped (openai.gpt-oss-*) or Cohere Command R "
+			& "(cohere.command-r*) model on Bedrock for tool calling.";
 	}
 
 	/**
@@ -1591,7 +1772,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			case "openai":
 			default:
 				// ai21 and every other unmapped family speak the OpenAI shape on Bedrock
-				return transformRequestForOpenAI( arguments.messages, arguments.params );
+				return transformRequestForOpenAI( arguments.messages, arguments.params, arguments.modelId );
 		}
 	}
 
@@ -1659,8 +1840,33 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		// A caller-supplied params.system fills in when no real system message exists — matches
 		// transformRequestForClaude()'s precedence.
-		if ( !systemBlocks.len() && len( trim( arguments.params.system ?: "" ) ) ) {
-			systemBlocks.append( { "text": arguments.params.system } );
+		var paramsSystem = arguments.params.system ?: "";
+		if ( !systemBlocks.len() && isArray( paramsSystem ) ) {
+			// An ARRAY params.system (Anthropic's block form, which the InvokeModel path accepts
+			// verbatim) used to reach trim() and throw. Map each entry onto a SystemContentBlock,
+			// carrying a cache_control marker across as the sibling cachePoint block Converse
+			// models a checkpoint with.
+			for ( var systemPart in paramsSystem ) {
+				if ( isSimpleValue( systemPart ) ) {
+					if ( len( trim( systemPart ) ) ) {
+						systemBlocks.append( { "text": systemPart } );
+					}
+					continue;
+				}
+				if ( !isStruct( systemPart ) ) {
+					continue;
+				}
+				if ( len( systemPart.text ?: "" ) ) {
+					systemBlocks.append( { "text": systemPart.text } );
+				}
+				if ( systemPart.keyExists( "cachePoint" ) ) {
+					systemBlocks.append( { "cachePoint": systemPart.cachePoint } );
+				} else if ( systemPart.keyExists( "cache_control" ) && !isNull( systemPart.cache_control ) ) {
+					systemBlocks.append( { "cachePoint": { "type": "default" } } );
+				}
+			}
+		} else if ( !systemBlocks.len() && isSimpleValue( paramsSystem ) && len( trim( paramsSystem ) ) ) {
+			systemBlocks.append( { "text": paramsSystem } );
 		}
 		if ( systemBlocks.len() ) {
 			result[ "system" ] = systemBlocks;
@@ -1668,15 +1874,19 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		// ---- inferenceConfig -------------------------------------------------------------------
 		var inferenceConfig = {};
+		// Cast explicitly: a numeric STRING ("512", "0.7") — which is what every one of these
+		// arrives as from a config file, an env var or a URL param — was serialized back out as a
+		// JSON string, and Converse's inferenceConfig is typed (integer / float), so AWS rejected
+		// the request outright.
 		var maxTokens       = arguments.params.max_tokens ?: arguments.params.max_completion_tokens ?: arguments.params.max_gen_len ?: "";
 		if ( isNumeric( maxTokens ) ) {
-			inferenceConfig[ "maxTokens" ] = maxTokens;
+			inferenceConfig[ "maxTokens" ] = javacast( "int", val( maxTokens ) );
 		}
 		if ( isNumeric( arguments.params.temperature ?: "" ) ) {
-			inferenceConfig[ "temperature" ] = arguments.params.temperature;
+			inferenceConfig[ "temperature" ] = javacast( "double", val( arguments.params.temperature ) );
 		}
 		if ( isNumeric( arguments.params.top_p ?: "" ) ) {
-			inferenceConfig[ "topP" ] = arguments.params.top_p;
+			inferenceConfig[ "topP" ] = javacast( "double", val( arguments.params.top_p ) );
 		}
 		var stopSequences = arguments.params.stop_sequences ?: arguments.params.stop ?: "";
 		if ( isArray( stopSequences ) && stopSequences.len() ) {
@@ -1724,13 +1934,23 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// sends as X-Amzn-Bedrock-* headers (see buildProviderOptionHeaders(), still used there),
 		// so a caller does not have to know which API is on the wire.
 		var providerOptions = arguments.chatRequest.getProviderOptions();
-		if ( len( providerOptions.guardrailIdentifier ?: "" ) && len( providerOptions.guardrailVersion ?: "" ) ) {
+		// buildProviderOptionHeaders() STRIPS every x-amzn-bedrock-guardrail*/trace header on the
+		// Converse path, because Converse models them in the body instead. So the body form has to
+		// accept the header spellings too (and the bedrockHeaders shorthand), or a caller who set
+		// guardrails the header way silently ran with NO guardrail at all on the default API.
+		// Struct keys are case-insensitive, so the lookups below cover any header casing.
+		var guardrailHeaders = isStruct( providerOptions.bedrockHeaders ?: "" ) ? providerOptions.bedrockHeaders : {};
+		var guardrailId      = providerOptionOrHeader( providerOptions, guardrailHeaders, "guardrailIdentifier", "X-Amzn-Bedrock-GuardrailIdentifier" );
+		var guardrailVersion = providerOptionOrHeader( providerOptions, guardrailHeaders, "guardrailVersion", "X-Amzn-Bedrock-GuardrailVersion" );
+		var guardrailTrace   = providerOptionOrHeader( providerOptions, guardrailHeaders, "guardrailTrace", "X-Amzn-Bedrock-Trace" );
+
+		if ( len( guardrailId ) && len( guardrailVersion ) ) {
 			var guardrailConfig = {
-				"guardrailIdentifier" : providerOptions.guardrailIdentifier,
-				"guardrailVersion"    : providerOptions.guardrailVersion
+				"guardrailIdentifier" : guardrailId,
+				"guardrailVersion"    : guardrailVersion
 			};
-			if ( len( providerOptions.guardrailTrace ?: "" ) ) {
-				guardrailConfig[ "trace" ] = providerOptions.guardrailTrace.lcase();
+			if ( len( guardrailTrace ) ) {
+				guardrailConfig[ "trace" ] = guardrailTrace.lcase();
 			}
 			// streamProcessingMode lives on ConverseStream's GuardrailStreamConfiguration only —
 			// Converse's own GuardrailConfiguration has no such member, and sending it there is an
@@ -1739,12 +1959,22 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				guardrailConfig[ "streamProcessingMode" ] = providerOptions.guardrailStreamProcessingMode;
 			}
 			result[ "guardrailConfig" ] = guardrailConfig;
+		} else if ( len( guardrailId ) || len( guardrailVersion ) || len( guardrailTrace ) ) {
+			// Something guardrail-shaped was supplied but could not be mapped onto Converse's
+			// GuardrailConfiguration (which requires BOTH identifier and version). The header form
+			// is stripped on this path, so saying nothing would mean running unguarded.
+			writeLog(
+				text: "Bedrock Converse: guardrail provider options were supplied but could not be mapped onto guardrailConfig "
+					& "(identifier=#len( guardrailId ) ? "set" : "missing"#, version=#len( guardrailVersion ) ? "set" : "missing"#) — "
+					& "the X-Amzn-Bedrock-Guardrail* headers are NOT sent on the Converse API, so this request runs WITHOUT a guardrail",
+				type: "warning",
+				log : "ai"
+			);
 		}
 
 		// The header spelling is X-Amzn-Bedrock-PerformanceConfig-Latency; the Converse field is
 		// performanceConfig.latency ("standard" | "optimized").
-		var latency = providerOptions.performanceConfigLatency
-			?: ( providerOptions[ "X-Amzn-Bedrock-PerformanceConfig-Latency" ] ?: "" );
+		var latency = providerOptionOrHeader( providerOptions, guardrailHeaders, "performanceConfigLatency", "X-Amzn-Bedrock-PerformanceConfig-Latency" );
 		if ( isSimpleValue( latency ) && len( latency ) ) {
 			result[ "performanceConfig" ] = { "latency": latency.lcase() };
 		}
@@ -1919,7 +2149,14 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				// OpenAI shape: { type: "image_url", image_url: { url } } — a data URI carries the
 				// bytes Converse needs; a remote http(s) URL does not, and Converse's ImageSource
 				// has no url member, so there is nothing to send.
-				return converseMediaBlock( "image", arguments.part.image_url.url ?: "", "" );
+				// The url may be given as the scalar itself ({ type: "image_url", image_url: "data:..." }),
+				// a shape several callers and OpenAI-compatible clients emit; reading `.url` off a
+				// string silently produced an empty block and dropped the image.
+				var imageUrlPart = arguments.part.image_url ?: "";
+				var imageUrl     = isStruct( imageUrlPart )
+					? ( imageUrlPart.url ?: "" )
+					: ( isSimpleValue( imageUrlPart ) ? imageUrlPart : "" );
+				return converseMediaBlock( "image", imageUrl, "" );
 
 			case "image":
 				// Anthropic shape: { type: "image", source: { type: "base64", media_type, data } }
@@ -2066,8 +2303,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		if ( !header.findNoCase( "base64" ) || !len( payload ) ) {
 			return {};
 		}
+		// "data:;base64,..." / "data:base64,..." carry NO media type. listFirst(";") then returned
+		// the literal "base64" as the mime type, which converseImageFormat() read as the subtype
+		// and mapped to png. A missing type is missing, not "base64".
+		var declaredMime = reReplaceNoCase( header, "^data:", "", "one" ).listFirst( ";" );
 		return {
-			"mimeType" : reReplaceNoCase( header, "^data:", "", "one" ).listFirst( ";" ),
+			"mimeType" : declaredMime.find( "/" ) ? declaredMime : "",
 			"data"     : payload
 		};
 	}
@@ -2169,9 +2410,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		} else {
 			var text = isSimpleValue( arguments.content ) ? arguments.content : arguments.content.toString();
 			block[ "content" ] = [ { "text": text } ];
-			if ( !len( arguments.status ) ) {
-				isError = reFindNoCase( "^\[?Tool (call blocked|\[)", text ) > 0;
-			}
+			// No status means the caller supplied this tool result themselves (a replayed
+			// foreign-dialect history). Sniffing its TEXT for this module's own blocked/not-found
+			// marker wording mislabelled any tool whose legitimate output happened to start that
+			// way as an error; every result this module builds passes an explicit status.
 		}
 
 		if ( isError ) {
@@ -2462,7 +2704,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * Transform request for OpenAI-compatible models on Bedrock (cross-region inference profiles)
 	 * These models use the standard OpenAI API format
 	 */
-	private struct function transformRequestForOpenAI( required array messages, required struct params ){
+	private struct function transformRequestForOpenAI( required array messages, required struct params, string modelId = "" ){
 		// Bedrock's InvokeModel body for openai.gpt-oss-* IS the OpenAI Create-chat-completion
 		// body — AWS documents it by reference to OpenAI's own parameter list — and every other
 		// family that falls through to this transform (Nova, DeepSeek, Qwen, AI21 Jamba, modern
@@ -2481,12 +2723,23 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 		}
 
-		result[ "messages" ] = arguments.messages;
+		// A COPY, not the live array. Every other transform here builds its messages with a loop,
+		// a filter or a slice and so hands back a fresh array; this one passed the caller's array
+		// straight through, which made the emitted packet a live view of the conversation. The
+		// tool loop appends the assistant turn and the tool results to that same array after the
+		// call, so anything holding the packet — FlightRecorder tapes, a middleware that stashed
+		// it, a serialized suspend payload — saw messages that were not on the wire.
+		result[ "messages" ] = arguments.messages.duplicate();
 
-		// max_completion_tokens is the field AWS's own InvokeModel examples use for these models;
-		// max_tokens is the legacy OpenAI spelling and is accepted as an alias on the way in.
-		// Only one is emitted — sending both is rejected by the OpenAI schema.
-		result[ "max_completion_tokens" ] = arguments.params.max_completion_tokens ?: arguments.params.max_tokens ?: 4096;
+		// Only one spelling is emitted — sending both is rejected by the OpenAI schema; the other
+		// is accepted as an alias on the way in (both are excluded from the passthrough above).
+		// max_completion_tokens is the field AWS's own examples use for the `openai.*` models this
+		// transform was written for. It is ALSO the catch-all for every family not in
+		// transformRequestForModel()'s switch (ai21 and anything new), and those speak plain
+		// OpenAI, where the field is max_tokens — emitting the newer spelling to them was an
+		// unknown-field rejection.
+		var maxTokensValue = arguments.params.max_completion_tokens ?: arguments.params.max_tokens ?: 4096;
+		result[ arguments.modelId.lcase().startsWith( "openai." ) ? "max_completion_tokens" : "max_tokens" ] = maxTokensValue;
 
 		// Tools use the OpenAI function schema, which is exactly what BaseTool.getSchema() emits —
 		// the same helper OpenAIService.chat() uses to build its own packet.
@@ -2550,31 +2803,101 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// role:"tool" results. Cohere has no such messages: the follow-up turn carries
 		// `tool_results` INSTEAD of `message` (they are mutually exclusive unless
 		// force_single_step), with `tools` passed again alongside.
-		var pendingCalls = {};
-		var toolResults  = [];
-		for ( var msg in arguments.messages ) {
-			if ( msg.role == "assistant" && isStruct( msg ) && msg.keyExists( "tool_calls" ) && isArray( msg.tool_calls ) ) {
-				for ( var call in msg.tool_calls ) {
-					pendingCalls[ call.id ?: "" ] = call;
+		// Only the TRAILING exchange folds: `tool_results` is Cohere's representation of "here is
+		// what the tools you JUST asked for returned". Folding every exchange in the conversation
+		// re-sent turn 1's and turn 2's results on turn 3 as though the model had only now asked
+		// for them — the model saw its own earlier answers arriving again as fresh tool output.
+		var toolResults   = [];
+		var foldFromIndex = 0;
+		for ( var i = arguments.messages.len(); i >= 1; i-- ) {
+			var candidate = arguments.messages[ i ];
+			if ( isStruct( candidate ) && ( candidate.role ?: "" ) == "tool" ) {
+				continue;
+			}
+			if (
+				isStruct( candidate ) && ( candidate.role ?: "" ) == "assistant"
+				&& candidate.keyExists( "tool_calls" ) && isArray( candidate.tool_calls )
+			) {
+				foldFromIndex = i;
+			}
+			// Any other role ends the trailing block: the tool exchange is over.
+			break;
+		}
+
+		if ( foldFromIndex ) {
+			var trailingCalls = {};
+			for ( var call in arguments.messages[ foldFromIndex ].tool_calls ) {
+				trailingCalls[ call.id ?: "" ] = call;
+			}
+			for ( var i = foldFromIndex + 1; i <= arguments.messages.len(); i++ ) {
+				var resultMsg = arguments.messages[ i ];
+				if ( !isStruct( resultMsg ) || ( resultMsg.role ?: "" ) != "tool" ) {
+					continue;
+				}
+				var sourceCall = trailingCalls[ resultMsg.tool_call_id ?: "" ] ?: {};
+				toolResults.append( {
+					"call" : {
+						"name"       : sourceCall.keyExists( "function" ) ? ( sourceCall.function.name ?: "" ) : "",
+						"parameters" : toolCallArgs( sourceCall )
+					},
+					// Cohere's fine-grained citation logic requires outputs to be a LIST of dicts,
+					// even for a single scalar result.
+					"outputs" : [ { "result": isSimpleValue( resultMsg.content ) ? resultMsg.content : jsonSerialize( resultMsg.content ) } ]
+				} );
+			}
+		}
+
+		// Everything before the trailing tool exchange is plain conversation. Earlier tool
+		// exchanges are NOT replayed as `tool_results` — re-sending old results is what this fold
+		// is fixing — but they are not dropped either: they are NARRATED into chat_history as
+		// CHATBOT turns. Cohere's chat_history has no tool role, so a dropped exchange meant round
+		// 3 had no memory that round 1 had ever called a tool or what it returned, and the model
+		// re-asked for the same thing it had already been told.
+		var historyUpperBound = foldFromIndex ? foldFromIndex - 1 : arguments.messages.len();
+		var priorMessages     = historyUpperBound > 0 ? arguments.messages.slice( 1, historyUpperBound ) : [];
+		var conversation      = [];
+		// tool_call_id -> the call it answers, for the tool name. Rebuilt as each assistant turn
+		// goes by, so an id is resolved against the round it belongs to.
+		var priorCalls = {};
+		for ( var priorMsg in priorMessages ) {
+			if ( !isStruct( priorMsg ) ) {
+				continue;
+			}
+			var priorRole = priorMsg.role ?: "";
+			if ( priorRole == "system" ) {
+				continue;
+			}
+
+			if ( priorRole == "tool" ) {
+				var answeredCall = priorCalls[ priorMsg.tool_call_id ?: "" ] ?: {};
+				var answeredName = answeredCall.keyExists( "function" ) ? ( answeredCall.function.name ?: "" ) : "";
+				var resultText   = isSimpleValue( priorMsg.content ?: "" )
+					? ( priorMsg.content ?: "" )
+					: jsonSerialize( priorMsg.content );
+				conversation.append( {
+					"role"    : "assistant",
+					"content" : len( answeredName )
+						? "Tool #answeredName# returned: #resultText#"
+						: "Tool returned: #resultText#"
+				} );
+				continue;
+			}
+
+			if ( priorRole == "assistant" && priorMsg.keyExists( "tool_calls" ) && isArray( priorMsg.tool_calls ) ) {
+				for ( var priorCall in priorMsg.tool_calls ) {
+					priorCalls[ priorCall.id ?: "" ] = priorCall;
+				}
+				// Any prose the model streamed alongside its tool call is a real assistant turn and
+				// is kept; the tool_calls themselves become the "Tool ... returned" turns above.
+				var priorText = flattenMessageContent( priorMsg.content ?: "" );
+				if ( len( trim( priorText ) ) ) {
+					conversation.append( { "role": "assistant", "content": priorText } );
 				}
 				continue;
 			}
-			if ( msg.role != "tool" ) {
-				continue;
-			}
-			var sourceCall = pendingCalls[ msg.tool_call_id ?: "" ] ?: {};
-			toolResults.append( {
-				"call" : {
-					"name"       : sourceCall.keyExists( "function" ) ? ( sourceCall.function.name ?: "" ) : "",
-					"parameters" : toolCallArgs( sourceCall )
-				},
-				// Cohere's fine-grained citation logic requires outputs to be a LIST of dicts,
-				// even for a single scalar result.
-				"outputs" : [ { "result": isSimpleValue( msg.content ) ? msg.content : jsonSerialize( msg.content ) } ]
-			} );
-		}
 
-		var conversation = arguments.messages.filter( msg -> msg.role != "system" && msg.role != "tool" && !( msg.role == "assistant" && isStruct( msg ) && msg.keyExists( "tool_calls" ) ) );
+			conversation.append( priorMsg );
+		}
 
 		// ---- Legacy Command: a single flattened prompt, nothing else ----
 		if ( isLegacyCohere( arguments.modelId ) ) {
@@ -2801,7 +3124,64 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * @response The raw Converse response body
 	 * @modelId  The Bedrock model id
 	 */
+	/**
+	 * Converse `usage` -> the module's normalized (OpenAI-shaped) usage struct.
+	 *
+	 * Converse reports `inputTokens` EXCLUSIVE of cached tokens, so the billed prompt total is
+	 * inputTokens + cacheRead + cacheWrite; prompt_tokens carries that total, and total_tokens is
+	 * always prompt + completion. AWS's own usage.totalTokens is cache-EXCLUSIVE, so reporting it
+	 * as total_tokens made total_tokens smaller than prompt_tokens on any cached request — it is
+	 * kept verbatim under `bedrock.totalTokens` by the callers instead.
+	 *
+	 * The cache counters are reported under BOTH the Anthropic spelling the rest of the ecosystem
+	 * uses and the raw AWS one, so a caller need not know which API served the request.
+	 *
+	 * Shared by the sync transform and the streaming `metadata` event, which were two copies of
+	 * this arithmetic and could drift apart into reporting different totals for the same request.
+	 *
+	 * @usage The raw Converse TokenUsage block
+	 */
+	private struct function normalizeConverseUsage( required struct usage ){
+		var cacheRead        = arguments.usage.cacheReadInputTokens ?: 0;
+		var cacheWrite       = arguments.usage.cacheWriteInputTokens ?: 0;
+		var inputTokens      = arguments.usage.inputTokens ?: 0;
+		var promptTokens     = inputTokens + cacheRead + cacheWrite;
+		var completionTokens = arguments.usage.outputTokens ?: 0;
+
+		var normalized = {
+			"prompt_tokens"               : promptTokens,
+			"completion_tokens"           : completionTokens,
+			"total_tokens"                : promptTokens + completionTokens,
+			"cache_read_input_tokens"     : cacheRead,
+			"cache_creation_input_tokens" : cacheWrite,
+			"cacheReadInputTokens"        : cacheRead,
+			"cacheWriteInputTokens"       : cacheWrite,
+			"uncached_input_tokens"       : inputTokens
+		};
+		if ( isArray( arguments.usage.cacheDetails ?: "" ) ) {
+			normalized[ "cacheDetails" ] = arguments.usage.cacheDetails;
+		}
+		return normalized;
+	}
+
 	public struct function transformResponseFromConverse( required struct response, required string modelId ){
+		// A body with no `output` is not a Converse response — it is an InvokeModel body (a
+		// replay fixture, a cache entry, a middleware canned response built for the other API)
+		// that reached this transform because the API was resolved as Converse. Every read below
+		// safe-navigates, so it used to yield an empty-but-valid envelope: no text, no tool calls,
+		// and a green test asserting nothing. An error body is the one legitimate exception —
+		// chat() reads `error` itself and never gets here with one, but the streaming/replay
+		// paths can.
+		if ( !arguments.response.keyExists( "output" ) && !arguments.response.keyExists( "error" ) ) {
+			throw(
+				type   : "BedrockError",
+				message: "Response is not a Converse body (missing output.message). Keys present: [#arguments.response.keyArray().toList( ", " )#]. "
+					& "A Converse response is { output: { message: { role, content } }, stopReason, usage }; "
+					& "an InvokeModel-shaped body reached the Converse transform, so the request and the response disagree about which API was used.",
+				detail : "converseResponseShape"
+			);
+		}
+
 		var blocks    = arguments.response.output?.message?.content ?: [];
 		if ( !isArray( blocks ) ) {
 			blocks = [];
@@ -2858,36 +3238,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			);
 		}
 
-		var usage       = arguments.response.usage ?: {};
-		var cacheRead   = usage.cacheReadInputTokens ?: 0;
-		var cacheWrite  = usage.cacheWriteInputTokens ?: 0;
-		// Converse reports `inputTokens` EXCLUSIVE of cached tokens; the billed prompt total is
-		// inputTokens + cacheRead + cacheWrite. prompt_tokens carries the total so token
-		// accounting (onAITokenCount, cost middleware) is not silently short by the cache.
-		var inputTokens = usage.inputTokens ?: 0;
-		var promptTokens     = inputTokens + cacheRead + cacheWrite;
-		var completionTokens = usage.outputTokens ?: 0;
-
-		var normalizedUsage = {
-			"prompt_tokens"     : promptTokens,
-			"completion_tokens" : completionTokens,
-			// AWS's own usage.totalTokens is cache-EXCLUSIVE (it sums inputTokens + outputTokens),
-			// while prompt_tokens above is cache-INCLUSIVE — reporting both meant total_tokens was
-			// silently less than prompt_tokens on any cached request. The normalized total is
-			// always prompt + completion; the raw AWS number is kept under bedrock.totalTokens.
-			"total_tokens"      : promptTokens + completionTokens,
-			// Reported under BOTH the Anthropic spelling the rest of the ecosystem uses and the
-			// raw AWS one, so neither a caller reading `cache_read_input_tokens` nor one reading
-			// the Converse field name has to know which API served the request.
-			"cache_read_input_tokens"     : cacheRead,
-			"cache_creation_input_tokens" : cacheWrite,
-			"cacheReadInputTokens"        : cacheRead,
-			"cacheWriteInputTokens"       : cacheWrite,
-			"uncached_input_tokens"       : inputTokens
-		};
-		if ( isArray( usage.cacheDetails ?: "" ) ) {
-			normalizedUsage[ "cacheDetails" ] = usage.cacheDetails;
-		}
+		var usage           = isStruct( arguments.response.usage ?: "" ) ? arguments.response.usage : {};
+		var normalizedUsage = normalizeConverseUsage( usage );
+		var inputTokens     = usage.inputTokens ?: 0;
+		var completionTokens = normalizedUsage.completion_tokens;
 
 		var result = {
 			"choices" : [
@@ -3321,29 +3675,17 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * @return Array of tool calls in the family's native shape (empty when there are none)
 	 */
 	private array function extractResponseToolCalls( required struct result, required string modelFamily ){
+		// Converse and Claude both carry their tool calls on the assistant TURN — output.message
+		// for Converse, the top-level content array for Claude — which is exactly what
+		// extractAssistantToolCalls() reads off a recorded turn. One implementation of each shape,
+		// so a live response and a resumed one can never disagree about what the model asked for.
 		if ( arguments.modelFamily == "converse" ) {
-			// Converse's toolUse blocks, normalized to the same { type, id, name, input } shape
-			// the Claude blocks and the stream accumulator produce, so toolCallName()/toolCallArgs()
-			// and the whole loop are unchanged.
-			var converseBlocks = arguments.result.output?.message?.content ?: [];
-			if ( !isArray( converseBlocks ) ) {
-				return [];
-			}
-			return converseBlocks
-				.filter( block -> isStruct( block ) && block.keyExists( "toolUse" ) )
-				.map( block -> ( {
-					"type"  : "tool_use",
-					"id"    : block.toolUse.toolUseId ?: "",
-					"name"  : block.toolUse.name ?: "",
-					"input" : isStruct( block.toolUse.input ?: "" ) ? block.toolUse.input : {}
-				} ) );
+			var converseTurn = arguments.result.output?.message ?: {};
+			return isStruct( converseTurn ) ? extractAssistantToolCalls( converseTurn, "converse" ) : [];
 		}
 
 		if ( arguments.modelFamily == "claude" ) {
-			if ( !arguments.result.keyExists( "content" ) || !isArray( arguments.result.content ) ) {
-				return [];
-			}
-			return arguments.result.content.filter( contentBlock -> ( contentBlock?.type ?: "" ) == "tool_use" );
+			return extractAssistantToolCalls( arguments.result, "claude" );
 		}
 
 		if ( arguments.modelFamily == "cohere" ) {
@@ -3354,11 +3696,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			if ( !isArray( cohereCalls ) ) {
 				return [];
 			}
+			// Positional alone is NOT unique: every turn of a multi-turn tool loop restarts at 1,
+			// so turn 2's first call reused turn 1's id and the tool_results fold matched the
+			// wrong call.
+			var callBatchId = createUUID().replace( "-", "", "all" ).left( 12 );
 			var normalized = [];
 			for ( var i = 1; i <= cohereCalls.len(); i++ ) {
 				normalized.append( {
 					"type"  : "tool_use",
-					"id"    : "cohere_tool_#i#",
+					"id"    : "cohere_tool_#i#_#callBatchId#",
 					"name"  : cohereCalls[ i ].name ?: "",
 					"input" : cohereCalls[ i ].parameters ?: {}
 				} );
@@ -3455,12 +3801,53 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			return { "role": "assistant", "content": converseBlocks };
 		}
 		if ( arguments.modelFamily == "claude" ) {
-			return { "role": "assistant", "content": arguments.toolCalls };
+			// The recorded turn has to be the WHOLE turn, in Anthropic's block order: thinking,
+			// then any prose the model streamed alongside its tool call, then the tool_use blocks.
+			// Sending back only the tool_use blocks threw away everything the model said, and the
+			// next turn was answered against a turn that never happened.
+			var claudeBlocks = [];
+
+			var claudeThinking = arguments.streamState.reasoning ?: "";
+			var claudeSignature = arguments.streamState.reasoningSignature ?: "";
+			// Anthropic REJECTS an unsigned thinking block on a tool-use round trip ("thinking
+			// blocks must be passed back complete and unmodified"), so a thinking block with no
+			// signature_delta captured is omitted rather than sent and 400'd.
+			if (
+				isSimpleValue( claudeThinking ) && len( claudeThinking )
+				&& isSimpleValue( claudeSignature ) && len( claudeSignature )
+			) {
+				claudeBlocks.append( {
+					"type"      : "thinking",
+					"thinking"  : claudeThinking,
+					"signature" : claudeSignature
+				} );
+			} else if ( isSimpleValue( claudeThinking ) && len( claudeThinking ) ) {
+				// Dropping it is the lesser evil (an unsigned block is a hard 400), but it is not
+				// free: Anthropic may still reject the tool-use turn for having no thinking block
+				// when thinking is enabled, and the resulting error says nothing about a missing
+				// signature_delta. Leave a trail so that is diagnosable from the log.
+				writeLog(
+					text: "Bedrock: the assistant turn's thinking block was omitted from the tool-use round trip — "
+						& "reasoning text was streamed but no signature_delta was captured, and Anthropic rejects an "
+						& "unsigned thinking block. The model may reject the tool-use turn.",
+					type: "warn",
+					log : "ai"
+				);
+			}
+
+			var claudeText = arguments.streamState.content ?: "";
+			if ( isSimpleValue( claudeText ) && len( claudeText ) ) {
+				claudeBlocks.append( { "type": "text", "text": claudeText } );
+			}
+
+			claudeBlocks.append( arguments.toolCalls, true );
+			return { "role": "assistant", "content": claudeBlocks };
 		}
 
+		var openAIText = arguments.streamState.content ?: "";
 		return {
 			"role"       : "assistant",
-			"content"    : "",
+			"content"    : ( isSimpleValue( openAIText ) ? openAIText : "" ),
 			"tool_calls" : arguments.toolCalls.map( toolCall -> ( {
 				"id"       : toolCall.id ?: "",
 				"type"     : "function",
@@ -3616,8 +4003,31 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		var thisChatRequest  = arguments.chatRequest
 		var assistantMessage = arguments.resumeCtx.assistantMessage
 		var ledger           = arguments.resumeCtx.resumeLedger ?: []
-		var modelFamily      = resolveToolDialect( thisChatRequest )
-		var toolCalls        = extractAssistantToolCalls( assistantMessage, modelFamily )
+
+		// The dialect the SUSPENDED turn was built in, not whatever the config resolves to now.
+		// A run that fell back Converse -> InvokeModel at request time recorded `invoke` in the
+		// suspend payload; re-resolving here would read the configured default ("converse") and
+		// hand extractAssistantToolCalls() a dialect the recorded assistant turn is not in, which
+		// silently yields zero tool calls — every approved tool skipped.
+		var persistedDialect = resumeSuspendValue( arguments.resumeCtx, "toolDialect" )
+		var persistedApi     = resumeSuspendValue( arguments.resumeCtx, "bedrockApi" )
+		if ( len( persistedApi ) ) {
+			stickBedrockApi( thisChatRequest, persistedApi )
+		}
+		var modelFamily = len( persistedDialect ) ? persistedDialect : resolveToolDialect( thisChatRequest )
+		var toolCalls   = extractAssistantToolCalls( assistantMessage, modelFamily )
+
+		// The ledger is positional: entry i is the decision for tool call i. If the recorded turn
+		// no longer yields the same number of calls the ledger was built for, every pairing below
+		// is wrong — approving one tool would execute another. Fail instead of guessing.
+		if ( toolCalls.len() != ledger.len() ) {
+			throw(
+				type   : "ResumeLedgerMismatch",
+				message: "Bedrock resume ledger does not match the recorded assistant turn: #ledger.len()# decision(s) "
+					& "for #toolCalls.len()# tool call(s) (dialect '#modelFamily#'). The suspended turn cannot be resumed safely.",
+				detail : "resumeLedgerArity"
+			)
+		}
 
 		var messages = thisChatRequest.getMessages()
 		messages.append( assistantMessage )
@@ -3654,7 +4064,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 
 			var tool     = toolAttempt.get()
-			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs : toolCallArgs( toolCall )
+			// editedArgs (a human edit) > ledger toolArgs (pass-1 middleware rewrites) > the raw call
+			// (checkpoints written before the ledger carried toolArgs).
+			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs
+				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : toolCallArgs( toolCall ) )
 			var capturedTool = tool
 			var capturedArgs = toolArgs
 			var toolResult = thisChatRequest.fireWrapMiddleware(
@@ -3827,6 +4240,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			return resumeToolBatch( arguments.chatRequest, resumeCtx, arguments.interactionCount )
 		}
 
+		// A brand new logical call re-resolves the API from the configured chain. Any runtime
+		// fallback decision belongs to the run that observed the AWS error, not to this one — the
+		// same request object is commonly reused, and a stale "invoke" would silently skip Converse
+		// forever. Turns 2+ of a tool loop and every resume keep the decision they are mid-way
+		// through (a resume restores it explicitly from the suspend payload).
+		if ( arguments.interactionCount == 0 && resumeCtx.isEmpty() ) {
+			clearStuckBedrockApi( arguments.chatRequest );
+		}
+
 		// Get the model to use
 		var modelId = len( variables.modelId ) ? variables.modelId : arguments.chatRequest.getModel();
 		if ( !len( modelId ) ) {
@@ -3869,10 +4291,17 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire beforeLLMCall middleware ---
 		// -------------------------------------------------------------------------------------------
-		var llmContext = { chatRequest: arguments.chatRequest, dataPacket: dataPacket }
+		var llmContext = { chatRequest: arguments.chatRequest, dataPacket: dataPacket, fallbackRetry: false }
 		var llmBeforeResult = arguments.chatRequest.fireMiddleware( hook: "beforeLLMCall", context: llmContext )
 		if ( llmBeforeResult.isTerminal() ) {
 			return llmBeforeResult
+		}
+		// Honour a REPLACED packet, not just in-place edits. Middleware that rebuilds the body
+		// assigns a new struct to context.dataPacket; reading only the original local sent the
+		// pre-hook body and silently dropped the replacement. The fallback retry leg below already
+		// re-read its context — this makes the first leg behave identically.
+		if ( isStruct( llmContext.dataPacket ?: "" ) ) {
+			dataPacket = llmContext.dataPacket;
 		}
 
 		// -------------------------------------------------------------------------------------------
@@ -3881,7 +4310,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		var capturedDataPacket  = dataPacket;
 		var capturedChatRequest = arguments.chatRequest;
 		var capturedEndpointId  = endpointId;
-		var capturedOperation   = ( bedrockApi == "converse" ) ? "converse" : "invoke";
+		var capturedOperation   = bedrockApi;
 		// Whether a Converse failure is even ELIGIBLE to be retried over InvokeModel — decided
 		// before the call, because it depends only on the conversation (see canFallbackToInvoke()).
 		// It also gates the onAIError announce inside the transport: a failure this method is about
@@ -3906,6 +4335,22 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 		)
 
+		// A middleware that returns something other than a Bedrock response struct (a bare string,
+		// null, an array) breaks every reader below — result.keyExists() on a string dies with a
+		// cast error outside any try, several frames from the cause. Fail here naming the
+		// contract, mirroring the streaming path's identical check.
+		if ( isNull( result ) || !isStruct( result ) ) {
+			var syncReturnedType = isNull( result ) ? "null" : ( isArray( result ) ? "array" : ( isSimpleValue( result ) ? "simple value" : "unsupported" ) );
+			throw(
+				type   : "BedrockError",
+				message: "wrapLLMCall middleware returned a #syncReturnedType# for a NON-STREAMING Bedrock call. "
+					& "The sync transport contract requires the raw Bedrock response body as a struct "
+					& "(or an { error: { message, statusCode, response } } struct). "
+					& "Middleware that substitutes a canned response must return that struct, not text.",
+				detail : "bedrock-sync-response"
+			);
+		}
+
 		// -------------------------------------------------------------------------------------------
 		// --- Converse -> InvokeModel fallback (one shot) ---
 		// -------------------------------------------------------------------------------------------
@@ -3920,45 +4365,78 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// wrapLLMCall describe one logical LLM call, and firing them a second time made a recovered
 		// fallback look like two calls to every middleware in the chain.
 		if ( isStruct( result ) && result.keyExists( "error" ) ) {
-			var converseError = result.error.toString();
+			var converseError       = result.error.toString();
+			var attemptsBeforeRetry = transportAttempts.count;
+			var tookFallback        = false;
 			if ( mayFallback && shouldFallbackToInvoke( converseError ) ) {
+				tookFallback = true;
 				logConverseFallbackOnce( modelId, "Converse returned a ValidationException reporting the model or operation is unsupported" );
 				bedrockApi  = "invoke";
+				// Sticky for the rest of THIS request: the tool loop's recursion, the dialect
+				// helpers and any resume must all speak the API the fallback settled on, not
+				// re-resolve the configured default and rebuild Converse blocks.
+				stickBedrockApi( arguments.chatRequest, "invoke" );
 				modelFamily = detectModelFamily( modelId );
 				assertCapabilitySupported( modelFamily, arguments.chatRequest, modelId, "invoke" );
 				dataPacket  = buildBedrockChatPacket( arguments.chatRequest, modelId, "invoke" );
 				usingStructuredOutput = arguments.chatRequest.isStructuredOutput() && modelFamily == "claude";
 
-				if ( transportAttempts.count > 0 ) {
-					result = sendBedrockRequest(
-						modelId         = endpointId,
-						dataPacket      = dataPacket,
-						aiRequest       = arguments.chatRequest,
-						operation       = "invoke",
-						announceRequest = false
-					);
-				} else {
-					// A middleware substituted the Converse call outright (a replay, a cache, a
-					// test double), so IT is the transport — the retry has to go back through the
-					// wrapper or there is nothing to answer it. Nothing was announced or sent on
-					// the first pass either, so no event is duplicated.
-					var retryPacket = dataPacket;
-					result = arguments.chatRequest.fireWrapMiddleware(
-						hook         : "wrapLLMCall",
-						context      : { chatRequest: arguments.chatRequest, dataPacket: retryPacket },
-						innerFunction: () => sendBedrockRequest(
-							modelId    = capturedEndpointId,
-							dataPacket = retryPacket,
-							aiRequest  = capturedChatRequest,
-							operation  = "invoke"
-						)
-					);
+				// The retry leg is one logical LLM call with the first attempt, but its body was
+				// rebuilt FROM SCRATCH against a different API — so every in-place edit
+				// beforeLLMCall made to the Converse packet is gone. Re-fire the hook over the
+				// new packet, flagged `fallbackRetry: true` so middleware that must not
+				// double-count (metering, tracing) can tell the legs apart, and so middleware
+				// that re-applies edits knows to.
+				var retryContext = {
+					chatRequest  : arguments.chatRequest,
+					dataPacket   : dataPacket,
+					fallbackRetry: true
+				};
+				var retryBefore = arguments.chatRequest.fireMiddleware( hook: "beforeLLMCall", context: retryContext );
+				if ( retryBefore.isTerminal() ) {
+					return retryBefore;
 				}
-			} else if ( !announceFirstError ) {
-				// The fallback was suppressed or declined, so the error IS the caller's outcome:
-				// announce the onAIError the transport was told to hold back.
-				var heldStatus = isStruct( result.error ) ? val( result.error.statusCode ?: 0 ) : 0;
-				announceBedrockError( result.error, arguments.chatRequest, "chat", heldStatus >= 500 || heldStatus == 429 );
+				if ( isStruct( retryContext.dataPacket ?: "" ) ) {
+					dataPacket = retryContext.dataPacket;
+				}
+
+				// wrapLLMCall wraps the retry too, under the same `fallbackRetry` flag. A
+				// middleware that IS the transport (a replay, a cache, a test double) has to be
+				// able to answer the invoke leg as well — bypassing the wrapper here would send a
+				// real network request out from under it.
+				var retryPacket = dataPacket;
+				result = arguments.chatRequest.fireWrapMiddleware(
+					hook         : "wrapLLMCall",
+					context      : retryContext,
+					innerFunction: () => {
+						transportAttempts.count++;
+						return sendBedrockRequest(
+							modelId         = capturedEndpointId,
+							dataPacket      = retryPacket,
+							aiRequest       = capturedChatRequest,
+							operation       = "invoke",
+							announceRequest = false
+						);
+					}
+				);
+			}
+
+			// Exactly one onAIError for a failure the caller actually sees. The transport
+			// announces its own (with the real computed canRetry) whenever it ran; this covers
+			// the two cases where it did not: the first attempt was told to hold the announce
+			// back for a fallback that never happened, and a retry leg a middleware substituted
+			// (so no transport ran at all) that still came back an error.
+			if ( isStruct( result ) && result.keyExists( "error" ) ) {
+				var retryRanTransport = transportAttempts.count > attemptsBeforeRetry;
+				// No fallback was taken, so the announce is owed unless the transport already made
+				// it. `!announceFirstError` alone was not that test: with mayFallback false the
+				// transport was told to announce, but a middleware that SUBSTITUTED the call means
+				// it never ran — an error result nobody announced at all. Count the attempts
+				// instead of assuming the flag implies the call happened.
+				if ( tookFallback ? !retryRanTransport : ( transportAttempts.count == 0 || !announceFirstError ) ) {
+					var heldStatus = isStruct( result.error ) ? val( result.error.statusCode ?: 0 ) : 0;
+					announceBedrockError( result.error, arguments.chatRequest, "chat", heldStatus >= 500 || heldStatus == 429 );
+				}
 			}
 		}
 
@@ -4124,6 +4602,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					toolName   : len( callName ) ? callName : tool.getName(),
 					toolArgs   : toolCallArgs( toolCall )
 				}
+				var originalToolArgs = duplicate( toolContext.toolArgs )
 				var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
 				if ( toolBeforeResult.isCancelled() ) {
@@ -4132,7 +4611,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					break
 				}
 
-				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: resolveToolArgs( toolContext, originalToolArgs, () => toolCallArgs( toolCall ) ), result: toolBeforeResult } )
 			}
 
 			if ( isObject( terminalToolResult ) ) {
@@ -4171,16 +4650,23 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					}
 					var resumeLedger = batch.map( ( entry ) => {
 						if ( entry.result.isDeferred() || entry.result.isSuspended() ) {
-							return { toolName: entry.toolName, status: "pending" }
+							return { toolName: entry.toolName, status: "pending", toolArgs: entry.toolArgs }
 						}
 						if ( entry.result.isRejected() ) {
 							return { toolName: entry.toolName, status: "blocked", reason: entry.result.getReason() }
 						}
-						return { toolName: entry.toolName, status: "execute" }
+						// toolArgs: the beforeToolCall-resolved arguments. Without them the resume path
+						// re-derived args from the raw tool call and silently dropped every middleware
+						// rewrite that the non-suspended path had honoured.
+						return { toolName: entry.toolName, status: "execute", toolArgs: entry.toolArgs }
 					} )
 					var mergedData = duplicate( batchResult.getData() )
 					mergedData[ "assistantMessage" ] = assistantMessage
 					mergedData[ "resumeLedger" ]     = resumeLedger
+					// The API/dialect this turn was actually built in, so the resume rebuilds the
+					// follow-up turn in the same one (see resumeToolBatch()).
+					mergedData[ "toolDialect" ]      = modelFamily
+					mergedData[ "bedrockApi" ]       = resolveBedrockApi( thisChatRequest, resolveModelId( thisChatRequest ) )
 					return AiMiddlewareResult.suspend( mergedData )
 				}
 			}
@@ -4192,10 +4678,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					continue
 				}
 
-				// Re-read the args fresh in case an "edit" decision mutated the tool call in
-				// place during pass 1 (matches OpenAIService.chat()).
+				// Use the resolved arguments from pass 1, including middleware replacements.
 				var capturedTool = entry.tool
-				var capturedArgs = toolCallArgs( entry.toolCall )
+				var capturedArgs = entry.toolArgs
 				var toolResult = thisChatRequest.fireWrapMiddleware(
 					"wrapToolCall",
 					{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: capturedArgs },
@@ -4269,9 +4754,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * `/model/{modelId}/count-tokens` as `{ input: { converse: { ... } } }`. AWS documents the
 	 * count as matching what the same input would be billed for through Converse or InvokeModel.
 	 *
-	 * The body is ALWAYS built as Converse input, including for a request that would itself go out
-	 * over InvokeModel: CountTokens takes either `input.converse` or `input.invokeModel` (a raw
-	 * vendor body), and the Converse form is the one that works for every family.
+	 * CountTokensInput is a union of exactly one of `converse` or `invokeModel` (the latter's `body`
+	 * is a blob: the vendor JSON's UTF-8 bytes, base64-encoded on the REST wire). The form used is
+	 * chosen by resolveBedrockApi() — the same resolver the chat call itself uses, minus the
+	 * previous call's runtime fallback decision, which the next call clears — so the count is of
+	 * the body that will actually be sent.
 	 *
 	 * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html
 	 *
@@ -4287,28 +4774,42 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			modelId = variables.params.model;
 		}
 
-		var conversePacket = transformRequestForConverse(
-			chatRequest = arguments.chatRequest,
-			messages    = arguments.chatRequest.getMessages(),
-			params      = arguments.chatRequest.getParams(),
-			modelId     = modelId
-		);
+		// CountTokensInput is a union of exactly one of `converse` or `invokeModel`, and the two
+		// count DIFFERENT bodies. Counting a Converse body for a request that goes out over
+		// InvokeModel reports a number for a request that will never be sent — and for the models
+		// that are on the invoke path precisely BECAUSE Converse cannot express them
+		// (NO_CONVERSE_MODEL_PATTERNS), building the Converse body at all is meaningless. Route by
+		// the same resolver the call itself uses.
+		var countTokensInput = {};
+		if ( resolveBedrockApi( arguments.chatRequest, modelId, false ) == "converse" ) {
+			var conversePacket = transformRequestForConverse(
+				chatRequest = arguments.chatRequest,
+				messages    = arguments.chatRequest.getMessages(),
+				params      = arguments.chatRequest.getParams(),
+				modelId     = modelId
+			);
 
-		// CountTokensInput.converse takes only the input-shaped members; inferenceConfig and the
-		// rest are not part of what is counted.
-		// CountTokensInput.converse takes messages / system / toolConfig ONLY —
-		// additionalModelRequestFields is not a member of it, and sending it is a 400.
-		var converseInput = { "messages": conversePacket.messages ?: [] };
-		for ( var key in [ "system", "toolConfig" ] ) {
-			if ( conversePacket.keyExists( key ) ) {
-				converseInput[ key ] = conversePacket[ key ];
+			// CountTokensInput.converse takes messages / system / toolConfig ONLY —
+			// inferenceConfig and additionalModelRequestFields are not members of it, and sending
+			// them is a 400.
+			var converseInput = { "messages": conversePacket.messages ?: [] };
+			for ( var key in [ "system", "toolConfig" ] ) {
+				if ( conversePacket.keyExists( key ) ) {
+					converseInput[ key ] = conversePacket[ key ];
+				}
 			}
+			countTokensInput = { "converse": converseInput };
+		} else {
+			// The raw HTTP API models body as a blob: encode the vendor JSON bytes as base64.
+			// @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html
+			var invokeBody = buildBedrockChatPacket( arguments.chatRequest, modelId, "invoke" );
+			countTokensInput = { "invokeModel": { "body": toBase64( charsetDecode( jsonSerialize( invokeBody ), "UTF-8" ) ) } };
 		}
 
 		var host     = getBedrockHost();
 		var path     = getCountTokensPath( modelId );
 		var endpoint = getBedrockOperationEndpoint( modelId, "count-tokens" );
-		var payload  = jsonSerialize( { "input": { "converse": converseInput } } );
+		var payload  = jsonSerialize( { "input": countTokensInput } );
 
 		var httpService = http( url = endpoint )
 			.method( "POST" )
@@ -4345,11 +4846,47 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		var statusCode = val( listFirst( httpResult.statusCode, " " ) );
 		if ( statusCode != 200 ) {
 			var countError = "Bedrock CountTokens failed with status #statusCode#: #httpResult.fileContent#";
+			if ( statusCode == 400 && httpResult.fileContent.findNoCase( "support" ) && httpResult.fileContent.findNoCase( "count" ) ) {
+				// Observed live: AWS serves CountTokens only for a bare Anthropic foundation-model id —
+				// not for a `global.`/`us.`/`eu.` inference profile, not for other vendors.
+				countError &= " (CountTokens accepts only a bare Anthropic foundation-model id, e.g. anthropic.claude-haiku-4-5-20251001-v1:0; inference-profile ids and other vendors are rejected)";
+			}
 			writeLog( text: countError, type: "error", log: "ai" );
 			throw( type: "ProviderError", message: countError );
 		}
 
 		return val( jsonDeserialize( httpResult.fileContent ).inputTokens ?: 0 );
+	}
+
+	/**
+	 * One provider option, accepted under its camelCase name, its X-Amzn-Bedrock-* header
+	 * spelling, or that header spelling inside the `bedrockHeaders` shorthand struct — the three
+	 * ways a caller can express the same Bedrock setting. Struct keys are case-insensitive, so
+	 * header casing does not matter.
+	 *
+	 * @providerOptions The request's providerOptions
+	 * @headers         The providerOptions.bedrockHeaders struct (or an empty struct)
+	 * @optionKey       The camelCase provider-option name
+	 * @headerKey       The X-Amzn-Bedrock-* header name
+	 *
+	 * @return The value, or "" when none of the three carry it
+	 */
+	private string function providerOptionOrHeader(
+		required struct providerOptions,
+		required struct headers,
+		required string optionKey,
+		required string headerKey
+	){
+		for ( var candidate in [
+			arguments.providerOptions[ arguments.optionKey ] ?: "",
+			arguments.providerOptions[ arguments.headerKey ] ?: "",
+			arguments.headers[ arguments.headerKey ] ?: ""
+		] ) {
+			if ( isSimpleValue( candidate ) && len( trim( candidate ) ) ) {
+				return trim( candidate );
+			}
+		}
+		return "";
 	}
 
 	public struct function buildProviderOptionHeaders( required struct providerOptions, string operation = "invoke" ){
@@ -4458,6 +4995,36 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * @canRetry     Whether a retry could plausibly succeed. Recomputed from the status code when
 	 *               the caller has one; defaults to the conservative false.
 	 */
+	/**
+	 * The AWS error class, as " [ValidationException]", read from the `x-amzn-errortype` response
+	 * header — or "" when the header is absent.
+	 *
+	 * AWS returns the exception NAME only in that header for several Bedrock runtime errors; the
+	 * body is then just `{"message":"..."}`. shouldFallbackToInvoke() gates on the name appearing
+	 * in the text it is handed, so a body-only error looked like "not a ValidationException" and
+	 * the Converse fallback never fired for exactly the models it exists for.
+	 *
+	 * The header value can be `ValidationException:http://internal.amazon.com/...` — everything
+	 * from the first ":" is dropped.
+	 *
+	 * @httpResult The BoxLang http result
+	 */
+	private string function bedrockErrorTypeSuffix( required any httpResult ){
+		var responseHeaders = arguments.httpResult.responseHeader ?: {};
+		if ( !isStruct( responseHeaders ) ) {
+			return "";
+		}
+		var errorType = responseHeaders[ "x-amzn-errortype" ] ?: "";
+		// A repeated header arrives as an array of values.
+		if ( isArray( errorType ) ) {
+			errorType = errorType.len() ? errorType.first() : "";
+		}
+		if ( !isSimpleValue( errorType ) || !len( trim( errorType ) ) ) {
+			return "";
+		}
+		return " [" & trim( listFirst( trim( errorType ), ":" ) ) & "]";
+	}
+
 	private void function announceBedrockError(
 		required any error,
 		required AiBaseRequest aiRequest,
@@ -4592,7 +5159,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		if ( statusCode != 200 ) {
 			var errorResponse = {
 				"error" : {
-					"message"    : "Bedrock request failed with status #statusCode#: #httpResult.fileContent#",
+					"message"    : "Bedrock request failed with status #statusCode##bedrockErrorTypeSuffix( httpResult )#: #httpResult.fileContent#",
 					"statusCode" : statusCode,
 					"response"   : httpResult.fileContent
 				}
@@ -4700,6 +5267,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			return resumeToolBatchStream( arguments.chatRequest, arguments.callback, resumeCtx, arguments.interactionCount )
 		}
 
+		// See chat()'s identical reset — a new logical call must not inherit the previous run's
+		// runtime fallback decision.
+		if ( arguments.interactionCount == 0 && resumeCtx.isEmpty() ) {
+			clearStuckBedrockApi( arguments.chatRequest );
+		}
+
 		// Get the model to use
 		var modelId = len( variables.modelId ) ? variables.modelId : arguments.chatRequest.getModel();
 		if ( !len( modelId ) ) {
@@ -4783,13 +5356,16 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			// the service-level variables.modelId (usually empty), not this request's model.
 			logConverseFallbackOnce( local.modelId, "ConverseStream returned a ValidationException reporting the model or operation is unsupported" );
 			local.streamBedrockApi     = "invoke";
+			// Sticky for the rest of THIS request — see chat()'s fallback and stickBedrockApi().
+			stickBedrockApi( arguments.chatRequest, "invoke" );
 			local.modelFamily          = detectModelFamily( local.modelId );
 			assertCapabilitySupported( local.modelFamily, arguments.chatRequest, local.modelId, "invoke" );
 			local.dataPacket           = buildBedrockChatPacket( arguments.chatRequest, local.modelId, "invoke", true );
 			local.usingStructuredOutput = arguments.chatRequest.isStructuredOutput() && local.modelFamily == "claude";
-			// fireBeforeLLMCall/announceRequest off: beforeLLMCall and onAIChatRequest describe one
-			// logical LLM call, and re-entering sendBedrockStreamRequest wholesale fired both a
-			// second time for a call the application only made once.
+			// isFallbackRetry: the body was rebuilt from scratch against a different API, so
+			// beforeLLMCall is re-fired over the NEW packet (flagged, so middleware can re-apply
+			// in-place edits and not double-count) while onAIChatRequest — a per-application-call
+			// event — is suppressed.
 			local.streamState = sendBedrockStreamRequest(
 				modelId            = local.endpointId,
 				dataPacket         = local.dataPacket,
@@ -4798,8 +5374,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				callback           = arguments.callback,
 				operation          = "invoke-with-response-stream",
 				streamAttempt      = { "delivered": false, "transportFailed": false, "transportRan": false },
-				fireBeforeLLMCall  = false,
-				announceRequest    = false
+				isFallbackRetry    = true
 			);
 		}
 
@@ -4861,9 +5436,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Throws BedrockStreamError when a buffer is truncated — the tools do not run.
 		drainPendingStreamToolCalls( streamState, modelFamily, modelId, arguments.callback );
 
-		// Gate on the finalized flag, not just len(): an un-drained toolCalls array carries
-		// placeholder inputs.
-		if ( !( streamState.toolCallsFinalized ?: false ) ) {
+		// drainPendingStreamToolCalls() above either finalized every buffer or threw, so by here
+		// an entry in toolCalls has real arguments.
+		if ( !( streamState.toolCalls ?: [] ).len() ) {
 			return;
 		}
 
@@ -4922,6 +5497,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				toolName   : len( callName ) ? callName : tool.getName(),
 				toolArgs   : toolCallArgs( toolCall )
 			}
+			var originalToolArgs = duplicate( toolContext.toolArgs )
 			var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
 			// Cancel aborts the run outright — a cancelled run is never resumed, so nothing to batch.
@@ -4930,7 +5506,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				break
 			}
 
-			batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+			batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: resolveToolArgs( toolContext, originalToolArgs, () => toolCallArgs( toolCall ) ), result: toolBeforeResult } )
 		}
 
 		if ( isObject( terminalToolResult ) ) {
@@ -4967,16 +5543,20 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				}
 				var resumeLedger = batch.map( ( entry ) => {
 					if ( entry.result.isDeferred() || entry.result.isSuspended() ) {
-						return { toolName: entry.toolName, status: "pending" }
+						return { toolName: entry.toolName, status: "pending", toolArgs: entry.toolArgs }
 					}
 					if ( entry.result.isRejected() ) {
 						return { toolName: entry.toolName, status: "blocked", reason: entry.result.getReason() }
 					}
-					return { toolName: entry.toolName, status: "execute" }
+					return { toolName: entry.toolName, status: "execute", toolArgs: entry.toolArgs }
 				} )
 				var mergedData = duplicate( batchResult.getData() )
 				mergedData[ "assistantMessage" ] = assistantMessage
 				mergedData[ "resumeLedger" ]     = resumeLedger
+				// The API/dialect this turn was actually built in, so the resume rebuilds the
+				// follow-up turn in the same one (see resumeToolBatch()).
+				mergedData[ "toolDialect" ]      = modelFamily
+				mergedData[ "bedrockApi" ]       = resolveBedrockApi( thisChatRequest, resolveModelId( thisChatRequest ) )
 				userCallback( { type: "middleware_stop", result: AiMiddlewareResult.suspend( mergedData ) } )
 				return
 			}
@@ -4991,7 +5571,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 
 			var capturedTool = entry.tool
-			var capturedArgs = toolCallArgs( entry.toolCall )
+			var capturedArgs = entry.toolArgs
 			var toolResult = thisChatRequest.fireWrapMiddleware(
 				"wrapToolCall",
 				{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: capturedArgs },
@@ -5059,8 +5639,31 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 		var assistantMessage = arguments.resumeCtx.assistantMessage
 		var ledger           = arguments.resumeCtx.resumeLedger ?: []
-		var modelFamily      = resolveToolDialect( thisChatRequest )
-		var toolCalls        = extractAssistantToolCalls( assistantMessage, modelFamily )
+
+		// The dialect the SUSPENDED turn was built in, not whatever the config resolves to now.
+		// A run that fell back Converse -> InvokeModel at request time recorded `invoke` in the
+		// suspend payload; re-resolving here would read the configured default ("converse") and
+		// hand extractAssistantToolCalls() a dialect the recorded assistant turn is not in, which
+		// silently yields zero tool calls — every approved tool skipped.
+		var persistedDialect = resumeSuspendValue( arguments.resumeCtx, "toolDialect" )
+		var persistedApi     = resumeSuspendValue( arguments.resumeCtx, "bedrockApi" )
+		if ( len( persistedApi ) ) {
+			stickBedrockApi( thisChatRequest, persistedApi )
+		}
+		var modelFamily = len( persistedDialect ) ? persistedDialect : resolveToolDialect( thisChatRequest )
+		var toolCalls   = extractAssistantToolCalls( assistantMessage, modelFamily )
+
+		// The ledger is positional: entry i is the decision for tool call i. If the recorded turn
+		// no longer yields the same number of calls the ledger was built for, every pairing below
+		// is wrong — approving one tool would execute another. Fail instead of guessing.
+		if ( toolCalls.len() != ledger.len() ) {
+			throw(
+				type   : "ResumeLedgerMismatch",
+				message: "Bedrock resume ledger does not match the recorded assistant turn: #ledger.len()# decision(s) "
+					& "for #toolCalls.len()# tool call(s) (dialect '#modelFamily#'). The suspended turn cannot be resumed safely.",
+				detail : "resumeLedgerArity"
+			)
+		}
 
 		var messages = thisChatRequest.getMessages()
 		messages.append( assistantMessage )
@@ -5098,7 +5701,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 
 			var tool         = toolAttempt.get()
-			var toolArgs     = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs : toolCallArgs( toolCall )
+			var toolArgs     = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs
+				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : toolCallArgs( toolCall ) )
 			var capturedTool = tool
 			var capturedArgs = toolArgs
 			var toolResult   = thisChatRequest.fireWrapMiddleware(
@@ -5138,9 +5742,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 *                `delivered` is set once ANY chunk has reached the caller's callback, and
 	 *                `transportFailed` once the HTTP leg has returned a non-200. A fallback is only
 	 *                safe when the failure was a transport failure and nothing was delivered.
-	 * @fireBeforeLLMCall Whether to fire beforeLLMCall — false on the retry leg of a fallback, which
-	 *                is the same logical call the hook has already seen.
-	 * @announceRequest Whether to announce onAIChatRequest, for the same reason.
+	 * @isFallbackRetry True on the InvokeModel leg of a Converse fallback — one logical call with
+	 *                the Converse attempt that preceded it. beforeLLMCall and wrapLLMCall are still
+	 *                fired (the body was rebuilt against a different API, and a substituting
+	 *                middleware has to be able to answer this leg) but carry `fallbackRetry: true`
+	 *                in their context, and onAIChatRequest — a per-application-call event — is
+	 *                suppressed.
 	 */
 	private function sendBedrockStreamRequest(
 		required string modelId,
@@ -5150,8 +5757,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		required function callback,
 		string operation           = "invoke-with-response-stream",
 		struct streamAttempt       = {},
-		boolean fireBeforeLLMCall  = true,
-		boolean announceRequest    = true
+		boolean isFallbackRetry    = false
 	){
 		var host     = getBedrockHost();
 		var path     = getBedrockOperationPath( arguments.modelId, arguments.operation );
@@ -5163,31 +5769,35 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// `stream: true` / `transport` are part of the context contract: middleware that produces a
 		// canned response (FlightRecorder replay, caches) MUST return a raw event-stream body here,
 		// not the parsed chat struct the sync path takes.
-		// Skipped on the InvokeModel leg of a Converse fallback: that is the same logical call the
-		// hook has already seen once (see chatStream()).
-		if ( arguments.fireBeforeLLMCall ) {
-			var streamLlmBefore = arguments.aiRequest.fireMiddleware(
-				"beforeLLMCall",
-				{
-					chatRequest: arguments.aiRequest,
-					dataPacket : arguments.dataPacket,
-					stream     : true,
-					transport  : "bedrock-event-stream"
-				}
-			);
-			if( streamLlmBefore.isTerminal() ){
-				arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
-				return { "terminated": true }
-			}
+		// Re-fired on the InvokeModel leg of a Converse fallback, flagged `fallbackRetry: true`:
+		// that leg's body was rebuilt from scratch against a different API, so every in-place edit
+		// the hook made to the Converse packet is gone. The flag is what lets middleware tell the
+		// two legs of one logical call apart (see chat()'s fallback for the sync mirror).
+		var streamContext = {
+			chatRequest  : arguments.aiRequest,
+			dataPacket   : arguments.dataPacket,
+			stream       : true,
+			transport    : "bedrock-event-stream",
+			fallbackRetry: arguments.isFallbackRetry
+		};
+		var streamLlmBefore = arguments.aiRequest.fireMiddleware( "beforeLLMCall", streamContext );
+		if( streamLlmBefore.isTerminal() ){
+			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
+			return { "terminated": true }
 		}
 
-		// Serialize AFTER the hook, not before: middleware is handed `dataPacket` so it can
-		// mutate it, and the sync path already honours that. Signing below is over this payload,
-		// so anything the hook changed has to be in it.
-		var payload = jsonSerialize( arguments.dataPacket );
+		// A replacement packet must reach signing, logging and the transport wrapper too.
+		if ( isStruct( streamContext.dataPacket ?: "" ) ) {
+			arguments.dataPacket = streamContext.dataPacket;
+		}
+
+		// The wrap context is the SAME struct beforeLLMCall received (as on the sync path, which
+		// reuses llmContext for both hooks): keys a middleware stashes in beforeLLMCall are visible
+		// to wrapLLMCall, and the packet swap above is already reflected in it.
+		streamContext.dataPacket = arguments.dataPacket;
 
 		// Announce the request (suppressed on a fallback retry — same logical call)
-		if ( arguments.announceRequest ) {
+		if ( !arguments.isFallbackRetry ) {
 			boxAnnounce(
 				"onAIChatRequest",
 				{
@@ -5231,31 +5841,30 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		//         {"eventType":"contentBlockDelta","bytes":"<base64 of the event JSON>"}
 		//     A ConverseStream replay without `eventType` decodes to a payload no branch can
 		//     identify, and the whole stream yields nothing.
+		//     `stream: true` / `transport` on the context is what tells a middleware this hook
+		//     wraps the STREAMING transport (a substituted response must be a raw event-stream
+		//     body, not the chat struct the sync context takes); `fallbackRetry` is true on the
+		//     InvokeModel leg of a Converse fallback so a metering middleware can count once.
+		//
+		// The body is serialized INSIDE the inner function, not before the hook: the sync path
+		// serializes inside sendBedrockRequest(), so a wrapLLMCall middleware that edits
+		// `context.dataPacket` in place and then calls handler() reaches the wire there — and
+		// now here too, instead of a string frozen before the hook ran being signed and sent.
 		var capturedHost         = host;
 		var capturedPath         = path;
 		var capturedEndpoint     = endpoint;
-		var capturedPayload      = payload;
+		var capturedDataPacket   = arguments.dataPacket;
 		var capturedExtraHeaders = extraHeaders;
 		var capturedAiRequest    = arguments.aiRequest;
 		var capturedStreamAttempt = arguments.streamAttempt;
 		var responseBody         = arguments.aiRequest.fireWrapMiddleware(
 			hook         : "wrapLLMCall",
-			context      : {
-				chatRequest: arguments.aiRequest,
-				dataPacket : arguments.dataPacket,
-				// Same context contract as beforeLLMCall above: this hook wraps the STREAMING
-				// transport, so a middleware that substitutes a response must hand back a raw
-				// event-stream body (binary, or the `{"bytes":...}` frame string), not the chat
-				// struct the sync wrapLLMCall context takes. Without this flag the two contexts
-				// were indistinguishable and a replaying middleware returned a struct.
-				stream   : true,
-				transport: "bedrock-event-stream"
-			},
+			context      : streamContext,
 			innerFunction: () => invokeBedrockStreamTransport(
 				host          = capturedHost,
 				path          = capturedPath,
 				endpoint      = capturedEndpoint,
-				payload       = capturedPayload,
+				payload       = jsonSerialize( capturedDataPacket ),
 				extraHeaders  = capturedExtraHeaders,
 				aiRequest     = capturedAiRequest,
 				streamAttempt = capturedStreamAttempt
@@ -5336,15 +5945,31 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			"usage"               : {}
 		};
 
-		parseBedrockEventStream(
-			responseData = responseBody,
-			modelFamily  = arguments.modelFamily,
-			modelId      = arguments.modelId,
-			callback     = usageCapturingCallback,
-			logEnabled   = arguments.aiRequest.getLogResponse(),
-			aiRequest    = arguments.aiRequest,
-			streamState  = streamState
-		);
+		try {
+			parseBedrockEventStream(
+				responseData = responseBody,
+				modelFamily  = arguments.modelFamily,
+				modelId      = arguments.modelId,
+				callback     = usageCapturingCallback,
+				logEnabled   = arguments.aiRequest.getLogResponse(),
+				aiRequest    = arguments.aiRequest,
+				streamState  = streamState
+			);
+		} catch ( any e ) {
+			// The caller's stream callback runs unguarded inside the parser, so its exception lands
+			// here after the model has already been billed. Announce it — a failure with no
+			// onAIError leaves audit/replay middleware with no record of a call that happened.
+			// Exception FRAMES were already announced by throwBedrockStreamError(); skip those.
+			if ( e.type != "BedrockStreamError" ) {
+				announceBedrockError(
+					error     = { "message" : e.message },
+					aiRequest = arguments.aiRequest,
+					operation = "stream",
+					canRetry  = false
+				);
+			}
+			rethrow;
+		}
 
 		// -------------------------------------------------------------------------------------------
 		// --- Usage Event Announcement (Streaming) ---
@@ -5387,7 +6012,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		streamState.content      = bedrockContent;
 		streamState.reasoning    = bedrockReasoning;
 		streamState.usage        = bedrockUsage.raw;
-		streamState.finishReason = streamState.stopReason;
+		// The normalized OpenAI-shaped finish_reason, not Converse's raw stopReason: every other
+		// provider (and this provider's own sync path) reports "stop"/"tool_calls"/"length" here,
+		// so afterLLMCall middleware reading streamState.finishReason saw a different vocabulary
+		// on the streaming Converse path than anywhere else. An unrecognized value passes through.
+		streamState.finishReason = static.CONVERSE_STOP_REASONS[ streamState.stopReason ?: "" ] ?: ( streamState.stopReason ?: "" );
 
 		arguments.aiRequest.fireMiddleware(
 			hook   : "afterLLMCall",
@@ -5479,7 +6108,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Check for HTTP errors
 		var statusCode = val( listFirst( httpResult.statusCode, " " ) );
 		if ( statusCode != 200 ) {
-			var errorMessage = "Bedrock stream request failed with status #statusCode#: #httpResult.fileContent#";
+			var errorMessage = "Bedrock stream request failed with status #statusCode##bedrockErrorTypeSuffix( httpResult )#: #httpResult.fileContent#";
 			writeLog( text: errorMessage, type: "error", log: "ai" );
 			// The stream never opened, so nothing was delivered to the caller: this is the ONE
 			// streaming failure a Converse -> InvokeModel fallback may act on.
@@ -5581,7 +6210,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			// contentBlockDelta / contentBlockStop / messageStop / metadata payloads are bare
 			// structs with nothing to tell them apart, so an un-named frame reaches
 			// processBedrockEvent()'s default branch and the whole replay yields nothing.
-			var jsonMatches = reMatchNoCase( '\{(?:"eventType":"[^"]*",)?"bytes":"[^"]+"\}', data );
+			// Matched as WHOLE objects rather than as a fixed key order: jsonSerialize() emits
+			// struct keys alphabetically, so a frame built with it is {"bytes":...,"eventType":...}
+			// — the reverse of the order the old anchored pattern required, and every such replay
+			// matched nothing at all. `[^{}]*` cannot cross a brace, so a match is exactly one
+			// frame object; the event name is read back off the deserialized struct below.
+			var jsonMatches = reMatchNoCase( '\{[^{}]*"bytes":"[^"]+"[^{}]*\}', data );
 			for ( var match in jsonMatches ) {
 				var replayEventType = "";
 				try {
@@ -5677,28 +6311,23 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 
 			if ( payloadLength > 0 && payloadStart + payloadLength - 1 <= dataLength ) {
-				// Convert payload to string and parse
-				try {
-					var payloadStr = readEventStreamString( bytes, payloadStart, payloadLength );
+				var payloadStr = readEventStreamString( bytes, payloadStart, payloadLength );
 
-					// Debug first event payload
-					if ( eventCount == 0 && arguments.logEnabled ) {
-						writeLog(
-							text: "parseBedrockEventStream - First event payload (#payloadLength# bytes): #left( payloadStr, 300 )#",
-							type: "info",
-							log : "ai"
-						);
-					}
-
-					processBedrockEvent( payloadStr, arguments.modelFamily, arguments.modelId, arguments.callback, arguments.streamState, eventType );
-					eventCount++;
-				} catch ( any e ) {
+				// Debug first event payload
+				if ( eventCount == 0 && arguments.logEnabled ) {
 					writeLog(
-						text: "parseBedrockEventStream - Error processing event at position #position#: #e.message#",
-						type: "warning",
+						text: "parseBedrockEventStream - First event payload (#payloadLength# bytes): #left( payloadStr, 300 )#",
+						type: "info",
 						log : "ai"
 					);
 				}
+
+				// Deliberately unguarded. processBedrockEvent() logs an unparseable payload itself,
+				// and the caller's stream callback runs inside it — a try around this call turned
+				// every exception the caller's own code threw into a warning-level log line and a
+				// stream that quietly kept going.
+				processBedrockEvent( payloadStr, arguments.modelFamily, arguments.modelId, arguments.callback, arguments.streamState, eventType );
+				eventCount++;
 			}
 
 			// Move to next event
@@ -5725,11 +6354,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		if ( arguments.length <= 0 ) {
 			return "";
 		}
-		var slice = [];
-		for ( var i = arguments.start; i < arguments.start + arguments.length; i++ ) {
-			arrayAppend( slice, arguments.bytes[ i ] );
-		}
-		return toString( javaCast( "byte[]", slice ), "UTF-8" );
+		// `bytes` is the JVM byte[] behind the BoxLang array, and String(byte[],off,len,charset)
+		// reads the range directly — the per-byte copy this replaces allocated a fresh array for
+		// every frame of every stream. `start` is 1-indexed (BoxLang), the offset is 0-indexed.
+		return createObject( "java", "java.lang.String" ).init(
+			arguments.bytes,
+			javacast( "int", arguments.start - 1 ),
+			javacast( "int", arguments.length ),
+			"UTF-8"
+		);
 	}
 
 	/**
@@ -5943,6 +6576,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	){
 		// The payload should be JSON. It may contain a "bytes" field with base64 data
 		// or be direct JSON from the model.
+		var chunkToSend = javacast( "null", "" );
 		try {
 			var payloadJson = jsonDeserialize( arguments.payloadStr );
 
@@ -5958,25 +6592,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			// the cache counters. inputTokens EXCLUDES cached tokens, so prompt_tokens is the sum
 			// — same accounting transformResponseFromConverse() does for the sync path.
 			if ( arguments.eventType == "metadata" && isStruct( payloadJson.usage ?: "" ) ) {
-				var converseUsage      = payloadJson.usage;
-				var converseCacheRead  = converseUsage.cacheReadInputTokens ?: 0;
-				var converseCacheWrite = converseUsage.cacheWriteInputTokens ?: 0;
-				var conversePrompt     = ( converseUsage.inputTokens ?: 0 ) + converseCacheRead + converseCacheWrite;
-				chunkUsage = {
-					"prompt_tokens"               : conversePrompt,
-					"completion_tokens"           : converseUsage.outputTokens ?: 0,
-					// prompt + completion, never AWS's own cache-exclusive totalTokens — same
-					// accounting transformResponseFromConverse() does, so sync and stream report
-					// the same total for the same request. The raw AWS number is kept beside it.
-					"total_tokens"                : conversePrompt + ( converseUsage.outputTokens ?: 0 ),
-					"bedrock"                     : {
-						"totalTokens" : converseUsage.totalTokens ?: ( ( converseUsage.inputTokens ?: 0 ) + ( converseUsage.outputTokens ?: 0 ) )
-					},
-					"cache_read_input_tokens"     : converseCacheRead,
-					"cache_creation_input_tokens" : converseCacheWrite,
-					"cacheReadInputTokens"        : converseCacheRead,
-					"cacheWriteInputTokens"       : converseCacheWrite,
-					"uncached_input_tokens"       : converseUsage.inputTokens ?: 0
+				var converseUsage = payloadJson.usage;
+				chunkUsage        = normalizeConverseUsage( converseUsage );
+				// AWS's raw (cache-exclusive) total, kept verbatim beside the normalized one.
+				chunkUsage[ "bedrock" ] = {
+					"totalTokens" : converseUsage.totalTokens ?: ( ( converseUsage.inputTokens ?: 0 ) + ( converseUsage.outputTokens ?: 0 ) )
 				};
 			}
 			// Claude-on-Bedrock: message_start has input_tokens, message_delta has output_tokens
@@ -6034,16 +6654,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				);
 			}
 
-			// Transform and send to callback
 			var streamChunk = transformStreamChunk( payloadJson, arguments.modelFamily, arguments.modelId, arguments.streamState, arguments.eventType );
 			if ( !isNull( streamChunk ) ) {
-				if( !structIsEmpty( chunkUsage ) ){
+				if ( !structIsEmpty( chunkUsage ) ) {
 					streamChunk.usage = chunkUsage;
 				}
-				arguments.callback( streamChunk );
-			} else if( !structIsEmpty( chunkUsage ) ){
-				// Send a usage-only chunk so the callback can capture it
-				arguments.callback( { "usage": chunkUsage, "choices": [], "model": arguments.modelId } );
+				chunkToSend = streamChunk;
+			} else if ( !structIsEmpty( chunkUsage ) ) {
+				// A usage-only chunk so the callback can capture it
+				chunkToSend = { "usage": chunkUsage, "choices": [], "model": arguments.modelId };
 			}
 		} catch ( any e ) {
 			// Not valid JSON or processing error - may be a control message
@@ -6052,6 +6671,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				type: "debug",
 				log : "ai"
 			);
+			return;
+		}
+
+		// The callback runs OUTSIDE the try: it is the caller's code, so an exception it throws is
+		// the caller's bug and must propagate. Inside the try it was logged at debug as if the
+		// frame were unparseable — live, a callback doing `chunk.choices.first()` on the usage-only
+		// `metadata` / `message_start` chunks (choices: []) failed on every stream and nobody saw.
+		if ( !isNull( chunkToSend ) ) {
+			arguments.callback( chunkToSend );
 		}
 	}
 
@@ -6165,7 +6793,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 *   - Claude: every tool_use block is closed by content_block_stop, so a block still open at
 	 *     end-of-stream IS a truncation — never execute it.
 	 *
-	 * Sets `streamState.toolCallsFinalized`, which is what the tool loop gates on.
+	 * Returns having either finalized every open buffer or thrown, so the tool loop can gate on
+	 * `streamState.toolCalls.len()` alone.
 	 *
 	 * @streamState  The mutable stream accumulation state
 	 * @modelFamily  The detected model family
@@ -6182,7 +6811,6 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	){
 		var toolCalls = arguments.streamState.toolCalls ?: [];
 		if ( !toolCalls.len() ) {
-			arguments.streamState[ "toolCallsFinalized" ] = false;
 			return;
 		}
 
@@ -6223,7 +6851,6 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 		}
 
-		arguments.streamState[ "toolCallsFinalized" ] = true;
 	}
 
 	/**
@@ -6391,11 +7018,19 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			arguments.streamState[ "toolCalls" ] = [];
 		}
 
+		// Unique per stream, not just per position: a multi-turn tool loop restarts a fresh
+		// streamState each turn, so bare positional ids collided across turns (see
+		// extractResponseToolCalls()).
+		if ( !len( arguments.streamState.cohereCallBatchId ?: "" ) ) {
+			arguments.streamState[ "cohereCallBatchId" ] = createUUID().replace( "-", "", "all" ).left( 12 );
+		}
+		var streamBatchId = arguments.streamState.cohereCallBatchId;
+
 		var emitted = [];
 		for ( var call in arguments.cohereCalls ) {
 			arguments.streamState.toolCalls.append( {
 				"type"  : "tool_use",
-				"id"    : "cohere_tool_#arguments.streamState.toolCalls.len() + 1#",
+				"id"    : "cohere_tool_#arguments.streamState.toolCalls.len() + 1#_#streamBatchId#",
 				"name"  : call.name ?: "",
 				"input" : call.parameters ?: {}
 			} );
@@ -6586,6 +7221,17 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 							// (a partial JSON fragment is not a usable tool call).
 							if ( ( arguments.chunk.delta?.type ?: "" ) == "input_json_delta" ) {
 								appendStreamToolInput( arguments.streamState, arguments.chunk );
+								return javacast( "null", "" );
+							}
+							// The opaque signature for the thinking block, delivered as its own
+							// delta after the thinking text. Without it the recorded assistant turn
+							// cannot carry a thinking block at all (Anthropic rejects unsigned
+							// ones on the tool-use round trip) — see buildStreamAssistantMessage().
+							if ( ( arguments.chunk.delta?.type ?: "" ) == "signature_delta" ) {
+								if ( isStruct( arguments.streamState ) ) {
+									arguments.streamState[ "reasoningSignature" ] = ( arguments.streamState.reasoningSignature ?: "" )
+										& ( arguments.chunk.delta.signature ?: "" );
+								}
 								return javacast( "null", "" );
 							}
 							if ( arguments.chunk.keyExists( "delta" ) && arguments.chunk.delta.keyExists( "text" ) ) {

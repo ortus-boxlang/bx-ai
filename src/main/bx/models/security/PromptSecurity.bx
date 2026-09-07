@@ -741,8 +741,7 @@ class {
 		if( result.keyExists( "output" ) && isStruct( result.output ) ){
 			var converseBlocks = result.output?.message?.content ?: []
 			if( isArray( converseBlocks ) ){
-				var converseText = converseBlocks.filter( b -> isStruct( b ) && b.keyExists( "text" ) && isSimpleValue( b.text ) )
-				return converseText.isEmpty() ? "" : converseText.map( b -> b.text ).toList( char( 10 ) )
+				return readTextBlocks( converseBlocks, ( b ) => isStruct( b ) && b.keyExists( "text" ) && isSimpleValue( b.text ) )
 			}
 		}
 		// OpenAI / OpenAI-compatible
@@ -757,8 +756,7 @@ class {
 		// transform. Providers that surface only the first block see a superset here, which is the
 		// safe direction for a guard.
 		if( result.keyExists( "content" ) && isArray( result.content ) ){
-			var textBlocks = result.content.filter( b -> isStruct( b ) && ( b.type ?: "" ) == "text" )
-			return textBlocks.isEmpty() ? "" : textBlocks.map( b -> b.text ?: "" ).toList( char( 10 ) )
+			return readTextBlocks( result.content, ( b ) => isStruct( b ) && ( b.type ?: "" ) == "text" )
 		}
 		// Gemini: candidates[1].content.parts[1].text
 		if( result.keyExists( "candidates" ) && isArray( result.candidates ) && result.candidates.len() ){
@@ -812,26 +810,8 @@ class {
 		// path re-sends this same array as the assistant turn).
 		if( result.keyExists( "output" ) && isStruct( result.output ) ){
 			var converseBlocks = result.output?.message?.content ?: []
-			if( isArray( converseBlocks ) ){
-				var converseTextIndexes = []
-				for( var i = 1; i <= converseBlocks.len(); i++ ){
-					var converseBlock = converseBlocks[ i ]
-					if( isStruct( converseBlock ) && converseBlock.keyExists( "text" ) && isSimpleValue( converseBlock.text ) ){
-						converseTextIndexes.append( i )
-					}
-				}
-				if( !converseTextIndexes.isEmpty() ){
-					for( var i = converseTextIndexes.len(); i > 1; i-- ){
-						converseBlocks.deleteAt( converseTextIndexes[ i ] )
-					}
-					if( len( arguments.text ) ){
-						converseBlocks[ converseTextIndexes.first() ].text = arguments.text
-					} else {
-						// An empty text block is rejected on the round trip — drop it instead.
-						converseBlocks.deleteAt( converseTextIndexes.first() )
-					}
-					return true
-				}
+			if( isArray( converseBlocks ) && writeTextBlocks( converseBlocks, ( b ) => isStruct( b ) && b.keyExists( "text" ) && isSimpleValue( b.text ), arguments.text ) ){
+				return true
 			}
 		}
 		if( result.keyExists( "choices" ) && isArray( result.choices ) && result.choices.len() ){
@@ -844,31 +824,8 @@ class {
 		// into the response. Collapse into the first text block and drop the rest. Removing them
 		// rather than blanking keeps the array valid for the tool-call path, which re-sends this
 		// same content[] to the provider as the assistant turn (empty text blocks are rejected).
-		if( result.keyExists( "content" ) && isArray( result.content ) ){
-			var textIndexes = []
-			for( var i = 1; i <= result.content.len(); i++ ){
-				var block = result.content[ i ]
-				if( isStruct( block ) && ( block.type ?: "" ) == "text" ){
-					textIndexes.append( i )
-				}
-			}
-			if( !textIndexes.isEmpty() ){
-				// delete back-to-front so the earlier indexes stay valid
-				for( var i = textIndexes.len(); i > 1; i-- ){
-					result.content.deleteAt( textIndexes[ i ] )
-				}
-				if( len( arguments.text ) ){
-					result.content[ textIndexes.first() ].text = arguments.text
-				} else {
-					// A redaction that consumed the whole block (e.g. exfil stripping applied to a
-					// turn whose only text was a markdown image) must not leave an EMPTY text block
-					// behind: the tool-call path re-sends this same array as the assistant turn and
-					// Bedrock/Anthropic reject an empty text block with a 400. Drop it instead, for
-					// the same reason the trailing blocks above are deleted rather than blanked.
-					result.content.deleteAt( textIndexes.first() )
-				}
-				return true
-			}
+		if( result.keyExists( "content" ) && isArray( result.content ) && writeTextBlocks( result.content, ( b ) => isStruct( b ) && ( b.type ?: "" ) == "text", arguments.text ) ){
+			return true
 		}
 		if( result.keyExists( "candidates" ) && isArray( result.candidates ) && result.candidates.len() ){
 			var parts = result.candidates.first().content.parts ?: []
@@ -913,6 +870,65 @@ class {
 	/**
 	 * Luhn checksum validation for candidate credit-card numbers (digits only after strip).
 	 */
+	/**
+	 * Read every text block out of a provider content[] array and join them with a newline,
+	 * matching the join both Bedrock transforms use. Returns "" when there is no text block.
+	 *
+	 * Reading only the first block let a secret in a later block bypass the guard entirely, so
+	 * both the Converse and the Claude shape read ALL of them; the only thing that differs between
+	 * the two is what counts as a text block, which is what `isTextFn` supplies.
+	 *
+	 * @blocks   The provider's content[] array
+	 * @isTextFn Predicate: block -> true when the block is a text block
+	 *
+	 * @return The joined text, or ""
+	 */
+	private static string function readTextBlocks( required array blocks, required any isTextFn ){
+		var isTextBlock = arguments.isTextFn
+		var textBlocks  = arguments.blocks.filter( isTextBlock )
+		return textBlocks.isEmpty() ? "" : textBlocks.map( b -> b.text ?: "" ).toList( char( 10 ) )
+	}
+
+	/**
+	 * Write redacted text back into a provider content[] array, in place.
+	 *
+	 * readTextBlocks() joined every text block, so the string handed back here covers all of them:
+	 * collapse into the FIRST text block and delete the rest (writing only the first would leave
+	 * later blocks carrying their original, unredacted text). Non-text blocks (toolUse/tool_use,
+	 * reasoningContent/thinking) are preserved in order — the tool-call path re-sends this same
+	 * array as the assistant turn, and both Bedrock and Anthropic reject a turn whose reasoning
+	 * blocks were modified. A redaction that consumed the whole text drops the block rather than
+	 * blanking it, because an empty text block is a 400 on that round trip.
+	 *
+	 * @blocks   The provider's content[] array, mutated in place
+	 * @isTextFn Predicate: block -> true when the block is a text block
+	 * @text     The replacement text ("" to drop the text entirely)
+	 *
+	 * @return true when a text block was found and rewritten
+	 */
+	private static boolean function writeTextBlocks( required array blocks, required any isTextFn, required string text ){
+		var isTextBlock = arguments.isTextFn
+		var textIndexes = []
+		for( var i = 1; i <= arguments.blocks.len(); i++ ){
+			if( isTextBlock( arguments.blocks[ i ] ) ){
+				textIndexes.append( i )
+			}
+		}
+		if( textIndexes.isEmpty() ){
+			return false
+		}
+		// delete back-to-front so the earlier indexes stay valid
+		for( var i = textIndexes.len(); i > 1; i-- ){
+			arguments.blocks.deleteAt( textIndexes[ i ] )
+		}
+		if( len( arguments.text ) ){
+			arguments.blocks[ textIndexes.first() ].text = arguments.text
+		} else {
+			arguments.blocks.deleteAt( textIndexes.first() )
+		}
+		return true
+	}
+
 	private static boolean function isLuhnValid( required string candidate ){
 		var digits = reReplace( arguments.candidate, "[^0-9]", "", "all" )
 		if( len( digits ) < 13 || len( digits ) > 19 ){

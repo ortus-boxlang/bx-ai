@@ -17,14 +17,10 @@ package ortus.boxlang.ai.providers;
 import static com.google.common.truth.Truth.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
-import ortus.boxlang.runtime.types.Struct;
 
 /**
  * Live integration tests for the AWS Bedrock provider.
@@ -51,70 +47,7 @@ import ortus.boxlang.runtime.types.Struct;
  * For deterministic, credential-free coverage of the tool-use logic see
  * BedrockToolUseTest.
  */
-public class BedrockTest extends BaseIntegrationTest {
-
-	private String	awsAccessKeyId;
-	private String	awsSecretAccessKey;
-	private String	awsSessionToken;
-	private String	awsRegion;
-
-	private boolean	captured;
-	private boolean	hadPriorProvider;
-	private Object	priorProvider;
-	private boolean	hadPriorApiKey;
-	private Object	priorApiKey;
-
-	@BeforeEach
-	public void beforeEach() {
-		// Bedrock authenticates via the AWS credential chain, supplied here as a
-		// struct apiKey (same pattern as BedrockServiceTest).
-		awsAccessKeyId		= dotenv.get( "AWS_ACCESS_KEY_ID", "" );
-		awsSecretAccessKey	= dotenv.get( "AWS_SECRET_ACCESS_KEY", "" );
-		awsSessionToken		= dotenv.get( "AWS_SESSION_TOKEN", "" );
-		awsRegion			= dotenv.get( "AWS_REGION", "us-east-1" );
-
-		// moduleRecord.settings is static and shared with every other test class in this Gradle
-		// worker, and Bedrock is the only provider whose apiKey is a struct — leaking it makes
-		// setApiKeyIfEmpty( required string ) throw a type error in whichever class runs next.
-		hadPriorProvider	= moduleRecord.settings.containsKey( "provider" );
-		priorProvider		= moduleRecord.settings.get( "provider" );
-		hadPriorApiKey		= moduleRecord.settings.containsKey( "apiKey" );
-		priorApiKey			= moduleRecord.settings.get( "apiKey" );
-		captured			= true;
-
-		moduleRecord.settings.put( "provider", "bedrock" );
-		Struct credentials = new Struct();
-		credentials.put( "awsAccessKeyId", awsAccessKeyId );
-		credentials.put( "awsSecretAccessKey", awsSecretAccessKey );
-		credentials.put( "region", awsRegion );
-		if ( !awsSessionToken.isEmpty() ) {
-			credentials.put( "awsSessionToken", awsSessionToken );
-		}
-		moduleRecord.settings.put( "apiKey", credentials );
-	}
-
-	@AfterEach
-	public void afterEach() {
-		// A @BeforeEach that threw before the capture leaves the flags false — restoring then would
-		// delete shared settings this class never wrote. JUnit runs @AfterEach either way.
-		if ( !captured ) {
-			return;
-		}
-		if ( hadPriorProvider ) {
-			moduleRecord.settings.put( "provider", priorProvider );
-		} else {
-			moduleRecord.settings.remove( "provider" );
-		}
-		if ( hadPriorApiKey ) {
-			moduleRecord.settings.put( "apiKey", priorApiKey );
-		} else {
-			moduleRecord.settings.remove( "apiKey" );
-		}
-	}
-
-	private boolean hasAwsCredentials() {
-		return !awsAccessKeyId.isEmpty() && !awsSecretAccessKey.isEmpty();
-	}
+public class BedrockTest extends BedrockLiveTestBase {
 
 	@DisplayName( "Test Bedrock AI chat" )
 	@Test
