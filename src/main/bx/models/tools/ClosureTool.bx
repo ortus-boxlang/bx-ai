@@ -111,7 +111,10 @@ class extends="BaseTool" {
 		// BoxLang param is declared "string" but the AI (or MCP client) still sends a complex
 		// object/array (e.g. JSON-encoded fields like source_context or key_decisions). Without
 		// this, BoxLang's typed-arg binding would throw "Can't cast Struct<Ordered> to a string" before the callable runs.
-		var incomingArgs = arguments.args
+		// Shallow copy: the incoming struct is the live tool_use.input held in the message
+		// history. Mutating it (coercion below, _chatRequest injection) would leak _chatRequest
+		// into the next request body and can close a reference cycle that serializers cannot walk.
+		var incomingArgs = structCopy( arguments.args )
 		var coercionParams = variables.methodParameters.len() ? variables.methodParameters : variables.callable.$bx.meta.parameters
 		coercionParams.each( param => {
 			if ( ( param.type ?: "" ) == "string" && incomingArgs.keyExists( param.name ) ) {
@@ -121,9 +124,15 @@ class extends="BaseTool" {
 				}
 			}
 		} )
-		// Inject _chatRequest into args for closures that want conversation context
-		arguments.args._chatRequest = arguments.chatRequest
-		return variables.callable( argumentCollection = arguments.args )
+		// Inject _chatRequest ONLY for callables that actually declare the parameter. Injecting it
+		// unconditionally handed every closure an extra argument it never asked for, which leaks
+		// into argumentCollection-forwarding callables and into anything that serializes its own
+		// arguments scope.
+		var wantsChatRequest = coercionParams.some( param => ( param.name ?: "" ) == "_chatRequest" )
+		if ( wantsChatRequest ) {
+			incomingArgs._chatRequest = arguments.chatRequest
+		}
+		return variables.callable( argumentCollection = incomingArgs )
 	}
 
 	/**
@@ -148,8 +157,9 @@ class extends="BaseTool" {
 
 	/**
 	 * Introspect the callable's parameter metadata to build the arguments schema.
-	 * The _chatRequest parameter is injected at runtime by doInvoke() and does not
-	 * appear in the callable's declared parameters, so no filtering is needed.
+	 * A declared _chatRequest parameter is the callable OPTING IN to conversation context (see
+	 * doInvoke()); it is supplied by the runtime, never by the model, so it is filtered out of the
+	 * schema — advertising it would invite the LLM to try to populate it.
 	 *
 	 * @throws MissingCallable if no callable has been set
 	 *
@@ -165,6 +175,9 @@ class extends="BaseTool" {
 		var results    = { "properties" : {}, "required" : [] }
 		var paramList  = variables.methodParameters.len() ? variables.methodParameters : variables.callable.$bx.meta.parameters
 		paramList.each( param => {
+			if ( ( param.name ?: "" ) == "_chatRequest" ) {
+				return
+			}
 			if ( param.required ) {
 				results.required.append( param.name )
 			}
