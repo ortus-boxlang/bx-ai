@@ -24,6 +24,21 @@
  * The same pattern (direct tool.invoke() with no middleware hooks at all) meant
  * ClaudeService, BedrockService, and CohereService never fired beforeToolCall/afterToolCall
  * in the first place, so HITL middleware was a silent no-op for those providers.
+ *
+ * Streaming is covered for Bedrock and Cohere too (issue #248): both chatStream()s now run the
+ * same batch-suspend tool loop as chat() and honour `_resumeContext` via resumeToolBatchStream(),
+ * and both route their stream transport through wrapLLMCall — Bedrock's returns a canned AWS
+ * event-stream body, Cohere's replays v1 SSE events through the `emitSSEChunk` callback on the
+ * middleware context — so the whole agent round trip (stream → batch suspend → checkpoint →
+ * resumeStream()) runs offline and deterministically here.
+ *
+ * Both providers' streaming resumes are exercised through AiAgent.resumeStream(). Bedrock's used to
+ * be driven at provider level only: it serializes its streaming request body BEFORE the wrapLLMCall
+ * seam, and ClosureTool.doInvoke() mutated the caller's live args struct — the tool_use block's
+ * `input` in message history — injecting a `_chatRequest` back-reference, so a second streamed
+ * Bedrock turn serialized a cyclic graph and died with a StackOverflowError. doInvoke() now coerces
+ * and injects into a shallow copy, and testBedrockStreamResumeApproveAllCompletesWithoutReplay
+ * asserts the follow-up body carries no `_chatRequest` (ClosureToolTest covers it at unit level).
  */
 package ortus.boxlang.ai.middleware;
 
@@ -778,8 +793,10 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 	public void testClaudeStreamResumeToolBatchFinishesLedgerDirectly() {
 		// Deterministic / credential-free by construction: unlike a normal suspend, this test
 		// never touches Claude's SSE transport at all — ClaudeService.chatStream() has no
-		// wrapLLMCall seam around its initial HTTP call (unlike chat()), so an *initial* streamed
-		// tool-call batch can't be simulated without a real network call. resumeToolBatchStream()
+		// wrapLLMCall seam around its initial HTTP call (unlike chat(), and unlike Bedrock's and
+		// Cohere's chatStream(), whose transports ARE wrapLLMCall-wrapped — see the streaming
+		// suspend/resume tests for those two below), so an *initial* streamed tool-call batch
+		// can't be simulated for Claude without a real network call. resumeToolBatchStream()
 		// itself has no such limitation: it starts from an already-resolved resume ledger (exactly
 		// what AiAgent.resumeStream() hands it) and only touches the network for its final
 		// follow-up turn, which — like chat() — IS wrapLLMCall-wrapped. This test drives that
@@ -1341,6 +1358,319 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "toolNotCalled" ) ) ).isTrue();
 	}
 
+	// ---- Streaming suspend/resume for Bedrock and Cohere (issue #248) ----------------------------
+	//
+	// Both providers now stream through a wrapLLMCall seam, so a canned transport body replaces the
+	// network entirely: Bedrock's chatStream() takes the AWS event-stream body its wrapLLMCall
+	// returns (the string form, via parseBedrockEventStream()'s documented non-binary fallback),
+	// and Cohere's hands the middleware an `emitSSEChunk` callback to replay v1 SSE events through.
+	// That makes the full agent-level round trip — stream → batch suspend → checkpoint →
+	// resumeStream() → resumeToolBatchStream() — deterministic and credential-free.
+
+	/**
+	 * Dummy AWS credentials: the streaming leg never reaches the network, but the service still
+	 * requires them.
+	 */
+	private static final String	BEDROCK_PROVIDER		= """
+	                                                      provider = aiService(
+	                                                          "bedrock",
+	                                                          {
+	                                                              awsAccessKeyId    : "AKIAIOSFODNN7EXAMPLE",
+	                                                              awsSecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+	                                                              region            : "us-east-1"
+	                                                          }
+	                                                      )
+	                                                      """;
+
+	/**
+	 * Canned Bedrock/Claude event-stream bodies. `evt()` wraps one model event in the
+	 * `{"bytes":"<base64>"}` envelope Bedrock uses for chunk frames; concatenating them is enough
+	 * for chatStream()'s non-binary fallback, so no binary framing is needed here.
+	 */
+	private static final String	BEDROCK_STREAM_EVENTS	= """
+	                                                      evt = ( data ) => '{"bytes":"' & binaryEncode( charsetDecode( jsonSerialize( data ), "utf-8" ), "base64" ) & '"}'
+	                                                      twoToolStream = evt( { "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "tu_a", "name": "toolA" } } )
+	                                                          & evt( { "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": '{}' } } )
+	                                                          & evt( { "type": "content_block_stop", "index": 0 } )
+	                                                          & evt( { "type": "content_block_start", "index": 1, "content_block": { "type": "tool_use", "id": "tu_b", "name": "toolB" } } )
+	                                                          & evt( { "type": "content_block_delta", "index": 1, "delta": { "type": "input_json_delta", "partial_json": '{}' } } )
+	                                                          & evt( { "type": "content_block_stop", "index": 1 } )
+	                                                          & evt( { "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 8 } } )
+	                                                      oneToolStream = evt( { "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "tu_1", "name": "deleteRecord" } } )
+	                                                          & evt( { "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": '{"id":"5"}' } } )
+	                                                          & evt( { "type": "content_block_stop", "index": 0 } )
+	                                                          & evt( { "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 6 } } )
+	                                                      textStream = evt( { "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "all handled" } } )
+	                                                          & evt( { "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 2 } } )
+	                                                      """;
+
+	@DisplayName( "BedrockService streaming: two approval-requiring tools suspend ONCE as a batch and checkpoint" )
+	@Test
+	public void testBedrockStreamBatchSuspendsOnceAndCheckpoints() {
+		// @formatter:off
+		runtime.executeSource(
+		    BEDROCK_STREAM_EVENTS + """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+		    """ + BEDROCK_PROVIDER + """
+		        model = new AiModel( service: provider, params: { model: "anthropic.claude-3-sonnet-20240229-v1:0" } )
+
+		        wrapCalls = 0
+		        cannedLLM = {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                return wrapCalls == 1 ? twoToolStream : textStream
+		            }
+		        }
+
+		        checkpointer = aiMemory( "cache" )
+		        agent = aiAgent(
+		            model       : model,
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" ), cannedLLM ],
+		            checkpointer: checkpointer,
+		            checkpointTTL: 5
+		        )
+
+		        chunks = []
+		        agent.stream( ( chunk ) => { chunks.append( chunk ) }, "please run toolA and toolB", {}, { threadId: "bedrock-stream-batch" } )
+
+		        stops         = chunks.filter( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
+		        suspendedOnce = stops.len() == 1 && stops.first().result.isSuspended()
+		        suspendData   = suspendedOnce ? stops.first().result.getData() : {}
+		        bothPending   = ( suspendData.pendingActions ?: [] ).len() == 2
+		        hasLedger     = ( suspendData.resumeLedger ?: [] ).len() == 2
+		        neitherRanYet = toolACalls == 0 && toolBCalls == 0
+		        calledLLMOnce = wrapCalls == 1
+
+		        checkpointSaved = !checkpointer.loadState( "bedrock-stream-batch" ).isEmpty()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "suspendedOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bothPending" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasLedger" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "neitherRanYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "calledLLMOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "checkpointSaved" ) ) ).isTrue();
+	}
+
+	@DisplayName( "BedrockService streaming: resumeStream() approve-all finishes the batch — tools run once, the suspended turn is not replayed" )
+	@Test
+	public void testBedrockStreamResumeApproveAllCompletesWithoutReplay() {
+		// Full agent round trip: agent.stream() suspends the batch and checkpoints, agent.resumeStream()
+		// finishes it from the ledger. This used to blow up with a StackOverflowError because
+		// ClosureTool.doInvoke() mutated the live tool_use.input in message history, leaving a
+		// `_chatRequest` back-reference that made the second streamed request body cyclic. doInvoke()
+		// now works on a shallow copy, so the follow-up body serializes cleanly — asserted below.
+		// @formatter:off
+		runtime.executeSource(
+		    BEDROCK_STREAM_EVENTS + """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+		    """ + BEDROCK_PROVIDER + """
+		        model = new AiModel( service: provider, params: { model: "anthropic.claude-3-sonnet-20240229-v1:0" } )
+
+		        wrapCalls    = 0
+		        followUpBody = []
+		        cannedLLM = {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                if( wrapCalls == 1 ){
+		                    return twoToolStream
+		                }
+		                followUpBody = ctx.dataPacket.messages ?: []
+		                return textStream
+		            }
+		        }
+
+		        agent = aiAgent(
+		            model       : model,
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" ), cannedLLM ],
+		            checkpointer: aiMemory( "cache" ),
+		            checkpointTTL: 5
+		        )
+
+		        chunks = []
+		        agent.stream( ( chunk ) => { chunks.append( chunk ) }, "please run toolA and toolB", {}, { threadId: "bedrock-stream-approve" } )
+		        wasSuspended  = chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" && c.result.isSuspended() )
+		        neitherRanYet = toolACalls == 0 && toolBCalls == 0
+
+		        resumeChunks = []
+		        agent.resumeStream(
+		            ( chunk ) => { resumeChunks.append( chunk ) },
+		            [ { decision: "approve" }, { decision: "approve" } ],
+		            "bedrock-stream-approve"
+		        )
+
+		        finalText = resumeChunks
+		            .filter( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() )
+		            .map( c => c.choices.first().delta.content ?: "" )
+		            .toList( "" )
+		        isFinalText      = finalText == "all handled"
+		        bothRanOnce      = toolACalls == 1 && toolBCalls == 1
+		        // Exactly two LLM calls total: the suspended turn, then the follow-up. The resume
+		        // finished the SAME batch from the ledger rather than replaying the first turn.
+		        twoLLMCallsTotal = wrapCalls == 2
+		        noResumeStop     = !resumeChunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
+		        // Regression guard for the ClosureTool.doInvoke() leak: the follow-up request body must
+		        // carry no `_chatRequest` inside any assistant tool_use input. sawToolUseInput keeps the
+		        // guard honest — without it an empty body would satisfy noChatRequestLeak vacuously.
+		        sawToolUseInput = followUpBody.some( m =>
+		            isArray( m.content ?: "" )
+		            && m.content.some( b => isStruct( b ) && ( b.type ?: "" ) == "tool_use" && isStruct( b.input ?: "" ) )
+		        )
+		        noChatRequestLeak = !followUpBody.some( m =>
+		            isArray( m.content ?: "" )
+		            && m.content.some( b =>
+		                isStruct( b )
+		                && isStruct( b.input ?: "" )
+		                && b.input.keyExists( "_chatRequest" )
+		            )
+		        )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "wasSuspended" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "neitherRanYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bothRanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "twoLLMCallsTotal" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noResumeStop" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawToolUseInput" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noChatRequestLeak" ) ) ).isTrue();
+	}
+
+	@DisplayName( "BedrockService streaming: a 'reject' decision in the resume array blocks that tool, is reported back as a tool_result, and the turn still completes" )
+	@Test
+	public void testBedrockStreamResumeRejectHonoured() {
+		// @formatter:off
+		runtime.executeSource(
+		    BEDROCK_STREAM_EVENTS + """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+		    """ + BEDROCK_PROVIDER + """
+		        model = new AiModel( service: provider, params: { model: "anthropic.claude-3-sonnet-20240229-v1:0" } )
+
+		        wrapCalls    = 0
+		        followUpBody = []
+		        cannedLLM = {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                if( wrapCalls == 1 ){
+		                    return twoToolStream
+		                }
+		                followUpBody = ctx.dataPacket.messages ?: []
+		                return textStream
+		            }
+		        }
+
+		        agent = aiAgent(
+		            model       : model,
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" ), cannedLLM ],
+		            checkpointer: aiMemory( "cache" ),
+		            checkpointTTL: 5
+		        )
+
+		        agent.stream( ( chunk ) => {}, "please run toolA and toolB", {}, { threadId: "bedrock-stream-reject" } )
+
+		        resumeChunks = []
+		        agent.resumeStream(
+		            ( chunk ) => { resumeChunks.append( chunk ) },
+		            [ { decision: "approve" }, { decision: "reject", reason: "not needed" } ],
+		            "bedrock-stream-reject"
+		        )
+
+		        finalText = resumeChunks
+		            .filter( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() )
+		            .map( c => c.choices.first().delta.content ?: "" )
+		            .toList( "" )
+		        isFinalText      = finalText == "all handled"
+		        toolARan         = toolACalls == 1
+		        toolBSkipped     = toolBCalls == 0
+		        // Only the suspended turn and the follow-up touched the LLM — no replay
+		        twoLLMCallsTotal = wrapCalls == 2
+		        noStop           = !resumeChunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
+		        sawBlockedResult = followUpBody.some( m =>
+		            isArray( m.content ?: "" )
+		            && m.content.some( b => ( b.type ?: "" ) == "tool_result" && toString( b.content ?: "" ).findNoCase( "blocked" ) > 0 )
+		        )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolARan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolBSkipped" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "twoLLMCallsTotal" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noStop" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawBlockedResult" ) ) ).isTrue();
+	}
+
+	@DisplayName( "BedrockService streaming: a cancelled tool call short-circuits the stream and no tool runs" )
+	@Test
+	public void testBedrockStreamCancelShortCircuits() {
+		// @formatter:off
+		runtime.executeSource(
+		    BEDROCK_STREAM_EVENTS + """
+		        import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+		        toolCalls = 0
+		        tool = aiTool( "deleteRecord", "Delete a record", ( required string id ) => { toolCalls++; return "deleted" } )
+		    """ + BEDROCK_PROVIDER + """
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "Delete record 5" ),
+		            { model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ tool ] },
+		            { provider: "bedrock" }
+		        )
+
+		        wrapCalls = 0
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                return oneToolStream
+		            },
+		            "beforeToolCall": ( ctx ) => AiMiddlewareResult.cancel( "Max tool calls exceeded" )
+		        } )
+
+		        chunks = []
+		        provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+		        sawCancelSentinel = chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" && c.result.isCancelled() )
+		        toolNotCalled     = toolCalls == 0
+		        noFollowUpCall    = wrapCalls == 1
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sawCancelSentinel" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolNotCalled" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noFollowUpCall" ) ) ).isTrue();
+	}
+
 	@DisplayName( "CohereService streaming: two approval-requiring tools suspend ONCE as a batch and checkpoint" )
 	@Test
 	public void testCohereStreamBatchSuspendsOnceAndCheckpoints() {
@@ -1681,6 +2011,55 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 
 		assertThat( variables.getAsBoolean( Key.of( "gotEditedArgs" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "completed" ) ) ).isTrue();
+	}
+
+	@DisplayName( "BedrockService streaming: HITL 'edit' resume decision patches toolCall.input before the streamed tool runs" )
+	@Test
+	public void testBedrockStreamEditResumePatchesToolInput() {
+		// @formatter:off
+		runtime.executeSource(
+		    BEDROCK_STREAM_EVENTS + """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+
+		        capturedId = ""
+		        tool = aiTool( "deleteRecord", "Delete a record", ( required string id ) => { capturedId = id; return "deleted:" & id } )
+		    """ + BEDROCK_PROVIDER + """
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "Delete record 5" ),
+		            { model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ tool ] },
+		            {
+		                provider: "bedrock",
+		                _resumeContext: {
+		                    resumeDecision: "edit",
+		                    suspendData   : { toolName: "deleteRecord" },
+		                    editedData    : { correctedArgs: { id: "999" } }
+		                }
+		            }
+		        )
+		        chatRequest.addMiddleware( new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "deleteRecord" ], mode: "web" ) )
+
+		        wrapCalls = 0
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                return wrapCalls == 1 ? oneToolStream : textStream
+		            }
+		        } )
+
+		        chunks = []
+		        provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+		        gotEditedArgs = capturedId == "999"
+		        completed     = wrapCalls == 2
+		        noStop        = !chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "gotEditedArgs" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "completed" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noStop" ) ) ).isTrue();
 	}
 
 	// ---- Rewritten toolArgs must survive a batch suspension (per provider) ----------------
