@@ -2,6 +2,14 @@ package ortus.boxlang.ai.providers;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+
+import com.sun.net.httpserver.HttpServer;
+
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -1012,5 +1020,582 @@ public class CohereStreamingToolsTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "CallerBoom" );
 		assertThat( variables.get( Key.of( "errMsg" ) ).toString() ).contains( "caller callback failed" );
 		assertThat( variables.getAsInteger( Key.of( "errorEvents" ) ) ).isEqualTo( 1 );
+	}
+
+	/**
+	 * Serve a canned Cohere v1 SSE stream on /v1/chat from a loopback server, recording every
+	 * request body, and run `script` with "%s" replaced by the server URL.
+	 */
+	private List<String> withCannedCohereStream( String sse, String script ) throws Exception {
+		List<String>	bodies	= new ArrayList<>();
+		HttpServer		server	= HttpServer.create( new InetSocketAddress( "127.0.0.1", 0 ), 0 );
+		server.createContext( "/v1/chat", exchange -> {
+			bodies.add( new String( exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8 ) );
+			byte[] bytes = sse.getBytes( StandardCharsets.UTF_8 );
+			exchange.getResponseHeaders().set( "Content-Type", "text/event-stream" );
+			exchange.sendResponseHeaders( 200, bytes.length );
+			try ( OutputStream os = exchange.getResponseBody() ) {
+				os.write( bytes );
+			}
+		} );
+		server.start();
+		try {
+			String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat";
+			runtime.executeSource( script.formatted( url ), context );
+		} finally {
+			server.stop( 0 );
+		}
+		return bodies;
+	}
+
+	@DisplayName( "A follow-up round that returns Cohere's error shape throws ProviderError (blocking)" )
+	@Test
+	public void testBlockingFollowUpErrorShapeThrowsProviderError() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        toolCalls = 0
+		        toolA = aiTool( "toolA", "Tool A", () => { toolCalls++; return "A done" } )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "run toolA" ),
+		            { model: "command-a-03-2025", tools: [ toolA ] },
+		            { provider: "cohere" }
+		        )
+
+		        llmCalls = 0
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                llmCalls++
+		                if( llmCalls == 1 ){
+		                    return { "tool_calls": [ { "name": "toolA", "parameters": {} } ] }
+		                }
+		                // Cohere reports a failed turn as { message } with no text
+		                return { "message": "too many requests" }
+		            }
+		        } )
+
+		        threw     = false
+		        errType   = ""
+		        errMsg    = ""
+		        answer    = ""
+		        try {
+		            answer = provider.chat( chatRequest )
+		        } catch( any e ){
+		            threw   = true
+		            errType = e.type
+		            errMsg  = e.message
+		        }
+		        toolRanOnce = toolCalls == 1
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "errType" ) ) ).isEqualTo( "ProviderError" );
+		assertThat( variables.getAsString( Key.of( "errMsg" ) ) ).contains( "too many requests" );
+		assertThat( variables.getAsBoolean( Key.of( "toolRanOnce" ) ) ).isTrue();
+	}
+
+	@DisplayName( "A follow-up round that returns Cohere's error shape throws ProviderError (streaming)" )
+	@Test
+	public void testStreamFollowUpErrorShapeThrowsProviderError() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        toolCalls = 0
+		        toolA = aiTool( "toolA", "Tool A", () => { toolCalls++; return "A done" } )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "run toolA" ),
+		            { model: "command-a-03-2025", tools: [ toolA ] },
+		            { provider: "cohere" }
+		        )
+
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                if( ctx.stream ?: false ){
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( {
+		                        "event_type": "tool-calls-generation",
+		                        "tool_calls": [ { "name": "toolA", "parameters": {} } ]
+		                    } ) } )
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( { "event_type": "stream-end", "finish_reason": "COMPLETE" } ) } )
+		                    return {}
+		                }
+		                return { "message": "upstream exploded" }
+		            }
+		        } )
+
+		        chunks  = []
+		        threw   = false
+		        errType = ""
+		        errMsg  = ""
+		        try {
+		            provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+		        } catch( any e ){
+		            threw   = true
+		            errType = e.type
+		            errMsg  = e.message
+		        }
+		        // The error must never be streamed to the consumer as the assistant's answer
+		        emittedError = chunks.some( c => isStruct( c ) && isStruct( c.choices ?: "" ) )
+		        toolRanOnce  = toolCalls == 1
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "errType" ) ) ).isEqualTo( "ProviderError" );
+		assertThat( variables.getAsString( Key.of( "errMsg" ) ) ).contains( "upstream exploded" );
+		assertThat( variables.getAsBoolean( Key.of( "toolRanOnce" ) ) ).isTrue();
+	}
+
+	@DisplayName( "A truncated tool-argument stream still fires afterLLMCall before the CohereStreamError propagates" )
+	@Test
+	public void testTruncatedStreamStillFiresAfterLLMCall() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        weatherTool = aiTool( "getWeather", "Get the weather", ( string city = "" ) => "sunny" )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "weather?" ),
+		            { model: "command-a-03-2025", tools: [ weatherTool ] },
+		            { provider: "cohere" }
+		        )
+
+		        afterLLMCalls    = 0
+		        capturedFinish   = ""
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                if( ctx.stream ?: false ){
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( {
+		                        "event_type"      : "tool-calls-chunk",
+		                        "tool_call_delta" : { "index": 0, "name": "getWeather", "parameters": '{"city":' }
+		                    } ) } )
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( {
+		                        "event_type"   : "stream-end",
+		                        "finish_reason": "MAX_TOKENS",
+		                        "response"     : { "meta": { "billed_units": { "input_tokens": 10, "output_tokens": 5 } } }
+		                    } ) } )
+		                    return {}
+		                }
+		                return { "text": "never reached" }
+		            },
+		            "afterLLMCall": ( ctx ) => {
+		                afterLLMCalls++
+		                capturedFinish = ( ctx.streamState ?: {} ).finishReason ?: ""
+		            }
+		        } )
+
+		        threw     = false
+		        errType   = ""
+		        try {
+		            provider.chatStream( chatRequest, ( chunk ) => {} )
+		        } catch( any e ){
+		            threw   = true
+		            errType = e.type
+		        }
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "errType" ) ) ).isEqualTo( "CohereStreamError" );
+		assertThat( variables.getAsInteger( Key.of( "afterLLMCalls" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsString( Key.of( "capturedFinish" ) ) ).isEqualTo( "MAX_TOKENS" );
+	}
+
+	@DisplayName( "An empty follow-up answer still terminates the stream with a finish_reason stop chunk" )
+	@Test
+	public void testEmptyFollowUpTextStillEmitsStopTerminator() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        toolA = aiTool( "toolA", "Tool A", () => "A done" )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "run toolA" ),
+		            { model: "command-a-03-2025", tools: [ toolA ] },
+		            { provider: "cohere" }
+		        )
+
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                if( ctx.stream ?: false ){
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( {
+		                        "event_type": "tool-calls-generation",
+		                        "tool_calls": [ { "name": "toolA", "parameters": {} } ]
+		                    } ) } )
+		                    ctx.emitSSEChunk( { "data": jsonSerialize( { "event_type": "stream-end", "finish_reason": "COMPLETE" } ) } )
+		                    return {}
+		                }
+		                // Cohere answered the tool results with nothing at all
+		                return { "text": "" }
+		            }
+		        } )
+
+		        chunks = []
+		        provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+		        stopChunks = chunks.filter( c => isStruct( c )
+		            && isArray( c.choices ?: "" )
+		            && ( c.choices.first().finish_reason ?: "" ) == "stop" )
+		        sawTerminator = stopChunks.len() == 1
+		        emptyContent  = sawTerminator && ( stopChunks.first().choices.first().delta.content ?: "x" ) == ""
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sawTerminator" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "emptyContent" ) ) ).isTrue();
+	}
+
+	@DisplayName( "beforeLLMCall fires on EVERY follow-up round, and a terminal there stops the exchange" )
+	@Test
+	public void testBeforeLLMCallFiresPerRound() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        toolA = aiTool( "toolA", "Tool A", () => "A done" )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "run toolA" ),
+		            { model: "command-a-03-2025", tools: [ toolA ] },
+		            { provider: "cohere" }
+		        )
+
+		        beforeCalls = 0
+		        llmCalls    = 0
+		        wirePackets = []
+		        chatRequest.addMiddleware( {
+		            "beforeLLMCall": ( ctx ) => {
+		                beforeCalls++
+		                // A replacement packet on the follow-up round must reach the wire
+		                if( beforeCalls == 2 ){
+		                    var replacement = duplicate( ctx.dataPacket )
+		                    replacement[ "replaced" ] = true
+		                    ctx.dataPacket = replacement
+		                }
+		            },
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                llmCalls++
+		                wirePackets.append( duplicate( ctx.dataPacket ?: {} ) )
+		                if( llmCalls == 1 ){
+		                    return { "tool_calls": [ { "name": "toolA", "parameters": {} } ] }
+		                }
+		                return { "text": "done" }
+		            }
+		        } )
+
+		        answer            = provider.chat( chatRequest )
+		        twoRounds         = llmCalls == 2
+		        beforePerRound    = beforeCalls == llmCalls
+		        replacementOnWire = ( wirePackets[ 2 ].replaced ?: false ) == true
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "twoRounds" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "beforePerRound" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "beforeCalls" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsBoolean( Key.of( "replacementOnWire" ) ) ).isTrue();
+	}
+
+	@DisplayName( "A beforeLLMCall terminal on a follow-up round stops the exchange instead of calling the LLM" )
+	@Test
+	public void testBeforeLLMCallTerminalOnFollowUpStopsExchange() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+		        toolA = aiTool( "toolA", "Tool A", () => "A done" )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "run toolA" ),
+		            { model: "command-a-03-2025", tools: [ toolA ] },
+		            { provider: "cohere" }
+		        )
+
+		        beforeCalls = 0
+		        llmCalls    = 0
+		        chatRequest.addMiddleware( {
+		            "beforeLLMCall": ( ctx ) => {
+		                beforeCalls++
+		                if( beforeCalls == 2 ){
+		                    return AiMiddlewareResult::cancel( "budget exhausted" )
+		                }
+		            },
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                llmCalls++
+		                return { "tool_calls": [ { "name": "toolA", "parameters": {} } ] }
+		            }
+		        } )
+
+		        answer       = provider.chat( chatRequest )
+		        onlyOneCall  = llmCalls == 1
+		        isTerminal   = isObject( answer ) && answer.isCancelled()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "onlyOneCall" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isTerminal" ) ) ).isTrue();
+	}
+
+	@DisplayName( "Every follow-up round announces its own onAITokenCount" )
+	@Test
+	public void testTokenCountAnnouncedPerRound() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        tokenEvents = 0
+		        tokenTotals = []
+		        BoxRegisterInterceptor( function( data ) {
+		            tokenEvents++
+		            tokenTotals.append( data.totalTokens ?: 0 )
+		        }, "onAITokenCount" )
+
+		        toolA = aiTool( "toolA", "Tool A", () => "A done" )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "run toolA" ),
+		            { model: "command-a-03-2025", tools: [ toolA ] },
+		            { provider: "cohere" }
+		        )
+
+		        llmCalls = 0
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                llmCalls++
+		                if( llmCalls == 1 ){
+		                    return {
+		                        "tool_calls": [ { "name": "toolA", "parameters": {} } ],
+		                        "meta"      : { "billed_units": { "input_tokens": 10, "output_tokens": 2 } }
+		                    }
+		                }
+		                return {
+		                    "text": "done",
+		                    "meta": { "billed_units": { "input_tokens": 20, "output_tokens": 5 } }
+		                }
+		            }
+		        } )
+
+		        answer      = provider.chat( chatRequest )
+		        twoRounds   = llmCalls == 2
+		        billedTwice = tokenEvents == 2
+		        totals      = tokenTotals.toList( "," )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "twoRounds" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "billedTwice" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "totals" ) ) ).isEqualTo( "12,25" );
+	}
+
+	@DisplayName( "A tool schema without required/description defaults instead of blowing up while building the request" )
+	@Test
+	public void testToolSchemaWithoutRequiredOrDescriptionBuilds() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.tools.ClosureTool;
+
+		        // The shape an MCP tool (or a hand-rolled setSchema()) routinely has: no `required`
+		        // array, no descriptions, no parameter `type`
+		        sparseTool = new ClosureTool( "sparseTool", "", () => "ok" )
+		            .setSchema( {
+		                "type"    : "function",
+		                "function": {
+		                    "name"      : "sparseTool",
+		                    "parameters": { "type": "object", "properties": { "city": {} } }
+		                }
+		            } )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "hi" ),
+		            { model: "command-a-03-2025", tools: [ sparseTool ] },
+		            { provider: "cohere" }
+		        )
+
+		        sentTools = []
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                sentTools = ctx.dataPacket.tools ?: []
+		                return { "text": "hi back" }
+		            }
+		        } )
+
+		        // No try/catch: building the request used to THROW here, so a green run is the assertion
+		        answer = provider.chat( chatRequest )
+
+		        builtOne     = sentTools.len() == 1
+		        toolDef      = builtOne ? sentTools.first() : {}
+		        emptyDesc    = builtOne && ( toolDef.description ?: "x" ) == ""
+		        paramTyped   = builtOne && ( toolDef.parameter_definitions.city.type ?: "" ) == "string"
+		        notRequired  = builtOne && ( toolDef.parameter_definitions.city.required ?: true ) == false
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "answer" ) ) ).isEqualTo( "hi back" );
+		assertThat( variables.getAsBoolean( Key.of( "builtOne" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "emptyDesc" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "paramTyped" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "notRequired" ) ) ).isTrue();
+	}
+
+	@DisplayName( "A wrapLLMCall middleware that returns a struct for a STREAMING call without emitting anything fails loudly" )
+	@Test
+	public void testStreamWrapMiddlewareReturningStructWithoutEmittingThrows() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "hi" ),
+		            { model: "command-a-03-2025" },
+		            { provider: "cohere" }
+		        )
+
+		        // Treats wrapLLMCall as a blocking round trip: never calls the handler, never emits
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                return { "text": "canned answer" }
+		            }
+		        } )
+
+		        chunks  = []
+		        threw   = false
+		        errType = ""
+		        errMsg  = ""
+		        try {
+		            provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+		        } catch( any e ){
+		            threw   = true
+		            errType = e.type
+		            errMsg  = e.message
+		        }
+		        noChunks = chunks.len() == 0
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threw" ) ) ).isTrue();
+		assertThat( variables.getAsString( Key.of( "errType" ) ) ).isEqualTo( "CohereStreamError" );
+		assertThat( variables.getAsString( Key.of( "errMsg" ) ) ).contains( "emitSSEChunk" );
+		assertThat( variables.getAsBoolean( Key.of( "noChunks" ) ) ).isTrue();
+	}
+
+	@DisplayName( "A wrapLLMCall middleware's in-place dataPacket edit reaches the streamed request body" )
+	@Test
+	public void testStreamWrapMiddlewareInPlaceEditReachesTheWire() throws Exception {
+		String			sse		= String.join( "\n\n",
+		    "data: {\"event_type\":\"text-generation\",\"text\":\"Hello\"}",
+		    "data: {\"event_type\":\"stream-end\",\"finish_reason\":\"COMPLETE\",\"response\":{\"meta\":{\"billed_units\":{\"input_tokens\":3,\"output_tokens\":1}}}}",
+		    "" );
+
+		// @formatter:off
+		List<String> bodies = withCannedCohereStream( sse,
+		    """
+		        provider = aiService( "cohere", { apiKey: "dummy-key" } )
+		        provider.setChatURL( "%s" )
+
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "hi" ),
+		            { model: "command-a-03-2025" },
+		            { provider: "cohere" }
+		        )
+
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                // Edited IN PLACE, then the real transport is invoked
+		                ctx.dataPacket[ "temperature" ] = 0.42
+		                ctx.dataPacket[ "message" ]     = "edited by middleware"
+		                return handler()
+		            }
+		        } )
+
+		        text = ""
+		        provider.chatStream( chatRequest, ( chunk ) => {
+		            text &= ( chunk.choices.first().delta.content ?: "" )
+		        } )
+		    """ );
+		// @formatter:on
+
+		assertThat( bodies ).hasSize( 1 );
+		assertThat( bodies.get( 0 ) ).contains( "edited by middleware" );
+		assertThat( bodies.get( 0 ) ).contains( "0.42" );
+		assertThat( variables.getAsString( Key.of( "text" ) ) ).isEqualTo( "Hello" );
+	}
+
+	@DisplayName( "A wrapLLMCall middleware that re-invokes the handler (retry) does not double the accumulated stream" )
+	@Test
+	public void testStreamHandlerReinvocationDoesNotDoubleAccumulators() throws Exception {
+		// Deliberately NO stream-start event: this exercises the reset at the top of the transport
+		// inner function, which is the only thing standing between a retry and doubled content.
+		String			sse		= String.join( "\n\n",
+		    "data: {\"event_type\":\"text-generation\",\"text\":\"Hello\"}",
+		    "data: {\"event_type\":\"stream-end\",\"finish_reason\":\"COMPLETE\",\"response\":{\"meta\":{\"billed_units\":{\"input_tokens\":3,\"output_tokens\":1}}}}",
+		    "" );
+
+		// @formatter:off
+		List<String> bodies = withCannedCohereStream( sse,
+		    """
+		        tokenEvents = 0
+		        BoxRegisterInterceptor( function( data ) { tokenEvents++ }, "onAITokenCount" )
+
+		        provider = aiService( "cohere", { apiKey: "dummy-key" } )
+		        provider.setChatURL( "%s" )
+
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "hi" ),
+		            { model: "command-a-03-2025" },
+		            { provider: "cohere" }
+		        )
+
+		        capturedContent = ""
+		        capturedUsage   = {}
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                // A RetryMiddleware-style second attempt
+		                handler()
+		                return handler()
+		            },
+		            "afterLLMCall": ( ctx ) => {
+		                capturedContent = ( ctx.streamState ?: {} ).content ?: ""
+		                capturedUsage   = ( ctx.streamState ?: {} ).usage ?: {}
+		            }
+		        } )
+
+		        provider.chatStream( chatRequest, ( chunk ) => {} )
+		        inputTokens = ( capturedUsage.billed_units ?: {} ).input_tokens ?: 0
+		    """ );
+		// @formatter:on
+
+		assertThat( bodies ).hasSize( 2 );
+		// Doubling would give "HelloHello" and 6 input tokens
+		assertThat( variables.getAsString( Key.of( "capturedContent" ) ) ).isEqualTo( "Hello" );
+		assertThat( variables.getAsInteger( Key.of( "inputTokens" ) ) ).isEqualTo( 3 );
+		assertThat( variables.getAsInteger( Key.of( "tokenEvents" ) ) ).isEqualTo( 1 );
 	}
 }

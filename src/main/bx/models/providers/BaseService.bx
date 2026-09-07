@@ -195,24 +195,37 @@ abstract class implements="IAiService" {
 			var recovered = arguments.nativeArgs();
 			return isStruct( recovered ) ? recovered : arguments.originalArgs;
 		}
-		if ( !sameToolArgs( normalized, arguments.originalArgs ) ) {
+		var originalJSON = "";
+		try {
+			originalJSON = jsonSerialize( arguments.originalArgs );
+		} catch ( any e ) {
+			writeLog(
+				text : "resolveToolArgs: could not serialize the pre-hook argument snapshot: #local.e.message#",
+				type : "warning",
+				log  : "ai"
+			);
+			return local.normalized;
+		}
+		if ( !sameToolArgs( normalized, originalJSON ) ) {
 			return normalized;
 		}
 		var providerArgs = arguments.nativeArgs();
-		if ( isStruct( providerArgs ) && !sameToolArgs( providerArgs, arguments.originalArgs ) ) {
+		if ( isStruct( providerArgs ) && !sameToolArgs( providerArgs, originalJSON ) ) {
 			return providerArgs;
 		}
 		return normalized;
 	}
 
 	/**
-	 * Structural equality for tool-argument structs via canonical JSON (jsonSerialize emits struct
-	 * keys sorted). Anything unserializable is reported as different, which errs toward honouring
-	 * the candidate as an edit.
+	 * Structural equality against an already-serialized snapshot, via canonical JSON (jsonSerialize
+	 * emits struct keys sorted). Compared with compare() rather than `==`: `==` is case-insensitive
+	 * for strings, so an edit that only changes the case of a value ("paris" -> "Paris") would be
+	 * reported as no edit and silently dropped. Anything unserializable is reported as different,
+	 * which errs toward honouring the candidate as an edit.
 	 */
-	private boolean function sameToolArgs( required any a, required any b ){
+	private boolean function sameToolArgs( required any candidate, required string originalJSON ){
 		try {
-			return jsonSerialize( arguments.a ) == jsonSerialize( arguments.b );
+			return compare( jsonSerialize( arguments.candidate ), arguments.originalJSON ) == 0;
 		} catch ( any e ) {
 			return false;
 		}

@@ -8161,4 +8161,690 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "CallerBoom" );
 		assertThat( variables.getAsInteger( Key.of( "errorEvents" ) ) ).isEqualTo( 1 );
 	}
+
+	// ============================================================================================
+	// Review follow-ups (#279 / #282 / #283 / #284)
+	// ============================================================================================
+
+	@Test
+	@DisplayName( "RF1: a stream-callback exception is announced once and propagates, but only AFTER onAITokenCount" )
+	public void testStreamCallbackErrorStillAccountsUsage() {
+		// The model has already been called and billed by the time a chunk reaches the caller, so a
+		// callback failure must not cost the onAITokenCount announce every cost/audit listener
+		// reads. The throw was previously re-raised from inside the parse catch, before the usage
+		// block ran at all.
+		String body = streamBody(
+		    converseFrame( "messageStart", "{\"role\":\"assistant\"}" ),
+		    converseFrame( "contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"text\":\"Hi\"}}" ),
+		    converseFrame( "messageStop", "{\"stopReason\":\"end_turn\"}" ),
+		    converseFrame( "metadata", "{\"usage\":{\"inputTokens\":11,\"outputTokens\":4,\"totalTokens\":15}}" )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				errorEvents  = 0
+				errorMessage = ""
+				tokenEvents  = 0
+				promptTokens = 0
+				BoxRegisterInterceptor( function( data ) { errorEvents++; errorMessage = data.errorMessage }, "onAIError" )
+				BoxRegisterInterceptor( function( data ) { tokenEvents++; promptTokens = data.promptTokens }, "onAITokenCount" )
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-7-sonnet-20250219-v1:0", max_tokens: 50 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" ) } )
+
+				errType = ""
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => {
+						if ( isStruct( chunk.usage ?: "" ) ) {
+							throw( type: "CallerBoom", message: "caller callback failed" )
+						}
+					} )
+				} catch ( any e ) {
+					errType = e.type
+				}
+				namesCallback = errorMessage.findNoCase( "Stream callback error" ) > 0
+			""".formatted( converseService(), body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "CallerBoom" );
+		assertThat( variables.getAsInteger( Key.of( "errorEvents" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsBoolean( Key.of( "namesCallback" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "tokenEvents" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "promptTokens" ) ) ).isEqualTo( 11 );
+	}
+
+	@Test
+	@DisplayName( "RF2: a truncated event-stream frame announces onAIError exactly once" )
+	public void testTruncatedFrameAnnouncesOnAIErrorOnce() {
+		// The stream catch used to skip the announce for EVERY BedrockStreamError on the grounds
+		// that throwBedrockStreamError() had already made it — but the malformed-frame, truncated
+		// tool argument and drain throws announce nothing, so those failures were invisible.
+		byte[]	full	= converseFrame( "contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"text\":\"never seen\"}}" );
+		String	body	= streamBody(
+		    converseFrame( "contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"text\":\"partial\"}}" ),
+		    java.util.Arrays.copyOf( full, 17 )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				errorEvents = 0
+				BoxRegisterInterceptor( function( data ) { errorEvents++ }, "onAIError" )
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-7-sonnet-20250219-v1:0", max_tokens: 50 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" ) } )
+
+				errType = ""
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => {} )
+				} catch ( any e ) {
+					errType = e.type
+				}
+			""".formatted( converseService(), body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "BedrockStreamError" );
+		assertThat( variables.getAsInteger( Key.of( "errorEvents" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "RF3: an exception frame with an empty payload reports the `:error-message` header" )
+	public void testExceptionFrameFallsBackToErrorMessageHeader() {
+		byte[]	errorFrame	= frame(
+		    new byte[ 0 ],
+		    EVENT_HEADERS_MSG, "exception", ":exception-type", "throttlingException",
+		    ":error-message", "Too many tokens, slow down" );
+		String	body		= streamBody( errorFrame );
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-7-sonnet-20250219-v1:0", max_tokens: 50 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" ) } )
+
+				errMsg = ""
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => {} )
+				} catch ( any e ) {
+					errMsg = e.message
+				}
+				namesDetail = errMsg.findNoCase( "slow down" ) > 0
+			""".formatted( converseService(), body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "namesDetail" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "RF4: a body cut mid-PAYLOAD throws instead of reporting a complete stream" )
+	public void testTruncatedPayloadThrows() {
+		byte[]	full	= converseFrame( "contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"text\":\"this text never arrives\"}}" );
+		// Keep every byte of prelude + CRC + headers, drop the tail of the payload: the prelude
+		// still declares the full length, so the frame claims a payload the body does not contain.
+		String	body	= streamBody(
+		    converseFrame( "contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"text\":\"seen\"}}" ),
+		    java.util.Arrays.copyOf( full, full.length - 12 )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				responses = 0
+				BoxRegisterInterceptor( function( data ) { responses++ }, "onAIChatResponse" )
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-7-sonnet-20250219-v1:0", max_tokens: 50 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" ) } )
+
+				errType = ""
+				errMsg  = ""
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => {} )
+				} catch ( any e ) {
+					errType = e.type
+					errMsg  = e.message
+				}
+				namesPayload = errMsg.findNoCase( "payload" ) > 0
+			""".formatted( converseService(), body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "BedrockStreamError" );
+		assertThat( variables.getAsBoolean( Key.of( "namesPayload" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "responses" ) ) ).isEqualTo( 0 );
+	}
+
+	@Test
+	@DisplayName( "RF5: a Claude InvokeModel stream keeps message_start's prompt_tokens through message_delta" )
+	public void testMessageDeltaDoesNotZeroPromptTokens() {
+		// message_delta's usage carries OUTPUT tokens only. Emitting a literal prompt_tokens: 0
+		// there overwrote the input_tokens message_start had already captured, so every stream
+		// without a trailing amazon-bedrock-invocationMetrics event reported promptTokens 0.
+		String body = streamBody(
+		    frame( chunkPayload( "{\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":31}}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload( "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload( "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":7}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s", bedrockApi: "invoke" }
+				)
+				promptTokens     = -1
+				completionTokens = -1
+				BoxRegisterInterceptor(
+					function( data ) { promptTokens = data.promptTokens; completionTokens = data.completionTokens },
+					"onAITokenCount"
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", max_tokens: 50 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" ) } )
+				provider.chatStream( chatRequest, ( chunk ) => {} )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION, body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "promptTokens" ) ) ).isEqualTo( 31 );
+		assertThat( variables.getAsInteger( Key.of( "completionTokens" ) ) ).isEqualTo( 7 );
+	}
+
+	@Test
+	@DisplayName( "RF6: an unparseable buffered tool-argument JSON surfaces its OWN error, not the drain's" )
+	public void testTruncatedToolArgumentsSurfaceFromContentBlockStop() {
+		// processBedrockEvent()'s catch swallowed the BedrockStreamError finalizeStreamToolCall()
+		// raises, so the far vaguer drain message ("no content_block_stop") replaced it downstream
+		// and named neither the cause nor the truncated JSON.
+		String body = streamBody(
+		    frame( chunkPayload( "{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"t1\",\"name\":\"probe\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame(
+		        chunkPayload( "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"city\\\":\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload( "{\"type\":\"content_block_stop\",\"index\":0}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s", bedrockApi: "invoke" }
+				)
+				toolRuns = 0
+				tool = aiTool( "probe", "Probe", ( string city = "NONE" ) => { toolRuns++; return city } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", max_tokens: 50, tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" ) } )
+
+				errType = ""
+				errMsg  = ""
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => {} )
+				} catch ( any e ) {
+					errType = e.type
+					errMsg  = e.message
+				}
+				namesArguments = errMsg.findNoCase( "argument" ) > 0
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION, body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "BedrockStreamError" );
+		assertThat( variables.getAsBoolean( Key.of( "namesArguments" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "toolRuns" ) ) ).isEqualTo( 0 );
+	}
+
+	@Test
+	@DisplayName( "RF7: a cancelled STREAMED tool call still records a blocked toolResult after the toolUse" )
+	public void testStreamedCancelRecordsToolResult() {
+		String body = streamBody(
+		    converseFrame( "contentBlockStart", "{\"contentBlockIndex\":0,\"start\":{\"toolUse\":{\"toolUseId\":\"t1\",\"name\":\"probe\"}}}" ),
+		    converseFrame( "contentBlockDelta", "{\"contentBlockIndex\":0,\"delta\":{\"toolUse\":{\"input\":\"{\\\"city\\\":\\\"Rome\\\"}\"}}}" ),
+		    converseFrame( "contentBlockStop", "{\"contentBlockIndex\":0}" ),
+		    converseFrame( "messageStop", "{\"stopReason\":\"tool_use\"}" )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				import bxModules.bxai.models.middleware.AiMiddlewareResult;
+				provider = %s
+				tool = aiTool( "probe", "Probe", ( string city = "NONE" ) => city )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-7-sonnet-20250219-v1:0", max_tokens: 50, tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall"   : ( ctx, handler ) => binaryDecode( "%s", "base64" ),
+					"beforeToolCall": ( ctx ) => AiMiddlewareResult::cancel( "policy" )
+				} )
+				provider.chatStream( chatRequest, ( chunk ) => {} )
+
+				// The assistant turn carrying the toolUse block, then the blocked toolResult: a
+				// toolUse with no matching toolResult is a conversation the next call rejects.
+				finalMessages = chatRequest.getMessages()
+				lastContent   = finalMessages.last().content
+				hasToolResult = isArray( lastContent ) && lastContent.some( ( part ) => isStruct( part ) && part.keyExists( "toolResult" ) )
+				blockedText   = jsonSerialize( lastContent ).findNoCase( "Tool call blocked" ) > 0
+			""".formatted( converseService(), body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasToolResult" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "blockedText" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "RF8: a guardContent-only message is Converse dialect, so no InvokeModel fallback is attempted" )
+	public void testGuardContentBlockIsConverseDialect() {
+		// The dialect detector's member list was missing guardContent while converseContentBlock()'s
+		// had it, so a conversation only expressible in Converse looked re-expressible as a vendor
+		// body and a ValidationException triggered a fallback that could only fail again.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				calls = 0
+				chatRequest = aiChatRequest(
+					aiMessage(),
+					{ model: "anthropic.claude-3-7-sonnet-20250219-v1:0", max_tokens: 50 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.setMessages( [ { role: "user", content: [ { guardContent: { text: { text: "check me" } } } ] } ] )
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						calls++
+						return { "error": {
+							"message"   : "Bedrock request failed with status 400: ValidationException: The model does not support Converse.",
+							"statusCode": 400
+						} }
+					}
+				} )
+				errMsg = ""
+				try {
+					provider.chat( chatRequest )
+				} catch ( any e ) {
+					errMsg = e.message
+				}
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		// Exactly ONE leg: the Converse call. No InvokeModel retry.
+		assertThat( variables.getAsInteger( Key.of( "calls" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "RF9: tool_choice 'none' omits toolConfig entirely on the Converse body" )
+	public void testConverseToolChoiceNoneOmitsToolConfig() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				tool = aiTool( "probe", "Probe", () => "ok" )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-7-sonnet-20250219-v1:0", max_tokens: 50, tools: [ tool ], tool_choice: "none" },
+					{ provider: "bedrock" }
+				)
+				seenPacket = {}
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						seenPacket = ctx.dataPacket
+						return { output: { message: { role: "assistant", content: [ { text: "done" } ] } }, stopReason: "end_turn" }
+					}
+				} )
+				provider.chat( chatRequest )
+				hasToolConfig = seenPacket.keyExists( "toolConfig" )
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasToolConfig" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "RF10: `response_format` is not forwarded anywhere in the Converse body" )
+	public void testConverseDropsResponseFormat() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-7-sonnet-20250219-v1:0", max_tokens: 50, response_format: { type: "json_object" } },
+					{ provider: "bedrock" }
+				)
+				seenPacket = {}
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						seenPacket = ctx.dataPacket
+						return { output: { message: { role: "assistant", content: [ { text: "done" } ] } }, stopReason: "end_turn" }
+					}
+				} )
+				provider.chat( chatRequest )
+				mentionsResponseFormat = jsonSerialize( seenPacket ).findNoCase( "response_format" ) > 0
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "mentionsResponseFormat" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "RF11: the bedrockHeaders shorthand goes through the Converse guardrail header filter" )
+	public void testBedrockHeadersShorthandFilteredOnConverse() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				options = {
+					bedrockHeaders: {
+						"X-Amzn-Bedrock-GuardrailIdentifier": "gr-1",
+						"X-Amzn-Bedrock-Service-Tier"       : "flex"
+					}
+				}
+				converseHeaders = provider.buildProviderOptionHeaders( options, "converse" )
+				invokeHeaders   = provider.buildProviderOptionHeaders( options, "invoke" )
+				converseHasGuardrail = converseHeaders.keyExists( "X-Amzn-Bedrock-GuardrailIdentifier" )
+				converseHasTier      = converseHeaders.keyExists( "X-Amzn-Bedrock-Service-Tier" )
+				invokeHasGuardrail   = invokeHeaders.keyExists( "X-Amzn-Bedrock-GuardrailIdentifier" )
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "converseHasGuardrail" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "converseHasTier" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "invokeHasGuardrail" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "RF12: a cross-region openai.* inference profile id gets max_completion_tokens" )
+	public void testCrossRegionOpenAIProfileUsesMaxCompletionTokens() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s", bedrockApi: "invoke" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "us.openai.gpt-oss-120b-1:0", max_tokens: 64 },
+					{ provider: "bedrock" }
+				)
+				seenPacket = {}
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						seenPacket = ctx.dataPacket
+						return { choices: [ { message: { role: "assistant", content: "done" }, finish_reason: "stop" } ] }
+					}
+				} )
+				provider.chat( chatRequest )
+				hasCompletionTokens = seenPacket.keyExists( "max_completion_tokens" )
+				hasMaxTokens        = seenPacket.keyExists( "max_tokens" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasCompletionTokens" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasMaxTokens" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "RF13: streaming structured output over InvokeModel on an OpenAI-shaped model is refused before the call" )
+	public void testStreamingStructuredOutputRefusedForOpenAIInvoke() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s", bedrockApi: "invoke" }
+				)
+				calls = 0
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "openai.gpt-oss-120b-1:0", max_tokens: 64 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.setStructuredOutput( { city: "string" } )
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => { calls++; return "" } } )
+
+				errType = ""
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => {} )
+				} catch ( any e ) {
+					errType = e.type
+				}
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "UnsupportedProviderCapability" );
+		assertThat( variables.getAsInteger( Key.of( "calls" ) ) ).isEqualTo( 0 );
+	}
+
+	@Test
+	@DisplayName( "RF14: two index-less OpenAI-shaped tool fragments with distinct ids become TWO tool calls" )
+	public void testIndexLessToolFragmentsDoNotCollapse() {
+		// Every fragment keyed to "0" when `index` was absent, so N parallel calls collapsed into
+		// one whose arguments were the concatenation of all of them.
+		String body = streamBody(
+		    frame( chunkPayload(
+		        "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"a1\",\"function\":{\"name\":\"probe\",\"arguments\":\"{\\\"city\\\":\\\"Rome\\\"}\"}}]}}]}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload(
+		        "{\"choices\":[{\"delta\":{\"tool_calls\":[{\"id\":\"a2\",\"function\":{\"name\":\"probe\",\"arguments\":\"{\\\"city\\\":\\\"Oslo\\\"}\"}}]}}]}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload( "{\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s", bedrockApi: "invoke" }
+				)
+				seenCities = []
+				tool = aiTool( "probe", "Probe", ( string city = "NONE" ) => { seenCities.append( city ); return city } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "openai.gpt-oss-120b-1:0", max_tokens: 64, tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				turns = 0
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						turns++
+						if ( turns == 1 ) {
+							return binaryDecode( "%s", "base64" )
+						}
+						return jsonSerialize( { bytes: toBase64( charsetDecode(
+							jsonSerialize( { choices: [ { delta: { content: "done" }, finish_reason: "stop" } ] } ), "UTF-8"
+						) ) } )
+					}
+				} )
+				provider.chatStream( chatRequest, ( chunk ) => {} )
+				cityList = seenCities.toList( "," )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION, body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "cityList" ) ) ).isEqualTo( "Rome,Oslo" );
+	}
+
+	@Test
+	@DisplayName( "RF15: a Llama stream reports a normalized finishReason on streamState" )
+	public void testLlamaStreamRecordsFinishReason() {
+		String body = streamBody(
+		    frame( chunkPayload( "{\"generation\":\"hello\"}" ), EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload( "{\"generation\":\"\",\"stop_reason\":\"length\"}" ), EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s", bedrockApi: "invoke" }
+				)
+				seenFinish = ""
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "meta.llama3-70b-instruct-v1:0", max_tokens: 8 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall" : ( ctx, handler ) => binaryDecode( "%s", "base64" ),
+					"afterLLMCall": ( ctx ) => { seenFinish = ctx.streamState.finishReason ?: "" }
+				} )
+				provider.chatStream( chatRequest, ( chunk ) => {} )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION, body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "seenFinish" ) ) ).isEqualTo( "length" );
+	}
+
+	@Test
+	@DisplayName( "RF16: a string-replay frame with an EMPTY bytes value is still processed" )
+	public void testEmptyBytesReplayFrameIsProcessed() {
+		// `[^"]+` skipped an empty bytes value entirely, so a ConverseStream replay whose
+		// contentBlockStop carried no payload never delivered its terminator and the drain then
+		// reported the tool arguments as truncated.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				seenCity = ""
+				tool = aiTool( "probe", "Probe", ( string city = "NONE" ) => { seenCity = city; return city } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-7-sonnet-20250219-v1:0", max_tokens: 50, tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				evt = ( kind, data ) => jsonSerialize( { eventType: kind, bytes: toBase64( charsetDecode( jsonSerialize( data ), "UTF-8" ) ) } )
+				turns = 0
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						turns++
+						if ( turns > 1 ) {
+							return evt( "messageStop", { stopReason: "end_turn" } )
+						}
+						return evt( "contentBlockStart", { contentBlockIndex: 0, start: { toolUse: { toolUseId: "t1", name: "probe" } } } )
+							& evt( "contentBlockDelta", { contentBlockIndex: 0, delta: { toolUse: { input: '{"city":"Rome"}' } } } )
+							& '{"eventType":"contentBlockStop","bytes":""}'
+							& evt( "messageStop", { stopReason: "tool_use" } )
+					}
+				} )
+				provider.chatStream( chatRequest, ( chunk ) => {} )
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "seenCity" ) ) ).isEqualTo( "Rome" );
+	}
+
+	@Test
+	@DisplayName( "RF17: the once-only Converse fallback log is keyed on model id AND reason" )
+	public void testConverseFallbackLogKeyedOnModelAndReason() {
+		// Keyed on the model id alone, resolveBedrockApi()'s read-only rawBody resolution wrote the
+		// key and permanently silenced the far more interesting runtime line — a Converse call that
+		// FAILED with a ValidationException and was re-sent over InvokeModel.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = %s
+				model = "anthropic.claude-3-haiku-20240307-v1:0"
+
+				// Leg 1: rawBody forces invoke through the read-only resolution path.
+				rawReq = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: model, max_tokens: 20 },
+					{ provider: "bedrock", providerOptions: { rawBody: { prompt: "hi" } } }
+				)
+				rawReq.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => { return { content: [ { type: "text", text: "raw" } ], stop_reason: "end_turn" } } } )
+				provider.chat( rawReq )
+
+				// Leg 2: a ValidationException fallback for the SAME model.
+				valReq = aiChatRequest( aiMessage().user( "hi" ), { model: model, max_tokens: 20 }, { provider: "bedrock" } )
+				valReq.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						if ( !( ctx.fallbackRetry ?: false ) ) {
+							return { "error": {
+								"message"   : "Bedrock request failed with status 400: ValidationException: The model does not support Converse.",
+								"statusCode": 400
+							} }
+						}
+						return { content: [ { type: "text", text: "recovered" } ], stop_reason: "end_turn" }
+					}
+				} )
+				answer = provider.chat( valReq )
+
+				logKeys = provider.CONVERSE_FALLBACK_LOGGED.keyArray().filter( ( k ) => k.findNoCase( model ) > 0 )
+				keyCount = logKeys.len()
+			""".formatted( converseService() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "answer" ) ) ).isEqualTo( "recovered" );
+		assertThat( variables.getAsInteger( Key.of( "keyCount" ) ) ).isEqualTo( 2 );
+	}
 }

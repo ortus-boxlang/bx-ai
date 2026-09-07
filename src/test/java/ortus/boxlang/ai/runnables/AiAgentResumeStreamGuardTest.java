@@ -32,6 +32,7 @@ public class AiAgentResumeStreamGuardTest extends BaseIntegrationTest {
 		        claudeSupported = aiService( "claude", { apiKey: "dummy-key" } ).supportsStreamingToolResume()
 		        cohereSupported = aiService( "cohere", { apiKey: "dummy-key" } ).supportsStreamingToolResume()
 		        mockSupported   = aiService( "mock" ).supportsStreamingToolResume()
+		        bedrockSupported = aiService( "bedrock", { awsAccessKeyId: "AKIAIOSFODNN7EXAMPLE", awsSecretAccessKey: "x", region: "us-east-1" } ).supportsStreamingToolResume()
 
 		        // Voyage extends BaseService directly and has no streaming tool machinery at all
 		        voyageSupported = aiService( "voyage", { apiKey: "dummy-key" } ).supportsStreamingToolResume()
@@ -44,6 +45,7 @@ public class AiAgentResumeStreamGuardTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "claudeSupported" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "cohereSupported" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "mockSupported" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bedrockSupported" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "voyageSupported" ) ) ).isFalse();
 	}
 

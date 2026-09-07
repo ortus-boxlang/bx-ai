@@ -153,6 +153,56 @@ public class StreamCallbackPropagationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "totalTokens" ) ) ).isEqualTo( 7 );
 	}
 
+	@DisplayName( "Mock: a caller stream-callback exception propagates, is announced, and usage is still accounted for" )
+	@Test
+	public void testMockStreamCallbackErrorPropagatesAndAnnounces() {
+		// The mock has no HTTP client between its emission and the caller's callback, so the
+		// guard/holder plumbing has to live in the mock's own transport — otherwise a callback that
+		// throws mid-stream escapes with no onAIError and skips the onAITokenCount of a call the
+		// provider already "billed".
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        errorEvents = 0
+		        BoxRegisterInterceptor( function( data ) { errorEvents++ }, "onAIError" )
+		        tokenEvents = 0
+		        BoxRegisterInterceptor( function( data ) { tokenEvents++ }, "onAITokenCount" )
+
+		        provider = aiService( "mock" )
+		        provider.setResponses( [ "one two three four" ] )
+
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "hi" ),
+		            { model: "mock-model" },
+		            { provider: "mock" }
+		        )
+
+		        chunks  = 0
+		        errType = ""
+		        errMsg  = ""
+		        try {
+		            provider.chatStream( chatRequest, ( chunk ) => {
+		                chunks++
+		                throw( type: "CallerBoom", message: "caller callback failed" )
+		            } )
+		        } catch ( any e ) {
+		            errType = e.type
+		            errMsg  = e.message
+		        }
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "CallerBoom" );
+		assertThat( variables.get( Key.of( "errMsg" ) ).toString() ).contains( "caller callback failed" );
+		assertThat( variables.getAsInteger( Key.of( "errorEvents" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "tokenEvents" ) ) ).isEqualTo( 1 );
+		// The stream stops at the first failed emission instead of pushing every remaining word
+		// into a callback that has already blown up.
+		assertThat( variables.getAsInteger( Key.of( "chunks" ) ) ).isEqualTo( 1 );
+	}
+
 	@DisplayName( "BaseService.sendStreamRequest: a malformed frame is still logged and skipped, not raised" )
 	@Test
 	public void testMalformedFrameIsStillSwallowed() throws Exception {

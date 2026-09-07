@@ -35,23 +35,25 @@
  * Steps 4/5 are cached in a store SHARED across instances (see credentialCacheKey()) and refreshed
  * once within 5 minutes of expiry.
  *
- * Tool calling and schema-typed structured output are only wired up for Claude-family
- * models on Bedrock (Claude's tool-use API); requesting either on any other family
- * throws `UnsupportedProviderCapability` instead of silently dropping them.
+ * Tools and schema-typed structured output are model-agnostic on the Converse API (one
+ * `toolConfig`, one forced `toolChoice`), which is the default. On the InvokeModel path they are
+ * gated: NO_TOOL_SUPPORT_FAMILIES (titan, llama, mistral) and legacy Cohere Command support
+ * neither, and the whole Cohere family is gated for structured output. A gated request throws
+ * `UnsupportedProviderCapability` rather than silently dropping the capability.
  *
  * Supported model families:
  * - Anthropic Claude (claude-3-*, claude-instant-*) — tools + structured output
  * - Amazon Titan (amazon.titan-*, amazon.titan-embed-text-v1/v2 for embeddings)
  * - Meta Llama (meta.llama-*)
- * - Cohere (cohere.*) — uses the Claude-shape transform, no dedicated Cohere transform;
- *   cohere.embed-* is supported for embeddings via its own batched embed shape
+ * - Cohere (cohere.*) — has its own transform (transformRequestForCohere), which picks Command
+ *   R's `chat` body or legacy Command's `generate` body from the model id; cohere.embed-* is
+ *   supported for embeddings via its own batched embed shape
  * - Legacy Mistral (mistral.mistral-7b-instruct-*, mixtral-*, mistral-large/small-2402-*)
  * - Opaque inference-profile / provisioned-model ARNs with no vendor substring — assumed
  *   Claude, preserving the historical default for the common case
  * - Everything else (AI21 Jamba, modern Mistral, Amazon Nova, and other post-2024 families)
- *   — OpenAI shape. No dedicated Nova transform exists yet (tracked under #227's Converse
- *   discussion), so Nova requests 400 loudly against this fallback instead of silently
- *   mis-parsing.
+ *   — served by Converse by default, which is model-agnostic and needs no per-vendor transform.
+ *   Forced onto InvokeModel they fall through to the OpenAI-shaped transform.
  *
  * @see https://docs.aws.amazon.com/bedrock/latest/userguide/what-is-bedrock.html
  * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
@@ -258,6 +260,14 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// param (thinking, top_k, reasoning_effort, anthropic_beta, …) goes to
 		// additionalModelRequestFields verbatim.
 		CONVERSE_NATIVE_PARAMS = "model,stream,messages,tools,tool_choice,response_format,max_tokens,max_completion_tokens,max_gen_len,temperature,top_p,stop,stop_sequences,system,anthropic_version";
+		// extendedInfo marker on a BedrockStreamError that has ALREADY been announced on onAIError
+		// (throwBedrockStreamError does the announce). Every other BedrockStreamError throw has
+		// not, so the stream catch announces those rather than keying on the type.
+		BEDROCK_ERROR_ANNOUNCED = "bedrockErrorAnnounced";
+		// Every Converse ContentBlock member the module recognizes. One list, used both by the
+		// dialect detector and the fallback check — they had drifted, and guardContent was in one
+		// and not the other.
+		CONVERSE_CONTENT_BLOCK_KEYS = [ "text", "image", "document", "video", "toolUse", "toolResult", "guardContent", "reasoningContent", "cachePoint" ];
 	}
 
 	/**
@@ -1424,19 +1434,25 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
-	 * Log an InvokeModel fallback exactly once per model id per JVM, at info on the `ai` log.
-	 * The set lives in static.CONVERSE_FALLBACK_LOGGED for the same reason CREDENTIAL_CACHE does:
-	 * aiService() constructs a fresh provider per call, so an instance-scoped set would make
-	 * "once" mean "every request".
+	 * Log an InvokeModel fallback exactly once per model id AND REASON per JVM, at info on the
+	 * `ai` log. The set lives in static.CONVERSE_FALLBACK_LOGGED for the same reason
+	 * CREDENTIAL_CACHE does: aiService() constructs a fresh provider per call, so an
+	 * instance-scoped set would make "once" mean "every request".
+	 *
+	 * Keyed on model id + reason, not the model id alone: resolveBedrockApi() writes this key from
+	 * its read-only resolution path (rawBody / the no-Converse list), so a model that had ever
+	 * resolved that way permanently silenced the far more interesting runtime log — the one saying
+	 * a Converse call FAILED with a ValidationException and was re-sent over InvokeModel.
 	 *
 	 * @modelId The model id that fell back
 	 * @reason  Why it fell back, for the log line
 	 */
 	private void function logConverseFallbackOnce( required string modelId, required string reason ){
-		if ( static.CONVERSE_FALLBACK_LOGGED.keyExists( arguments.modelId ) ) {
+		var logKey = arguments.modelId & "|" & arguments.reason;
+		if ( static.CONVERSE_FALLBACK_LOGGED.keyExists( logKey ) ) {
 			return;
 		}
-		static.CONVERSE_FALLBACK_LOGGED[ arguments.modelId ] = true;
+		static.CONVERSE_FALLBACK_LOGGED[ logKey ] = true;
 		writeLog(
 			text: "Bedrock: falling back from the Converse API to InvokeModel for model [#arguments.modelId#] — #arguments.reason#",
 			type: "info",
@@ -1529,7 +1545,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				if ( part.keyExists( "type" ) ) {
 					continue;
 				}
-				for ( var member in [ "toolUse", "toolResult", "reasoningContent", "cachePoint", "text", "image", "document", "video" ] ) {
+				for ( var member in static.CONVERSE_CONTENT_BLOCK_KEYS ) {
 					if ( part.keyExists( member ) ) {
 						return true;
 					}
@@ -1571,9 +1587,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Every other Bedrock family — ai21 Jamba (OpenAI-shaped; no dedicated branch needed),
 		// zai/GLM, qwen, deepseek, moonshotai/Kimi, minimax, nvidia/Nemotron, google/gemma,
 		// modern Mistral (Ministral 3, Magistral, Devstral, Voxtral, Mistral-Large-2407+),
-		// plain openai/gpt-oss, Amazon Nova (no dedicated transform exists yet — see #227's
-		// Converse API discussion — so it 400s loudly here instead of silently mis-parsing),
-		// and anything unrecognized — speaks the OpenAI chat-completions shape on Bedrock.
+		// plain openai/gpt-oss, Amazon Nova and anything unrecognized — is served by Converse by
+		// default; this family name only decides the InvokeModel body, where they all speak the
+		// OpenAI chat-completions shape on Bedrock.
 		// Defaulting here (rather than to Claude) means an unsupported model fails loudly
 		// against the wrong shape instead of transformResponseFromClaude() silently returning "".
 		return "openai";
@@ -1740,6 +1756,51 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		}
 		return "Use a Claude (anthropic.claude-*), OpenAI-shaped (openai.gpt-oss-*) or Cohere Command R "
 			& "(cohere.command-r*) model on Bedrock for tool calling.";
+	}
+
+	/**
+	 * Refuse schema-typed structured output on the STREAMING InvokeModel path for the OpenAI-shaped
+	 * families.
+	 *
+	 * The sync InvokeModel path serves these models' structured output through their native
+	 * `response_format`, read back off the finished response body. Streaming has nowhere to read it
+	 * back from: the streaming accumulator only knows how to collect a FORCED TOOL block (Claude's,
+	 * and Converse's synthetic one), and no openai.* body on Bedrock produces one. So the request
+	 * ran, was billed, streamed prose, and then either returned prose where a typed struct was
+	 * promised or died in the populator. Refused BEFORE the call instead.
+	 *
+	 * @modelFamily The detected model family
+	 * @bedrockApi  The resolved runtime API ("converse" | "invoke")
+	 * @chatRequest The chat request
+	 *
+	 * @throws UnsupportedProviderCapability
+	 */
+	private void function assertStreamingStructuredOutputSupported(
+		required string modelFamily,
+		required string bedrockApi,
+		required AiChatRequest chatRequest
+	){
+		if (
+			arguments.bedrockApi == "converse"
+			|| arguments.modelFamily != "openai"
+			|| !arguments.chatRequest.isStructuredOutput()
+		) {
+			return;
+		}
+
+		writeLog(
+			text: "Bedrock: schema-typed structured output is not supported when STREAMING an OpenAI-shaped model over InvokeModel "
+				& "(the native response_format is only readable from a complete response body)",
+			type: "error",
+			log : "ai"
+		);
+		throw(
+			type   : "UnsupportedProviderCapability",
+			message: "Bedrock model family 'openai' does not support schema-typed structured output when streaming over InvokeModel "
+				& "(its native response_format can only be read back from a complete response). "
+				& "Use chat() instead of chatStream(), or the Converse API (bedrockApi='converse'). "
+				& capabilityRemediation( true )
+		);
 	}
 
 	/**
@@ -1918,7 +1979,20 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			} );
 		}
 
-		if ( toolSpecs.len() ) {
+		// tool_choice "none" means "do not call a tool". Converse's ToolChoice union has no `none`
+		// member, so converseToolChoice() maps it to {} — which sent the tools with NO toolChoice,
+		// i.e. Converse's default of `auto`. The only way to express "none" on this API is to omit
+		// toolConfig altogether. Structured output forces a tool and therefore overrides it.
+		var suppressTools = !wantsStructured && lcase( trim( arguments.params.tool_choice ?: "" ) ) == "none";
+		if ( suppressTools ) {
+			writeLog(
+				text: "Bedrock Converse: tool_choice 'none' — omitting toolConfig entirely (Converse has no ToolChoice 'none' member, so sending the tools would let the model call them)",
+				type: "debug",
+				log : "ai"
+			);
+		}
+
+		if ( toolSpecs.len() && !suppressTools ) {
 			var toolConfig = { "tools": toolSpecs };
 			var toolChoice = wantsStructured
 				? { "tool": { "name": static.STRUCTURED_OUTPUT_TOOL } }
@@ -1967,6 +2041,21 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				text: "Bedrock Converse: guardrail provider options were supplied but could not be mapped onto guardrailConfig "
 					& "(identifier=#len( guardrailId ) ? "set" : "missing"#, version=#len( guardrailVersion ) ? "set" : "missing"#) — "
 					& "the X-Amzn-Bedrock-Guardrail* headers are NOT sent on the Converse API, so this request runs WITHOUT a guardrail",
+				type: "warning",
+				log : "ai"
+			);
+		}
+
+		// ---- response_format ------------------------------------------------------------------
+		// Converse has NO response_format field (it is not in CONVERSE_NATIVE_PARAMS' company by
+		// accident — it IS listed there precisely so it is never forwarded to
+		// additionalModelRequestFields, where the model would reject it). When the module is doing
+		// structured output itself, the forced tool above already covers it. Otherwise the caller
+		// asked for a response shape that this API silently cannot honour, so say so.
+		if ( !wantsStructured && !isNull( arguments.params.response_format ) && !isEmpty( arguments.params.response_format ) ) {
+			writeLog(
+				text: "Bedrock Converse: `response_format` was supplied but the Converse API has no such field — it was DROPPED and this request runs with no response-format constraint. "
+					& "Use the module's structured output (aiChatRequest().structuredOutput()) or set bedrockApi='invoke' for a model whose native body supports it",
 				type: "warning",
 				log : "ai"
 			);
@@ -2133,7 +2222,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Already Converse-shaped: a ContentBlock is a union with exactly one member and no
 		// discriminating `type` key, which is precisely what the module's own block shapes have.
 		if ( !arguments.part.keyExists( "type" ) ) {
-			for ( var member in [ "text", "image", "document", "video", "toolUse", "toolResult", "reasoningContent", "cachePoint", "guardContent" ] ) {
+			for ( var member in static.CONVERSE_CONTENT_BLOCK_KEYS ) {
 				if ( arguments.part.keyExists( member ) ) {
 					return arguments.part;
 				}
@@ -2739,7 +2828,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// OpenAI, where the field is max_tokens — emitting the newer spelling to them was an
 		// unknown-field rejection.
 		var maxTokensValue = arguments.params.max_completion_tokens ?: arguments.params.max_tokens ?: 4096;
-		result[ arguments.modelId.lcase().startsWith( "openai." ) ? "max_completion_tokens" : "max_tokens" ] = maxTokensValue;
+		// Anchored on the start OR a dot, so the cross-region inference profile ids AWS returns
+		// ("us.openai.gpt-oss-120b-1:0", "eu.openai.…") match too — startsWith() saw only the
+		// region prefix and sent max_tokens, which these models reject.
+		result[ reFindNoCase( "(^|\.)openai\.", arguments.modelId ) ? "max_completion_tokens" : "max_tokens" ] = maxTokensValue;
 
 		// Tools use the OpenAI function schema, which is exactly what BaseTool.getSchema() emits —
 		// the same helper OpenAIService.chat() uses to build its own packet.
@@ -4066,7 +4158,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			var tool     = toolAttempt.get()
 			// editedArgs (a human edit) > ledger toolArgs (pass-1 middleware rewrites) > the raw call
 			// (checkpoints written before the ledger carried toolArgs).
-			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs
+			var toolArgs = isStruct( ledgerEntry.editedArgs ?: "" ) ? ledgerEntry.editedArgs
 				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : toolCallArgs( toolCall ) )
 			var capturedTool = tool
 			var capturedArgs = toolArgs
@@ -4721,33 +4813,6 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	}
 
 	/**
-	 * Build extra request headers driven by providerOptions:
-	 *   - Generic passthrough: any providerOptions key already shaped like a Bedrock header
-	 *     (matches `x-amzn-bedrock-*`, case-insensitive) is forwarded verbatim. Keys must be the
-	 *     FULL header name — `X-Amzn-Bedrock-Service-Tier`, not `Service-Tier` — since the regex
-	 *     anchors on the prefix and a bare suffix is silently ignored. Covers ad-hoc headers like
-	 *     X-Amzn-Bedrock-PerformanceConfig-Latency / -Service-Tier / -Request-Metadata / -Trace.
-	 *   - Struct shorthand: `providerOptions.bedrockHeaders = { "X-Amzn-Bedrock-...": "value" }`.
-	 *     Appended verbatim, so the same full-name rule applies — this struct is NOT prefixed for
-	 *     you, and a bare suffix becomes a header name Bedrock does not recognize.
-	 *   - First-class Guardrails: `guardrailIdentifier` / `guardrailVersion` map to
-	 *     X-Amzn-Bedrock-GuardrailIdentifier / -GuardrailVersion, and `guardrailTrace` maps to
-	 *     `X-Amzn-Bedrock-Trace` (values ENABLED / DISABLED / ENABLED_FULL) — which is the header
-	 *     InvokeModel's Request Syntax and URI Request Parameters actually document, and the one
-	 *     that produces the `amazon-bedrock-trace.guardrails` block in the response body. AWS's own
-	 *     reference is self-inconsistent here: its "Use a guardrail" EXAMPLE additionally shows an
-	 *     `X-Amzn-Bedrock-GuardrailTrace` header alongside `X-Amzn-Bedrock-Trace`, but no such
-	 *     parameter appears in either authoritative section. A caller who wants that variant can
-	 *     send it through the generic passthrough above; we deliberately send the documented one.
-	 *     @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
-	 *
-	 * Pure/no I/O, so it's directly unit-testable without a signer or HTTP call.
-	 *
-	 * @providerOptions An AiBaseRequest's providerOptions struct (chatRequest.getProviderOptions())
-	 *
-	 * @return Struct of header name -> value to add to the Bedrock InvokeModel request
-	 */
-	/**
 	 * Count the input tokens a request would consume, without invoking the model.
 	 *
 	 * POSTs the request's Converse-shaped `messages` / `system` / `toolConfig` to
@@ -4756,9 +4821,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 *
 	 * CountTokensInput is a union of exactly one of `converse` or `invokeModel` (the latter's `body`
 	 * is a blob: the vendor JSON's UTF-8 bytes, base64-encoded on the REST wire). The form used is
-	 * chosen by resolveBedrockApi() — the same resolver the chat call itself uses, minus the
-	 * previous call's runtime fallback decision, which the next call clears — so the count is of
-	 * the body that will actually be sent.
+	 * chosen by resolveBedrockApi() with `honourRuntimeDecision = false`.
+	 *
+	 * THE SCOPE OF THE COUNT: this is the API a FRESH logical call for this request would use — not
+	 * necessarily the one a mid-loop follow-up would. If the request is currently inside a tool
+	 * loop, or is being resumed, and its FIRST turn fell back from Converse to InvokeModel at
+	 * runtime (stickBedrockApi()), that decision sticks for the remaining turns but is deliberately
+	 * ignored here: honouring it would make countTokens() report against a fallback the caller may
+	 * never trigger, and the resolver's read-only path must not itself mutate or consume the stuck
+	 * decision. Call countTokens() before starting the conversation for the number that matches it.
 	 *
 	 * @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_CountTokens.html
 	 *
@@ -4889,6 +4960,33 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		return "";
 	}
 
+	/**
+	 * Build extra request headers driven by providerOptions:
+	 *   - Generic passthrough: any providerOptions key already shaped like a Bedrock header
+	 *     (matches `x-amzn-bedrock-*`, case-insensitive) is forwarded verbatim. Keys must be the
+	 *     FULL header name — `X-Amzn-Bedrock-Service-Tier`, not `Service-Tier` — since the regex
+	 *     anchors on the prefix and a bare suffix is silently ignored. Covers ad-hoc headers like
+	 *     X-Amzn-Bedrock-PerformanceConfig-Latency / -Service-Tier / -Request-Metadata / -Trace.
+	 *   - Struct shorthand: `providerOptions.bedrockHeaders = { "X-Amzn-Bedrock-...": "value" }`.
+	 *     Appended verbatim, so the same full-name rule applies — this struct is NOT prefixed for
+	 *     you, and a bare suffix becomes a header name Bedrock does not recognize.
+	 *   - First-class Guardrails: `guardrailIdentifier` / `guardrailVersion` map to
+	 *     X-Amzn-Bedrock-GuardrailIdentifier / -GuardrailVersion, and `guardrailTrace` maps to
+	 *     `X-Amzn-Bedrock-Trace` (values ENABLED / DISABLED / ENABLED_FULL) — which is the header
+	 *     InvokeModel's Request Syntax and URI Request Parameters actually document, and the one
+	 *     that produces the `amazon-bedrock-trace.guardrails` block in the response body. AWS's own
+	 *     reference is self-inconsistent here: its "Use a guardrail" EXAMPLE additionally shows an
+	 *     `X-Amzn-Bedrock-GuardrailTrace` header alongside `X-Amzn-Bedrock-Trace`, but no such
+	 *     parameter appears in either authoritative section. A caller who wants that variant can
+	 *     send it through the generic passthrough above; we deliberately send the documented one.
+	 *     @see https://docs.aws.amazon.com/bedrock/latest/APIReference/API_runtime_InvokeModel.html
+	 *
+	 * Pure/no I/O, so it's directly unit-testable without a signer or HTTP call.
+	 *
+	 * @providerOptions An AiBaseRequest's providerOptions struct (chatRequest.getProviderOptions())
+	 *
+	 * @return Struct of header name -> value to add to the Bedrock InvokeModel request
+	 */
 	public struct function buildProviderOptionHeaders( required struct providerOptions, string operation = "invoke" ){
 		var extraHeaders = {};
 		// Converse models guardrails and performance config as first-class REQUEST BODY fields
@@ -4906,8 +5004,18 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		}
 
 		if ( isConverse ) {
+			// The bedrockHeaders shorthand goes through the SAME guardrail/trace/performanceconfig
+			// filter as the loose keys above. Appended verbatim it bypassed it entirely, so a
+			// caller who set guardrails the header way sent them BOTH as headers and (via
+			// transformRequestForConverse's header-spelling lookups) as guardrailConfig in the body
+			// — the double-specification 400 the filter exists to prevent.
 			if ( arguments.providerOptions.keyExists( "bedrockHeaders" ) && isStruct( arguments.providerOptions.bedrockHeaders ) ) {
-				extraHeaders.append( arguments.providerOptions.bedrockHeaders, true );
+				for ( var shorthandKey in arguments.providerOptions.bedrockHeaders ) {
+					if ( shorthandKey.reFindNoCase( "^x-amzn-bedrock-(guardrail|trace$|performanceconfig)" ) ) {
+						continue;
+					}
+					extraHeaders[ shorthandKey ] = arguments.providerOptions.bedrockHeaders[ shorthandKey ];
+				}
 			}
 			return extraHeaders;
 		}
@@ -5300,6 +5408,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Fail loudly if tools / schema-typed structured output were requested on a family this
 		// module doesn't wire them up for, instead of silently dropping them. Invoke path only.
 		assertCapabilitySupported( detectModelFamily( modelId ), arguments.chatRequest, modelId, streamBedrockApi );
+		assertStreamingStructuredOutputSupported( modelFamily, streamBedrockApi, arguments.chatRequest );
 
 		// Build the request body for whichever API is on the wire. On the Converse path the
 		// structured-output schema goes out as the forced synthetic tool for EVERY family; on the
@@ -5345,7 +5454,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				&& ( ( local.streamAttempt.transportFailed ?: false ) || !( local.streamAttempt.transportRan ?: false ) );
 			if (
 				local.streamBedrockApi != "converse"
-				|| !streamFellOverBeforeAnyOutput
+				|| !local.streamFellOverBeforeAnyOutput
 				|| !canFallbackToInvoke( arguments.chatRequest, arguments.interactionCount )
 				|| !shouldFallbackToInvoke( e.message & " " & ( e.detail ?: "" ) )
 			) {
@@ -5360,6 +5469,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			stickBedrockApi( arguments.chatRequest, "invoke" );
 			local.modelFamily          = detectModelFamily( local.modelId );
 			assertCapabilitySupported( local.modelFamily, arguments.chatRequest, local.modelId, "invoke" );
+			// The Converse leg served structured output through its synthetic forced tool; the
+			// InvokeModel leg for an OpenAI-shaped family cannot, and silently degrading here
+			// returned prose where a typed struct was promised.
+			assertStreamingStructuredOutputSupported( local.modelFamily, "invoke", arguments.chatRequest );
 			local.dataPacket           = buildBedrockChatPacket( arguments.chatRequest, local.modelId, "invoke", true );
 			local.usingStructuredOutput = arguments.chatRequest.isStructuredOutput() && local.modelFamily == "claude";
 			// isFallbackRetry: the body was rebuilt from scratch against a different API, so
@@ -5395,15 +5508,19 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				var structuredResult = populateStructuredOutput( structuredJSON, arguments.chatRequest );
 				// Emitted on the normalized envelope as `choices[].delta.structured_output` AND
 				// returned, matching ClaudeService.chatStream()'s contract exactly.
-				arguments.callback( {
-					"model"   : modelId,
-					"object"  : "chat.completion.chunk",
-					"choices" : [ {
-						"index"         : 0,
-						"finish_reason" : "stop",
-						"delta"         : { "role": "assistant", "structured_output": structuredResult }
-					} ]
-				} );
+				emitStreamChunkGuarded(
+					arguments.callback,
+					{
+						"model"   : modelId,
+						"object"  : "chat.completion.chunk",
+						"choices" : [ {
+							"index"         : 0,
+							"finish_reason" : "stop",
+							"delta"         : { "role": "assistant", "structured_output": structuredResult }
+						} ]
+					},
+					arguments.chatRequest
+				);
 				return structuredResult;
 			}
 
@@ -5434,7 +5551,20 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// anything: both families only finalized on a happy-path terminator, so a stream that ended
 		// on stop/length (or was truncated mid input_json_delta) used to run every tool with `{}`.
 		// Throws BedrockStreamError when a buffer is truncated — the tools do not run.
-		drainPendingStreamToolCalls( streamState, modelFamily, modelId, arguments.callback );
+		// The drain runs AFTER sendBedrockStreamRequest() has returned, so its throw is outside that
+		// method's catch and reached the caller with no onAIError at all — a billed call that failed
+		// and left audit/replay middleware no record of it.
+		try {
+			drainPendingStreamToolCalls( streamState, modelFamily, modelId, arguments.callback );
+		} catch ( any e ) {
+			announceBedrockError(
+				error     = { "message" : e.message },
+				aiRequest = arguments.chatRequest,
+				operation = "stream",
+				canRetry  = false
+			);
+			rethrow;
+		}
 
 		// drainPendingStreamToolCalls() above either finalized every buffer or threw, so by here
 		// an entry in toolCalls has real arguments.
@@ -5501,7 +5631,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
 			// Cancel aborts the run outright — a cancelled run is never resumed, so nothing to batch.
+			// The blocked toolResult is still recorded, exactly as chat() does: the assistant turn
+			// with the toolUse block is already in `messages`, and a toolUse with no matching
+			// toolResult is a malformed conversation the next Bedrock call rejects outright.
 			if ( toolBeforeResult.isCancelled() ) {
+				messages.append( buildToolResultMessage( toolCall, "[Tool call blocked: #toolBeforeResult.getReason()#]", modelFamily, "error" ) );
 				terminalToolResult = toolBeforeResult
 				break
 			}
@@ -5510,7 +5644,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		}
 
 		if ( isObject( terminalToolResult ) ) {
-			userCallback( { type: "middleware_stop", result: terminalToolResult } )
+			emitStreamChunkGuarded( userCallback, { type: "middleware_stop", result: terminalToolResult }, thisChatRequest )
 			return
 		}
 
@@ -5538,7 +5672,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 			if ( batchResult.isTerminal() ) {
 				if ( !batchResult.isSuspended() ) {
-					userCallback( { type: "middleware_stop", result: batchResult } )
+					emitStreamChunkGuarded( userCallback, { type: "middleware_stop", result: batchResult }, thisChatRequest )
 					return
 				}
 				var resumeLedger = batch.map( ( entry ) => {
@@ -5557,7 +5691,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				// follow-up turn in the same one (see resumeToolBatch()).
 				mergedData[ "toolDialect" ]      = modelFamily
 				mergedData[ "bedrockApi" ]       = resolveBedrockApi( thisChatRequest, resolveModelId( thisChatRequest ) )
-				userCallback( { type: "middleware_stop", result: AiMiddlewareResult.suspend( mergedData ) } )
+				emitStreamChunkGuarded( userCallback, { type: "middleware_stop", result: AiMiddlewareResult.suspend( mergedData ) }, thisChatRequest )
 				return
 			}
 			// continue: afterToolBatch() decided nothing needs to stay pending after all.
@@ -5701,7 +5835,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 
 			var tool         = toolAttempt.get()
-			var toolArgs     = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs
+			var toolArgs     = isStruct( ledgerEntry.editedArgs ?: "" ) ? ledgerEntry.editedArgs
 				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : toolCallArgs( toolCall ) )
 			var capturedTool = tool
 			var capturedArgs = toolArgs
@@ -5782,7 +5916,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		};
 		var streamLlmBefore = arguments.aiRequest.fireMiddleware( "beforeLLMCall", streamContext );
 		if( streamLlmBefore.isTerminal() ){
-			arguments.callback( { type: "middleware_stop", result: streamLlmBefore } )
+			emitStreamChunkGuarded( arguments.callback, { type: "middleware_stop", result: streamLlmBefore }, arguments.aiRequest )
 			return { "terminated": true }
 		}
 
@@ -5895,6 +6029,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// streamed reasoning too, matching the sync path's derived copy.
 		var bedrockReasoning = "";
 		var userStreamCallback = arguments.callback;
+		// Owned HERE, not by the parser, so a mid-stream callback exception is re-raised only after
+		// the usage below has been announced: the model was already called and billed by the time a
+		// chunk reached the caller, and a billed call that loses its onAITokenCount is a hole in
+		// every cost/audit listener. Mirrors OpenAIService.chatStream.
+		var streamCallbackError = newStreamCallbackErrorHolder();
 		var usageCapturingCallback = ( chunk ) => {
 			// Capture usage data from the normalized chunk if present
 			if( !isNull( chunk.usage ) && isStruct( chunk.usage ) ){
@@ -5916,7 +6055,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			// Marked BEFORE the callback runs: once the caller has been handed a chunk, this stream
 			// can never be retried over another API without replaying output it already consumed.
 			capturedStreamAttempt[ "delivered" ] = true;
-			userStreamCallback( chunk );
+			emitStreamChunkGuarded( userStreamCallback, chunk, capturedAiRequest, streamCallbackError );
 		};
 
 		// Held in a named variable rather than built inline in the context: middleware mutates this
@@ -5942,7 +6081,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			"structuredOutputJSON": "",
 			"stopReason"          : "",
 			"reasoningSignature"  : "",
-			"usage"               : {}
+			"usage"               : {},
+			// Declared here rather than lazily created by the first accumulator that needs them:
+			//   finalizedToolCalls    - blockKey -> true, so the end-of-stream drain can tell a
+			//                           closed argument buffer from one the stream never closed
+			//   structuredOutputIndex - the blockKey of the forced structured_output tool's block
+			//   cohereCallBatchId     - per-stream id suffix for Cohere's positional tool-call ids
+			"finalizedToolCalls"   : {},
+			"structuredOutputIndex": "",
+			"cohereCallBatchId"    : ""
 		};
 
 		try {
@@ -5956,11 +6103,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				streamState  = streamState
 			);
 		} catch ( any e ) {
-			// The caller's stream callback runs unguarded inside the parser, so its exception lands
-			// here after the model has already been billed. Announce it — a failure with no
-			// onAIError leaves audit/replay middleware with no record of a call that happened.
-			// Exception FRAMES were already announced by throwBedrockStreamError(); skip those.
-			if ( e.type != "BedrockStreamError" ) {
+			// The caller's stream callback exception lands here after the model has already been
+			// billed. Announce it — a failure with no onAIError leaves audit/replay middleware with
+			// no record of a call that happened. Only skip the announce for something that has
+			// ALREADY announced: an exception FRAME (throwBedrockStreamError marks it) or a captured
+			// caller-callback error (captureStreamCallbackError announced it). Keying on the type
+			// alone silenced the malformed-frame / truncated-tool-arguments / drain throws too.
+			var alreadyAnnounced = local.streamCallbackError.captured
+				|| ( e.extendedInfo ?: "" ) == static.BEDROCK_ERROR_ANNOUNCED;
+			if ( !local.alreadyAnnounced ) {
 				announceBedrockError(
 					error     = { "message" : e.message },
 					aiRequest = arguments.aiRequest,
@@ -5968,7 +6119,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					canRetry  = false
 				);
 			}
-			rethrow;
+			// A captured caller-callback error is NOT re-raised here: the usage below has to be
+			// announced first (the call was billed), and rethrowStreamCallbackError() re-raises it
+			// after that, before afterLLMCall. Mirrors OpenAIService.chatStream.
+			if ( !local.streamCallbackError.captured ) {
+				rethrow;
+			}
 		}
 
 		// -------------------------------------------------------------------------------------------
@@ -6005,6 +6161,10 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				"streamComplete" : true
 			}
 		);
+
+		// Usage is accounted for; now let the caller's own callback exception out - before
+		// afterLLMCall, which describes a call that produced a complete response.
+		rethrowStreamCallbackError( streamCallbackError );
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire afterLLMCall middleware (streaming), in reverse order ---
@@ -6139,16 +6299,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				);
 			}
 
-			boxAnnounce(
-				"onAIError",
-				{
-					error        : { "message" : errorMessage, "statusCode" : statusCode },
-					errorMessage : errorMessage,
-					provider     : this,
-					operation    : "stream",
-					aiRequest    : arguments.aiRequest,
-					canRetry     : statusCode >= 500 || statusCode == 429
-				}
+			announceBedrockError(
+				error     = { "message" : errorMessage, "statusCode" : statusCode },
+				aiRequest = arguments.aiRequest,
+				operation = "stream",
+				canRetry  = statusCode >= 500 || statusCode == 429
 			);
 
 			throw( type: "ProviderError", message: errorMessage );
@@ -6215,7 +6370,20 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			// — the reverse of the order the old anchored pattern required, and every such replay
 			// matched nothing at all. `[^{}]*` cannot cross a brace, so a match is exactly one
 			// frame object; the event name is read back off the deserialized struct below.
-			var jsonMatches = reMatchNoCase( '\{[^{}]*"bytes":"[^"]+"[^{}]*\}', data );
+			// `[^"]*`, not `[^"]+`: an EMPTY bytes value is a legitimate frame. ConverseStream's
+			// contentBlockStop / messageStop payloads can be empty objects, so a replay that
+			// base64-encodes `{}`-ish content to "" was skipped entirely and the stream never saw
+			// its terminator — which the drain then reported as truncated tool arguments.
+			var jsonMatches = reMatchNoCase( '\{[^{}]*"bytes":"[^"]*"[^{}]*\}', data );
+			if ( !jsonMatches.len() && len( trim( data ) ) ) {
+				writeLog(
+					text: "parseBedrockEventStream - A non-empty STRING stream body matched no `{""bytes"":...}` frames (#len( data )# chars): "
+						& "the replay contract is a concatenation of {""bytes"":""<base64>""} objects (ConverseStream frames must also carry ""eventType""). "
+						& "Nothing was streamed to the caller. First 200 chars: #left( data, 200 )#",
+					type: "warning",
+					log : "ai"
+				);
+			}
 			for ( var match in jsonMatches ) {
 				var replayEventType = "";
 				try {
@@ -6304,9 +6472,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			var eventType     = eventHeaders[ ":event-type" ] ?: "";
 
 			if ( len( exceptionType ) || listFindNoCase( "exception,error", messageType ) ) {
+				// An exception frame whose payload is empty or truncated still carries the message
+				// in the `:error-message` header (that is where ConverseStream puts it); dropping
+				// to "" produced a bare "Bedrock stream error [throttlingException]" with no detail.
 				var errorPayload = ( payloadLength > 0 && payloadStart + payloadLength - 1 <= dataLength )
 					? readEventStreamString( bytes, payloadStart, payloadLength )
-					: "";
+					: ( eventHeaders[ ":error-message" ] ?: "" );
 				throwBedrockStreamError( exceptionType, errorPayload, arguments.aiRequest );
 			}
 
@@ -6328,6 +6499,21 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				// stream that quietly kept going.
 				processBedrockEvent( payloadStr, arguments.modelFamily, arguments.modelId, arguments.callback, arguments.streamState, eventType );
 				eventCount++;
+			} else if ( payloadLength > 0 ) {
+				// The frame declares a payload the delivered bytes do not contain: the stream was
+				// cut mid-payload. Silently skipping it let the walk fall out of the loop and
+				// report a normal, complete stream — a truncated answer indistinguishable from a
+				// short one.
+				writeLog(
+					text: "parseBedrockEventStream - Malformed/truncated event payload at position #position# (payloadStart=#payloadStart#, payloadLength=#payloadLength#, totalBytes=#dataLength#)",
+					type: "error",
+					log : "ai"
+				);
+				throw(
+					type   : "BedrockStreamError",
+					message: "Malformed Bedrock event-stream frame: the payload at byte #payloadStart# is truncated (payloadLength=#payloadLength#, delivered=#dataLength# bytes). The stream ended mid-frame.",
+					detail : "malformedFrame"
+				);
 			}
 
 			// Move to next event
@@ -6499,7 +6685,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				type: "warning",
 				log : "ai"
 			);
-			truncated = true;
+			local.truncated = true;
 		}
 
 		return { "headers": headers, "truncated": truncated };
@@ -6547,7 +6733,16 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			}
 		);
 
-		throw( type: "BedrockStreamError", message: errorMessage, detail: kind );
+		// extendedInfo marks the announce as DONE, so the catch in sendBedrockStreamRequest can tell
+		// this frame apart from the other BedrockStreamError throws (malformedFrame, truncated tool
+		// arguments, the drain) which announce nothing. Keying that catch on the TYPE alone
+		// suppressed the announce for all of them.
+		throw(
+			type        : "BedrockStreamError",
+			message     : errorMessage,
+			detail      : kind,
+			extendedInfo: static.BEDROCK_ERROR_ANNOUNCED
+		);
 	}
 
 	/**
@@ -6582,8 +6777,15 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 			// Check if this is a wrapper with base64 "bytes" field
 			if ( payloadJson.keyExists( "bytes" ) ) {
-				var decodedPayload = toString( binaryDecode( payloadJson.bytes, "base64" ), "UTF-8" );
-				payloadJson = jsonDeserialize( decodedPayload );
+				var decodedPayload = len( payloadJson.bytes ?: "" )
+					? toString( binaryDecode( payloadJson.bytes, "base64" ), "UTF-8" )
+					: "";
+				// An EMPTY payload is a real frame, not a broken one: a ConverseStream
+				// contentBlockStop / messageStop carries nothing of its own (the event name lives
+				// in the frame header, passed in as `eventType`). jsonDeserialize( "" ) threw, so
+				// the terminator was swallowed at debug and the drain then reported the tool
+				// arguments as truncated.
+				payloadJson = len( trim( decodedPayload ) ) ? jsonDeserialize( decodedPayload ) : {};
 			}
 
 			// Capture usage data from various Bedrock model formats before transformation
@@ -6608,8 +6810,12 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				};
 			}
 			if( payloadJson.keyExists( "type" ) && payloadJson.type == "message_delta" && !isNull( payloadJson.usage ) ){
+				// NO prompt_tokens key: the delta carries output only, and the accumulator in
+				// sendBedrockStreamRequest() keys on keyExists — a literal 0 here overwrote the
+				// input_tokens message_start had already captured, so onAITokenCount reported
+				// promptTokens 0 for every Claude InvokeModel stream that had no trailing
+				// amazon-bedrock-invocationMetrics event to repair it.
 				chunkUsage = {
-					"prompt_tokens"     : 0,
 					"completion_tokens" : payloadJson.usage.output_tokens ?: 0,
 					"total_tokens"      : payloadJson.usage.output_tokens ?: 0
 				};
@@ -6665,6 +6871,14 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				chunkToSend = { "usage": chunkUsage, "choices": [], "model": arguments.modelId };
 			}
 		} catch ( any e ) {
+			// A BedrockStreamError raised while transforming the frame is a DELIBERATE stream
+			// failure (an exception frame, a malformed frame, truncated tool arguments) and must
+			// reach the caller. Swallowed at debug here it was replaced downstream by the drain's
+			// far vaguer "no content_block_stop" message, which named neither the cause nor the
+			// truncated JSON.
+			if ( e.type == "BedrockStreamError" ) {
+				rethrow;
+			}
 			// Not valid JSON or processing error - may be a control message
 			writeLog(
 				text: "processBedrockEvent - Could not process: #left( arguments.payloadStr, 100 )# - Error: #e.message#",
@@ -6679,7 +6893,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		// frame were unparseable — live, a callback doing `chunk.choices.first()` on the usage-only
 		// `metadata` / `message_start` chunks (choices: []) failed on every stream and nobody saw.
 		if ( !isNull( chunkToSend ) ) {
-			arguments.callback( chunkToSend );
+			emitStreamChunk( arguments.callback, chunkToSend );
 		}
 	}
 
@@ -6695,11 +6909,6 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	private void function startStreamToolCall( required struct streamState, required struct chunk ){
 		var blockKey = toString( arguments.chunk.index ?: 0 );
 
-		if ( !arguments.streamState.keyExists( "toolInputBuffers" ) ) {
-			arguments.streamState[ "toolInputBuffers" ] = {};
-			arguments.streamState[ "toolCallIndexMap" ] = {};
-			arguments.streamState[ "toolCalls" ]        = [];
-		}
 		arguments.streamState.toolInputBuffers[ blockKey ] = "";
 
 		if ( ( arguments.chunk.content_block.name ?: "" ) == static.STRUCTURED_OUTPUT_TOOL ) {
@@ -6724,9 +6933,6 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 */
 	private void function appendStreamToolInput( required struct streamState, required struct chunk ){
 		var blockKey = toString( arguments.chunk.index ?: 0 );
-		if ( !arguments.streamState.keyExists( "toolInputBuffers" ) ) {
-			arguments.streamState[ "toolInputBuffers" ] = {};
-		}
 		if ( !arguments.streamState.toolInputBuffers.keyExists( blockKey ) ) {
 			arguments.streamState.toolInputBuffers[ blockKey ] = "";
 		}
@@ -6771,9 +6977,6 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * end-of-stream drain does not re-finalize it (and can spot the ones that were never closed).
 	 */
 	private void function markStreamToolCallFinalized( required struct streamState, required string blockKey ){
-		if ( !arguments.streamState.keyExists( "finalizedToolCalls" ) ) {
-			arguments.streamState[ "finalizedToolCalls" ] = {};
-		}
 		arguments.streamState.finalizedToolCalls[ arguments.blockKey ] = true;
 	}
 
@@ -6847,7 +7050,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			// buffer) and give the caller the tool_calls chunk it would otherwise never see.
 			var drainedChunk = finalizeOpenAIStreamToolCalls( arguments.streamState, arguments.modelId );
 			if ( !isNull( drainedChunk ) ) {
-				arguments.callback( drainedChunk );
+				emitStreamChunk( arguments.callback, drainedChunk );
 			}
 		}
 
@@ -6920,14 +7123,20 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * @deltaToolCalls The `delta.tool_calls` array from one chunk
 	 */
 	private void function accumulateOpenAIStreamToolCalls( required struct streamState, required array deltaToolCalls ){
-		if ( !arguments.streamState.keyExists( "toolInputBuffers" ) ) {
-			arguments.streamState[ "toolInputBuffers" ] = {};
-			arguments.streamState[ "toolCallIndexMap" ] = {};
-			arguments.streamState[ "toolCalls" ]        = [];
-		}
-
 		for ( var fragment in arguments.deltaToolCalls ) {
-			var blockKey = toString( fragment.index ?: 0 );
+			// `index` is what separates one streamed call from the next. Some OpenAI-shaped models
+			// on Bedrock omit it: every fragment then keyed to "0", so N parallel tool calls
+			// collapsed into one whose arguments were the concatenation of all of them. Absent an
+			// index, a fragment carrying an `id` starts a NEW call and one without continues the
+			// most recent (same rule as BaseService.mergeToolCallDeltas).
+			var blockKey = "";
+			if ( !isNull( fragment.index ) ) {
+				blockKey = toString( fragment.index );
+			} else if ( len( fragment.id ?: "" ) || !arguments.streamState.toolCalls.len() ) {
+				blockKey = toString( arguments.streamState.toolCalls.len() );
+			} else {
+				blockKey = toString( arguments.streamState.toolCalls.len() - 1 );
+			}
 
 			if ( !arguments.streamState.toolCallIndexMap.keyExists( blockKey ) ) {
 				arguments.streamState.toolInputBuffers[ blockKey ] = "";
@@ -7125,7 +7334,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 						// (see buildStreamAssistantMessage()).
 						if ( isStruct( converseDelta.reasoningContent ?: "" ) ) {
 							reasoning = converseDelta.reasoningContent.text ?: "";
-							if ( isStruct( arguments.streamState ) && len( converseDelta.reasoningContent.signature ?: "" ) ) {
+							if ( len( converseDelta.reasoningContent.signature ?: "" ) ) {
 								arguments.streamState[ "reasoningSignature" ] = ( arguments.streamState.reasoningSignature ?: "" ) & converseDelta.reasoningContent.signature;
 							}
 						}
@@ -7140,9 +7349,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 					case "messageStop":
 						var converseStop = arguments.chunk.stopReason ?: "end_turn";
-						if ( isStruct( arguments.streamState ) ) {
-							arguments.streamState[ "stopReason" ] = converseStop;
-						}
+						arguments.streamState[ "stopReason" ] = converseStop;
 						finishReason = static.CONVERSE_STOP_REASONS[ converseStop ] ?: "stop";
 						if ( converseStop == "guardrail_intervened" ) {
 							writeLog(
@@ -7180,10 +7387,13 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 							}
 							return javacast( "null", "" );
 						case "stream-end":
+							// The NORMALIZED value, not Cohere's raw "COMPLETE"/"MAX_TOKENS":
+							// streamState.stopReason is read back as the finish_reason afterLLMCall
+							// middleware sees (sendBedrockStreamRequest maps it through
+							// CONVERSE_STOP_REASONS, which knows nothing of Cohere's vocabulary),
+							// so the raw value leaked out as the finish reason on this family only.
 							finishReason = mapCohereFinishReason( arguments.chunk.finish_reason ?: "" );
-							if ( isStruct( arguments.streamState ) ) {
-								arguments.streamState[ "stopReason" ] = arguments.chunk.finish_reason ?: "";
-							}
+							arguments.streamState[ "stopReason" ] = finishReason;
 							break;
 						default:
 							// stream-start, tool-calls-chunk (partial argument fragments, which
@@ -7201,6 +7411,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				}
 				if ( len( arguments.chunk.finish_reason ?: "" ) ) {
 					finishReason = mapCohereFinishReason( arguments.chunk.finish_reason );
+					arguments.streamState[ "stopReason" ] = finishReason;
 				}
 				break;
 
@@ -7228,10 +7439,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 							// cannot carry a thinking block at all (Anthropic rejects unsigned
 							// ones on the tool-use round trip) — see buildStreamAssistantMessage().
 							if ( ( arguments.chunk.delta?.type ?: "" ) == "signature_delta" ) {
-								if ( isStruct( arguments.streamState ) ) {
-									arguments.streamState[ "reasoningSignature" ] = ( arguments.streamState.reasoningSignature ?: "" )
-										& ( arguments.chunk.delta.signature ?: "" );
-								}
+								arguments.streamState[ "reasoningSignature" ] = ( arguments.streamState.reasoningSignature ?: "" )
+									& ( arguments.chunk.delta.signature ?: "" );
 								return javacast( "null", "" );
 							}
 							if ( arguments.chunk.keyExists( "delta" ) && arguments.chunk.delta.keyExists( "text" ) ) {
@@ -7255,9 +7464,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 						case "message_delta":
 							if ( arguments.chunk.keyExists( "delta" ) && arguments.chunk.delta.keyExists( "stop_reason" ) ) {
 								finishReason = arguments.chunk.delta.stop_reason ?: "stop";
-								if ( isStruct( arguments.streamState ) ) {
-									arguments.streamState[ "stopReason" ] = finishReason;
-								}
+								arguments.streamState[ "stopReason" ] = finishReason;
 							}
 							break;
 						default:
@@ -7274,6 +7481,11 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				}
 				if ( arguments.chunk.keyExists( "completionReason" ) && len( arguments.chunk.completionReason ) ) {
 					finishReason = arguments.chunk.completionReason == "FINISH" ? "stop" : arguments.chunk.completionReason.lcase();
+					// Written for the same reason the Converse and OpenAI branches write it: this is
+					// the only record of why the stream ended by the time sendBedrockStreamRequest()
+					// builds streamState.finishReason for afterLLMCall, and these three families
+					// left it empty.
+					arguments.streamState[ "stopReason" ] = finishReason;
 				}
 				break;
 
@@ -7284,6 +7496,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 				}
 				if ( arguments.chunk.keyExists( "stop_reason" ) && len( arguments.chunk.stop_reason ?: "" ) ) {
 					finishReason = arguments.chunk.stop_reason;
+					arguments.streamState[ "stopReason" ] = finishReason;
 				}
 				break;
 
@@ -7293,6 +7506,9 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					content = arguments.chunk.outputs[ 1 ].text ?: "";
 					if ( arguments.chunk.outputs[ 1 ].keyExists( "stop_reason" ) ) {
 						finishReason = arguments.chunk.outputs[ 1 ].stop_reason ?: "";
+						if ( len( finishReason ) ) {
+							arguments.streamState[ "stopReason" ] = finishReason;
+						}
 					}
 				}
 				break;
@@ -7325,7 +7541,7 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 					}
 					if ( arguments.chunk.choices[ 1 ].keyExists( "finish_reason" ) && !isNull( arguments.chunk.choices[ 1 ].finish_reason ) ) {
 						finishReason = arguments.chunk.choices[ 1 ].finish_reason;
-						if ( isStruct( arguments.streamState ) && len( finishReason ) ) {
+						if ( len( finishReason ) ) {
 							arguments.streamState[ "stopReason" ] = finishReason;
 						}
 						// The turn was a tool call: close every accumulated call and surface them

@@ -330,7 +330,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				}
 
 				var tool     = toolAttempt.get()
-				var toolArgs = JSONDeserialize( toolCall.function.arguments )
+				var toolArgs = toolCallArgs( toolCall )
 				var toolContext = {
 					tool       : tool,
 					toolCall   : toolCall,
@@ -356,7 +356,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 					break
 				}
 
-				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: resolveToolArgs( toolContext, originalToolArgs, () => JSONDeserialize( toolCall.function.arguments ) ), result: toolBeforeResult } )
+				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: resolveToolArgs( toolContext, originalToolArgs, () => toolCallArgs( toolCall ) ), result: toolBeforeResult } )
 			}
 		}
 
@@ -459,6 +459,41 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 	}
 
 	/**
+	 * The arguments carried by ONE OpenAI-shaped tool call, normalized to a struct.
+	 *
+	 * OpenAI serializes tool arguments as a JSON string, and a zero-argument tool comes back with
+	 * `function.arguments` as "" (or the key missing entirely) on both the completion and the
+	 * stream-accumulated shapes — jsonDeserialize("") throws, so a bare parse turns a perfectly
+	 * valid no-argument tool call into a failed turn. Anything that does not parse to a struct is
+	 * reported as {} with a log line, never propagated as an exception.
+	 *
+	 * @toolCall The provider-shaped tool call
+	 */
+	private struct function toolCallArgs( required struct toolCall ){
+		if ( !arguments.toolCall.keyExists( "function" ) || !isStruct( arguments.toolCall.function ) ) {
+			return {};
+		}
+		var raw = arguments.toolCall.function.arguments ?: "";
+		if ( !isSimpleValue( raw ) ) {
+			return isStruct( raw ) ? raw : {};
+		}
+		if ( !len( trim( raw ) ) ) {
+			return {};
+		}
+		try {
+			var parsed = jsonDeserialize( raw );
+			return isStruct( parsed ) ? parsed : {};
+		} catch ( any e ) {
+			writeLog(
+				text: "Could not parse tool arguments for [#arguments.toolCall.function.name ?: "unknown"#]: #local.e.message#",
+				type: "warning",
+				log : "ai"
+			);
+			return {};
+		}
+	}
+
+	/**
 	 * Finish processing a tool-call batch that was suspended for human approval (see
 	 * afterToolBatch()), using the finalized resume ledger AiAgent.resume() built. No LLM call —
 	 * and nothing that already executed (or was already blocked) during the original attempt
@@ -526,8 +561,8 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 			}
 
 			var tool     = toolAttempt.get()
-			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs
-				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : JSONDeserialize( toolCall.function.arguments ) )
+			var toolArgs = isStruct( ledgerEntry.editedArgs ?: "" ) ? ledgerEntry.editedArgs
+				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : toolCallArgs( toolCall ) )
 			var capturedTool = tool
 			var capturedArgs = toolArgs
 			var toolResult = thisChatRequest.fireWrapMiddleware(
@@ -731,17 +766,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				break
 			}
 			var toolAttempt   = thisChatRequest.getTool( toolCall.function.name ?: "" )
-			var toolArguments = {}
-
-			try {
-				toolArguments = JSONDeserialize( toolCall.function.arguments ?: "{}" )
-			} catch( any e ){
-				writeLog(
-					text: "Unable to deserialize tool call arguments for '#toolCall.function.name ?: "unknown"#': #e.message#",
-					type: "warning",
-					log : "ai"
-				)
-			}
+			var toolArguments = toolCallArgs( toolCall )
 
 			if( !toolAttempt.isPresent() ){
 				writeLog(
@@ -783,7 +808,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				break
 			}
 
-			batch.append( { tool: tool, toolCall: toolCall, toolName: streamToolCtx.toolName, toolArgs: resolveToolArgs( streamToolCtx, originalStreamToolArgs, () => JSONDeserialize( toolCall.function.arguments ) ), result: streamToolBeforeResult } )
+			batch.append( { tool: tool, toolCall: toolCall, toolName: streamToolCtx.toolName, toolArgs: resolveToolArgs( streamToolCtx, originalStreamToolArgs, () => toolCallArgs( toolCall ) ), result: streamToolBeforeResult } )
 		}
 
 		if ( isObject( terminalToolResult ) ) {
@@ -954,8 +979,8 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 			}
 
 			var tool     = toolAttempt.get()
-			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs
-				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : JSONDeserialize( toolCall.function.arguments ) )
+			var toolArgs = isStruct( ledgerEntry.editedArgs ?: "" ) ? ledgerEntry.editedArgs
+				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : toolCallArgs( toolCall ) )
 			var capturedTool = tool
 			var capturedArgs = toolArgs
 			var toolResult = thisChatRequest.fireWrapMiddleware(

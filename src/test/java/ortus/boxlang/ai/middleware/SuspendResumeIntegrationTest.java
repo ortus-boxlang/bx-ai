@@ -38,7 +38,9 @@
  * `input` in message history — injecting a `_chatRequest` back-reference, so a second streamed
  * Bedrock turn serialized a cyclic graph and died with a StackOverflowError. doInvoke() now coerces
  * and injects into a shallow copy, and testBedrockStreamResumeApproveAllCompletesWithoutReplay
- * asserts the follow-up body carries no `_chatRequest` (ClosureToolTest covers it at unit level).
+ * asserts the follow-up body carries no `_chatRequest`. ClosureToolTest pins the injection rule
+ * itself at unit level (only a callable that declares `_chatRequest` receives it, and the caller's
+ * args struct is never mutated).
  */
 package ortus.boxlang.ai.middleware;
 
@@ -2749,6 +2751,163 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "seenCity" ) ).toString() ).isEqualTo( "NATIVE" );
 		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "done" );
 		assertThat( variables.getAsBoolean( Key.of( "onlyFollowUpLLM" ) ) ).isTrue();
+	}
+
+	@DisplayName( "OpenAIService: a zero-argument tool call whose function.arguments is \"\" runs with {} instead of throwing" )
+	@Test
+	public void testOpenAIEmptyArgumentsStringRunsToolWithEmptyStruct() {
+		// A no-argument tool comes back from OpenAI-compatible providers with `arguments` as ""
+		// (some send "" rather than "{}"). jsonDeserialize( "" ) throws, so the whole turn died on
+		// a perfectly valid tool call — and the same string reached three other parse sites.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        pings = 0
+		        ping  = aiTool( "ping", "Ping", () => { pings++; return "pong" } )
+
+		        provider = aiService( "openai", { apiKey: "dummy-key" } )
+		        usage    = { "prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8 }
+
+		        wrapCalls = 0
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "ping please" ),
+		            { model: "gpt-4o-mini", tools: [ ping ] },
+		            { provider: "openai" }
+		        )
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                if ( wrapCalls == 1 ) {
+		                    return {
+		                        "choices": [ {
+		                            "index": 0,
+		                            "message": {
+		                                "role": "assistant",
+		                                "content": "",
+		                                "tool_calls": [
+		                                    { "id": "call_p", "type": "function", "function": { "name": "ping", "arguments": "" } }
+		                                ]
+		                            },
+		                            "finish_reason": "tool_calls"
+		                        } ],
+		                        "usage": usage
+		                    }
+		                }
+		                return {
+		                    "choices": [ { "index": 0, "message": { "role": "assistant", "content": "pinged" }, "finish_reason": "stop" } ],
+		                    "usage": usage
+		                }
+		            }
+		        } )
+
+		        answer = provider.chat( chatRequest )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "pings" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "pinged" );
+	}
+
+	@DisplayName( "OpenAIService: a resume ledger with no toolArgs and an empty native arguments string still resumes" )
+	@Test
+	public void testOpenAIResumeWithEmptyNativeArgumentsString() {
+		// The resume fallback re-parses `function.arguments` when the ledger entry carries no
+		// toolArgs (a checkpoint from an older build). With "" on the wire that fallback threw, so
+		// an approved tool call could never be finished at all.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        pings = 0
+		        ping  = aiTool( "ping", "Ping", () => { pings++; return "pong" } )
+
+		        provider = aiService( "openai", { apiKey: "dummy-key" } )
+
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "ping please" ),
+		            { model: "gpt-4o-mini", tools: [ ping ] },
+		            {
+		                provider: "openai",
+		                _resumeContext: {
+		                    assistantMessage: {
+		                        "role": "assistant",
+		                        "content": "",
+		                        "tool_calls": [
+		                            { "id": "call_p", "type": "function", "function": { "name": "ping", "arguments": "" } }
+		                        ]
+		                    },
+		                    resumeLedger: [ { toolName: "ping", status: "execute" } ]
+		                }
+		            }
+		        )
+
+		        wrapCalls = 0
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                return {
+		                    "choices": [ { "index": 0, "message": { "role": "assistant", "content": "pinged" }, "finish_reason": "stop" } ],
+		                    "usage": { "prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8 }
+		                }
+		            }
+		        } )
+
+		        answer          = provider.chat( chatRequest )
+		        onlyFollowUpLLM = wrapCalls == 1
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "pings" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "pinged" );
+		assertThat( variables.getAsBoolean( Key.of( "onlyFollowUpLLM" ) ) ).isTrue();
+	}
+
+	@DisplayName( "An 'edit' decision with no editedData executes the tool with the ledger's own toolArgs, not {}" )
+	@Test
+	public void testEditDecisionWithoutEditedDataKeepsLedgerArgs() {
+		// resume( "edit" ) with nothing to apply used to write editedArgs = {} on the ledger, and
+		// the provider's resume path then invoked the tool with NO arguments — every value silently
+		// replaced by its schema default. With the slot left unset the ledger's toolArgs stand.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        seenCity = ""
+		        weather  = aiTool( "get_weather", "Get the weather", ( string city = "DEFAULT" ) => {
+		            seenCity = city
+		            return "sunny in " & city
+		        } )
+
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "get_weather", arguments: { city: "LEDGER-CITY" } } ] },
+		            "done."
+		        ] )
+
+		        checkpointer = aiMemory( "cache" )
+		        agent = aiAgent(
+		            model       : new AiModel( service: mockSvc ),
+		            tools       : [ weather ],
+		            middleware  : [ new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "get_weather" ], mode: "web" ) ],
+		            checkpointer: checkpointer,
+		            checkpointTTL: 5
+		        )
+
+		        agent.run( "weather?", {}, { threadId: "edit-no-data" } )
+
+		        // "edit" with NO editedData at all
+		        answer = agent.resume( "edit", "edit-no-data" )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "seenCity" ) ).toString() ).isEqualTo( "LEDGER-CITY" );
 	}
 
 }

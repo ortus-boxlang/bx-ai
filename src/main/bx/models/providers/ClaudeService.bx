@@ -154,7 +154,6 @@ class extends="BaseService" implements="IAiChatService" {
 			"reasoning": "",
 			"toolCalls": [],
 			"toolInputBuffers": {},
-			"toolCallIndexMap": {},
 			"stopReason": "",
 			"emittedAnyText": false,
 			"usage": { "input_tokens": 0, "output_tokens": 0 }
@@ -186,7 +185,6 @@ class extends="BaseService" implements="IAiChatService" {
 				};
 
 				streamState.toolCalls.append( newToolCall );
-				streamState.toolCallIndexMap[ toString( contentBlockIndex ) ] = streamState.toolCalls.len();
 				streamState.toolInputBuffers[ toString( contentBlockIndex ) ] = "";
 				return;
 			}
@@ -404,7 +402,13 @@ class extends="BaseService" implements="IAiChatService" {
 				if( inputBuffer.len() ){
 					try {
 						toolCall.input = jsonDeserialize( inputBuffer );
-					} catch( any e ){}
+					} catch( any e ){
+						writeLog(
+							text: "Claude stream: could not parse accumulated tool input for [#arguments.toolCall.name ?: ""#], the tool runs with the last complete input: #local.e.message#",
+							type: "warning",
+							log : "ai"
+						);
+					}
 				}
 			} );
 
@@ -563,7 +567,6 @@ class extends="BaseService" implements="IAiChatService" {
 				}
 
 				var capturedTool     = entry.tool
-				var capturedToolCall = entry.toolCall
 				// entry.toolArgs, not toolCall.input: beforeToolCall middleware is allowed to
 				// rewrite ctx.toolArgs (validation, coercion, redaction) and pass 1 stored the
 				// result on the entry. Invoking with the raw toolCall.input discarded that edit.
@@ -988,7 +991,6 @@ class extends="BaseService" implements="IAiChatService" {
 				}
 
 				var capturedTool     = entry.tool
-				var capturedToolCall = entry.toolCall
 				// entry.toolArgs, not toolCall.input: beforeToolCall middleware is allowed to
 				// rewrite ctx.toolArgs (validation, coercion, redaction) and pass 1 stored the
 				// result on the entry. Invoking with the raw toolCall.input discarded that edit.
@@ -1183,7 +1185,7 @@ class extends="BaseService" implements="IAiChatService" {
 			}
 
 			var tool     = toolAttempt.get()
-			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs
+			var toolArgs = isStruct( ledgerEntry.editedArgs ?: "" ) ? ledgerEntry.editedArgs
 				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : ( toolCall.input ?: {} ) )
 			var capturedTool = tool
 			var capturedArgs = toolArgs
@@ -1289,7 +1291,7 @@ class extends="BaseService" implements="IAiChatService" {
 			}
 
 			var tool     = toolAttempt.get()
-			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs
+			var toolArgs = isStruct( ledgerEntry.editedArgs ?: "" ) ? ledgerEntry.editedArgs
 				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : ( toolCall.input ?: {} ) )
 			var capturedTool = tool
 			var capturedArgs = toolArgs

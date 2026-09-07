@@ -91,7 +91,10 @@ class extends="BaseTool" {
 
 	/**
 	 * Invoke the callable with the provided args.
-	 * Injects _chatRequest into args so closures can optionally access conversation context.
+	 *
+	 * The originating chat request is injected as `_chatRequest` only when the callable declares a
+	 * `_chatRequest` parameter, so a closure can opt into conversation context without every other
+	 * closure receiving an argument it never asked for.
 	 *
 	 * @args The arguments to pass to the callable
 	 * @chatRequest The originating chat request
@@ -128,7 +131,12 @@ class extends="BaseTool" {
 		// unconditionally handed every closure an extra argument it never asked for, which leaks
 		// into argumentCollection-forwarding callables and into anything that serializes its own
 		// arguments scope.
-		var wantsChatRequest = coercionParams.some( param => ( param.name ?: "" ) == "_chatRequest" )
+		// Read the callable's REAL declared parameters, not coercionParams: methodParameters is a
+		// hand-set schema override (the MCP/remote-tool path sets it), and one that does not list
+		// _chatRequest would suppress injection for a closure that genuinely declares it — the
+		// callable then runs without the context it asked for.
+		var declaredParams   = variables.callable.$bx.meta.parameters
+		var wantsChatRequest = declaredParams.some( param => ( param.name ?: "" ) == "_chatRequest" )
 		if ( wantsChatRequest ) {
 			incomingArgs._chatRequest = arguments.chatRequest
 		}

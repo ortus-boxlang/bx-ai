@@ -494,6 +494,67 @@ public class ClaudeTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "seenCity" ) ).toString() ).isEqualTo( "EDITED-CITY" );
 	}
 
+	@DisplayName( "A native-slot edit that changes only letter CASE is still honoured" )
+	@Test
+	public void testBeforeToolCallInputPatchDifferingOnlyByCaseIsHonoured() {
+		// BaseService.resolveToolArgs() decides "did this move?" by comparing canonical JSON.
+		// Compared with `==` that comparison is case-INSENSITIVE, so an edit whose only change is
+		// the case of a value ("paris" -> "Paris", or a case-corrected enum/ID) read as no edit at
+		// all and the tool ran with the pre-hook arguments.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				seenCity = ""
+				weather  = aiTool( "get_weather", "Get the weather", ( required string city ) => {
+					seenCity = arguments.city
+					return "sunny in " & arguments.city
+				} )
+
+				provider    = aiService( "claude", { apiKey: "dummy-key" } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather?" ),
+					{ model: "claude-sonnet-4-5", tools: [ weather ] },
+					{ provider: "claude" }
+				)
+
+				llmCalls = 0
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						llmCalls++
+						if( llmCalls == 1 ){
+							return {
+								"content": [ {
+									"type":  "tool_use",
+									"id":    "toolu_1",
+									"name":  "get_weather",
+									"input": { "city": "paris" }
+								} ],
+								"stop_reason": "tool_use",
+								"usage": { "input_tokens": 5, "output_tokens": 8 }
+							}
+						}
+						return {
+							"content": [ { "type": "text", "text": "Done." } ],
+							"stop_reason": "end_turn",
+							"usage": { "input_tokens": 5, "output_tokens": 8 }
+						}
+					},
+					"beforeToolCall": ( ctx ) => {
+						// Case-only correction on the PROVIDER-shaped slot, the shape a HITL
+						// "edit" decision writes
+						ctx.toolCall.input = { "city": "Paris" }
+					}
+				} )
+
+				result = provider.chat( chatRequest )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "seenCity" ) ).toString() ).isEqualTo( "Paris" );
+	}
+
 	@DisplayName( "beforeToolCall patching ctx.toolCall.input (HITL edit shape) reaches the tool - chatStream()" )
 	@Test
 	public void testStreamBeforeToolCallInputPatchIsHonoured() throws Exception {
