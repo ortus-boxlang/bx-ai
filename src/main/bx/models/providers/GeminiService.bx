@@ -273,6 +273,16 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 	}
 
 	/**
+	 * Gemini overrides chatStream() wholesale and does not honour _resumeContext, so the
+	 * inherited OpenAIService.resumeToolBatchStream() is unreachable from the stream path.
+	 * Report unsupported so AiAgent.resumeStream() fails loud instead of replaying the LLM.
+	 */
+	@override
+	public boolean function supportsStreamingToolResume() {
+		return false
+	}
+
+	/**
 	 * Gemini streaming chat request - overridden to use Gemini-specific streaming format
 	 * Gemini uses streamGenerateContent endpoint with ?alt=sse parameter
 	 * @see https://ai.google.dev/gemini-api/docs/text-generation#rest_5
