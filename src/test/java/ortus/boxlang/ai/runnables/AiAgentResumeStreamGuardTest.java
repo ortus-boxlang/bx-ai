@@ -30,6 +30,7 @@ public class AiAgentResumeStreamGuardTest extends BaseIntegrationTest {
 		    """
 		        openaiSupported = aiService( "openai", { apiKey: "dummy-key" } ).supportsStreamingToolResume()
 		        claudeSupported = aiService( "claude", { apiKey: "dummy-key" } ).supportsStreamingToolResume()
+		        cohereSupported = aiService( "cohere", { apiKey: "dummy-key" } ).supportsStreamingToolResume()
 		        mockSupported   = aiService( "mock" ).supportsStreamingToolResume()
 
 		        // Voyage extends BaseService directly and has no streaming tool machinery at all
@@ -41,6 +42,7 @@ public class AiAgentResumeStreamGuardTest extends BaseIntegrationTest {
 
 		assertThat( variables.getAsBoolean( Key.of( "openaiSupported" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "claudeSupported" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "cohereSupported" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "mockSupported" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "voyageSupported" ) ) ).isFalse();
 	}
