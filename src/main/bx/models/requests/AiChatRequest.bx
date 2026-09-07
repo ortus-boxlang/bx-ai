@@ -46,6 +46,20 @@ class extends="AiBaseRequest"{
 	property name="structuredOutputDefinition" type="any" default={};
 
 	/**
+	 * Private, REQUEST-OWNED scratch space for decisions a provider makes at runtime and has to
+	 * remember for the rest of THIS request (the Bedrock Converse -> InvokeModel fallback is the
+	 * first user).
+	 *
+	 * It exists because `variables.providerOptions` is NOT request-owned: init() aliases the
+	 * caller's `options.providerOptions` struct by reference, and AiBaseRunnable.getMergedOptions()
+	 * re-aliases the same struct into every request built from those options. A provider writing
+	 * its runtime decision there pinned it permanently onto the caller's own struct — every later
+	 * request built from those options inherited the pin, and an explicit caller pin was
+	 * overwritten. This struct is created fresh per request and is never handed back out.
+	 */
+	property name="runtimeOptions" type="struct" default={};
+
+	/**
 	 * Constructor
 	 *
 	 * @aiMessage The messages to use for the chat request, or empty for none
@@ -89,8 +103,14 @@ class extends="AiBaseRequest"{
 		variables.threadId          = options.threadId ?: "";
 		variables.cancellationToken = options.cancellationToken ?: null;
 
-		// Provider-specific options
+		// Provider-specific options. NOTE this is an ALIAS of the caller's struct, shared with
+		// every other request built from the same options — never write runtime state into it;
+		// use variables.runtimeOptions (below) for that.
 		variables.providerOptions = options.providerOptions ?: {};
+
+		// Request-owned runtime scratch space (see the property doc comment). Always a fresh
+		// struct, never taken from options.
+		variables.runtimeOptions = {};
 
 		// Resume context from AiAgent.resume() / resumeStream()
 		variables.resumeContext = options._resumeContext ?: {};
@@ -244,6 +264,41 @@ class extends="AiBaseRequest"{
 	 */
 	boolean function hasApiKey(){
 		return !variables.apiKey.isEmpty()
+	}
+
+	/**
+	 * Read one request-scoped runtime value (see the `runtimeOptions` property).
+	 *
+	 * @key          The runtime key
+	 * @defaultValue Returned when the key was never set
+	 */
+	any function getRuntimeOption( required string key, any defaultValue = "" ){
+		return variables.runtimeOptions[ arguments.key ] ?: arguments.defaultValue;
+	}
+
+	/**
+	 * Record one request-scoped runtime value (see the `runtimeOptions` property).
+	 *
+	 * @key   The runtime key
+	 * @value The value to remember for the rest of this request
+	 *
+	 * @return The AiChatRequest for chaining
+	 */
+	AiChatRequest function setRuntimeOption( required string key, any value ){
+		variables.runtimeOptions[ arguments.key ] = arguments.value;
+		return this;
+	}
+
+	/**
+	 * Forget one request-scoped runtime value (see the `runtimeOptions` property).
+	 *
+	 * @key The runtime key
+	 *
+	 * @return The AiChatRequest for chaining
+	 */
+	AiChatRequest function clearRuntimeOption( required string key ){
+		variables.runtimeOptions.delete( arguments.key );
+		return this;
 	}
 
 	/**

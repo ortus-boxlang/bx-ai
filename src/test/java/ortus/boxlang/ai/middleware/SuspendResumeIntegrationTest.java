@@ -879,7 +879,8 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		            {
 		                awsAccessKeyId    : "AKIAIOSFODNN7EXAMPLE",
 		                awsSecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-		                region            : "us-east-1"
+		                region            : "us-east-1",
+		                bedrockApi        : "invoke"
 		            }
 		        )
 
@@ -940,7 +941,8 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		            {
 		                awsAccessKeyId    : "AKIAIOSFODNN7EXAMPLE",
 		                awsSecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-		                region            : "us-east-1"
+		                region            : "us-east-1",
+		                bedrockApi        : "invoke"
 		            }
 		        )
 
@@ -999,7 +1001,8 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		            {
 		                awsAccessKeyId    : "AKIAIOSFODNN7EXAMPLE",
 		                awsSecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-		                region            : "us-east-1"
+		                region            : "us-east-1",
+		                bedrockApi        : "invoke"
 		            }
 		        )
 		        model = new AiModel( service: provider, params: { model: "anthropic.claude-3-sonnet-20240229-v1:0" } )
@@ -1369,18 +1372,27 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 
 	/**
 	 * Dummy AWS credentials: the streaming leg never reaches the network, but the service still
-	 * requires them.
+	 * requires them. Parameterised on the runtime API because the two are genuinely different
+	 * streams: "invoke" is InvokeModelWithResponseStream (per-vendor bodies, Claude's
+	 * content_block_* event vocabulary), "converse" is ConverseStream (a single body shape whose
+	 * event vocabulary lives in the frame's `:event-type` header). Converse is now the default,
+	 * so both need agent-level suspend/resume coverage.
 	 */
-	private static final String	BEDROCK_PROVIDER		= """
-	                                                      provider = aiService(
-	                                                          "bedrock",
-	                                                          {
-	                                                              awsAccessKeyId    : "AKIAIOSFODNN7EXAMPLE",
-	                                                              awsSecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-	                                                              region            : "us-east-1"
-	                                                          }
-	                                                      )
-	                                                      """;
+	private static String bedrockProvider( String bedrockApi ) {
+		return """
+		       provider = aiService(
+		           "bedrock",
+		           {
+		               awsAccessKeyId    : "AKIAIOSFODNN7EXAMPLE",
+		               awsSecretAccessKey: "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+		               region            : "us-east-1",
+		               bedrockApi        : "%s"
+		           }
+		       )
+		       """.formatted( bedrockApi );
+	}
+
+	private static final String	BEDROCK_PROVIDER		= bedrockProvider( "invoke" );
 
 	/**
 	 * Canned Bedrock/Claude event-stream bodies. `evt()` wraps one model event in the
@@ -1669,6 +1681,292 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "sawCancelSentinel" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "toolNotCalled" ) ) ).isTrue();
 		assertThat( variables.getAsBoolean( Key.of( "noFollowUpCall" ) ) ).isTrue();
+	}
+
+	// ---- ConverseStream variants of the three streaming batch tests above ------------------------
+	//
+	// The invoke-path tests pin bedrockApi:"invoke", so none of them exercise ConverseStream — now
+	// the DEFAULT runtime API. It is a genuinely different stream, not a re-skin: the event NAME
+	// lives in the frame's `:event-type` header rather than in the payload, tool calls arrive as
+	// contentBlockStart{start.toolUse} / contentBlockDelta{delta.toolUse.input} instead of Claude's
+	// content_block_start / input_json_delta, and the follow-up turn goes back in Converse's
+	// toolUse/toolResult block dialect rather than Claude's tool_use/tool_result. BedrockServiceTest
+	// covers ConverseStream at service level only; these run the whole agent round trip.
+
+	/**
+	 * Canned ConverseStream bodies, using the string replay contract documented on
+	 * sendBedrockStreamRequest(): each frame is `{"eventType":"<name>","bytes":"<base64 payload>"}`,
+	 * standing in for the `:event-type` header a real binary frame would carry. Without the name
+	 * every ConverseStream payload is an indistinguishable bare struct and the replay yields nothing.
+	 */
+	private static final String BEDROCK_CONVERSE_STREAM_EVENTS = """
+	                                                             cevt = ( type, data ) => '{"eventType":"' & type & '","bytes":"' & binaryEncode( charsetDecode( jsonSerialize( data ), "utf-8" ), "base64" ) & '"}'
+	                                                             converseTwoToolStream = cevt( "messageStart", { "role": "assistant" } )
+	                                                                 & cevt( "contentBlockStart", { "contentBlockIndex": 0, "start": { "toolUse": { "toolUseId": "tu_a", "name": "toolA" } } } )
+	                                                                 & cevt( "contentBlockDelta", { "contentBlockIndex": 0, "delta": { "toolUse": { "input": '{' } } } )
+	                                                                 & cevt( "contentBlockDelta", { "contentBlockIndex": 0, "delta": { "toolUse": { "input": '}' } } } )
+	                                                                 & cevt( "contentBlockStop", { "contentBlockIndex": 0 } )
+	                                                                 & cevt( "contentBlockStart", { "contentBlockIndex": 1, "start": { "toolUse": { "toolUseId": "tu_b", "name": "toolB" } } } )
+	                                                                 & cevt( "contentBlockDelta", { "contentBlockIndex": 1, "delta": { "toolUse": { "input": '{}' } } } )
+	                                                                 & cevt( "contentBlockStop", { "contentBlockIndex": 1 } )
+	                                                                 & cevt( "messageStop", { "stopReason": "tool_use" } )
+	                                                                 & cevt( "metadata", { "usage": { "inputTokens": 5, "outputTokens": 8, "totalTokens": 13 } } )
+	                                                             converseTextStream = cevt( "messageStart", { "role": "assistant" } )
+	                                                                 & cevt( "contentBlockDelta", { "contentBlockIndex": 0, "delta": { "text": "all handled" } } )
+	                                                                 & cevt( "contentBlockStop", { "contentBlockIndex": 0 } )
+	                                                                 & cevt( "messageStop", { "stopReason": "end_turn" } )
+	                                                                 & cevt( "metadata", { "usage": { "inputTokens": 7, "outputTokens": 2, "totalTokens": 9 } } )
+	                                                             """;
+
+	@DisplayName( "BedrockService ConverseStream: two approval-requiring tools suspend ONCE as a batch and checkpoint" )
+	@Test
+	public void testBedrockConverseStreamBatchSuspendsOnceAndCheckpoints() {
+		// @formatter:off
+		runtime.executeSource(
+		    BEDROCK_CONVERSE_STREAM_EVENTS + """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+		    """ + bedrockProvider( "converse" ) + """
+		        model = new AiModel( service: provider, params: { model: "anthropic.claude-3-sonnet-20240229-v1:0" } )
+
+		        wrapCalls    = 0
+		        sawConverseTransport = false
+		        cannedLLM = {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                // Proves the canned body is standing in for the STREAMING transport seam,
+		                // not the sync one — the two contexts are otherwise indistinguishable.
+		                sawConverseTransport = ( ctx.stream ?: false ) && ( ctx.transport ?: "" ) == "bedrock-event-stream"
+		                return wrapCalls == 1 ? converseTwoToolStream : converseTextStream
+		            }
+		        }
+
+		        checkpointer = aiMemory( "cache" )
+		        agent = aiAgent(
+		            model       : model,
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" ), cannedLLM ],
+		            checkpointer: checkpointer,
+		            checkpointTTL: 5
+		        )
+
+		        chunks = []
+		        agent.stream( ( chunk ) => { chunks.append( chunk ) }, "please run toolA and toolB", {}, { threadId: "bedrock-converse-stream-batch" } )
+
+		        stops         = chunks.filter( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
+		        suspendedOnce = stops.len() == 1 && stops.first().result.isSuspended()
+		        suspendData   = suspendedOnce ? stops.first().result.getData() : {}
+		        bothPending   = ( suspendData.pendingActions ?: [] ).len() == 2
+		        hasLedger     = ( suspendData.resumeLedger ?: [] ).len() == 2
+		        // The suspended turn records the dialect it was built in, so the resume cannot
+		        // re-resolve to a different one and silently skip every approved tool.
+		        dialectIsConverse = ( suspendData.toolDialect ?: "" ) == "converse"
+		        neitherRanYet = toolACalls == 0 && toolBCalls == 0
+		        calledLLMOnce = wrapCalls == 1
+
+		        checkpointSaved = !checkpointer.loadState( "bedrock-converse-stream-batch" ).isEmpty()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sawConverseTransport" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "suspendedOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bothPending" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasLedger" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "dialectIsConverse" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "neitherRanYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "calledLLMOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "checkpointSaved" ) ) ).isTrue();
+	}
+
+	@DisplayName( "BedrockService ConverseStream: resumeStream() approve-all completes in exactly 2 LLM calls with Converse-shaped toolResult blocks" )
+	@Test
+	public void testBedrockConverseStreamResumeApproveAllCompletes() {
+		// @formatter:off
+		runtime.executeSource(
+		    BEDROCK_CONVERSE_STREAM_EVENTS + """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+		    """ + bedrockProvider( "converse" ) + """
+		        model = new AiModel( service: provider, params: { model: "anthropic.claude-3-sonnet-20240229-v1:0" } )
+
+		        wrapCalls    = 0
+		        followUpBody = []
+		        cannedLLM = {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                if( wrapCalls == 1 ){
+		                    return converseTwoToolStream
+		                }
+		                followUpBody = ctx.dataPacket.messages ?: []
+		                return converseTextStream
+		            }
+		        }
+
+		        agent = aiAgent(
+		            model       : model,
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" ), cannedLLM ],
+		            checkpointer: aiMemory( "cache" ),
+		            checkpointTTL: 5
+		        )
+
+		        chunks = []
+		        agent.stream( ( chunk ) => { chunks.append( chunk ) }, "please run toolA and toolB", {}, { threadId: "bedrock-converse-stream-approve" } )
+		        wasSuspended  = chunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" && c.result.isSuspended() )
+		        neitherRanYet = toolACalls == 0 && toolBCalls == 0
+
+		        resumeChunks = []
+		        agent.resumeStream(
+		            ( chunk ) => { resumeChunks.append( chunk ) },
+		            [ { decision: "approve" }, { decision: "approve" } ],
+		            "bedrock-converse-stream-approve"
+		        )
+
+		        finalText = resumeChunks
+		            .filter( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() )
+		            .map( c => c.choices.first().delta.content ?: "" )
+		            .toList( "" )
+		        isFinalText      = finalText == "all handled"
+		        bothRanOnce      = toolACalls == 1 && toolBCalls == 1
+		        // Exactly two LLM calls: the suspended turn, then the follow-up. The resume finished
+		        // the SAME batch from the ledger rather than replaying the first turn.
+		        twoLLMCallsTotal = wrapCalls == 2
+		        noResumeStop     = !resumeChunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
+
+		        // The follow-up body must be in Converse's block dialect (toolUse / toolResult), NOT
+		        // Claude's tool_use / tool_result, and every toolResult must answer a real toolUseId
+		        // from the assistant turn — a mismatched id is a ValidationException on the wire.
+		        toolUseIds    = []
+		        toolResultIds = []
+		        for( m in followUpBody ){
+		            if( !isArray( m.content ?: "" ) ){ continue }
+		            for( b in m.content ){
+		                if( !isStruct( b ) ){ continue }
+		                if( isStruct( b.toolUse ?: "" ) ){ toolUseIds.append( b.toolUse.toolUseId ?: "" ) }
+		                if( isStruct( b.toolResult ?: "" ) ){ toolResultIds.append( b.toolResult.toolUseId ?: "" ) }
+		            }
+		        }
+		        sawConverseToolUse  = toolUseIds.sort( "text" ).toList() == "tu_a,tu_b"
+		        toolResultsMatchIds = toolResultIds.sort( "text" ).toList() == "tu_a,tu_b"
+		        // No Claude-dialect leakage in the Converse body
+		        noClaudeDialect = !followUpBody.some( m =>
+		            isArray( m.content ?: "" )
+		            && m.content.some( b => isStruct( b ) && ( ( b.type ?: "" ) == "tool_use" || ( b.type ?: "" ) == "tool_result" ) )
+		        )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "wasSuspended" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "neitherRanYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bothRanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "twoLLMCallsTotal" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noResumeStop" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawConverseToolUse" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolResultsMatchIds" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noClaudeDialect" ) ) ).isTrue();
+	}
+
+	@DisplayName( "BedrockService ConverseStream: a 'reject' in the resume array blocks that tool and goes back as a status:\"error\" toolResult" )
+	@Test
+	public void testBedrockConverseStreamResumeRejectHonoured() {
+		// @formatter:off
+		runtime.executeSource(
+		    BEDROCK_CONVERSE_STREAM_EVENTS + """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        toolACalls = 0
+		        toolBCalls = 0
+		        toolA = aiTool( "toolA", "Tool A - requires approval", () => { toolACalls++; return "A done" } )
+		        toolB = aiTool( "toolB", "Tool B - requires approval", () => { toolBCalls++; return "B done" } )
+		    """ + bedrockProvider( "converse" ) + """
+		        model = new AiModel( service: provider, params: { model: "anthropic.claude-3-sonnet-20240229-v1:0" } )
+
+		        wrapCalls    = 0
+		        followUpBody = []
+		        cannedLLM = {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                if( wrapCalls == 1 ){
+		                    return converseTwoToolStream
+		                }
+		                followUpBody = ctx.dataPacket.messages ?: []
+		                return converseTextStream
+		            }
+		        }
+
+		        agent = aiAgent(
+		            model       : model,
+		            tools       : [ toolA, toolB ],
+		            middleware  : [ new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" ), cannedLLM ],
+		            checkpointer: aiMemory( "cache" ),
+		            checkpointTTL: 5
+		        )
+
+		        agent.stream( ( chunk ) => {}, "please run toolA and toolB", {}, { threadId: "bedrock-converse-stream-reject" } )
+
+		        resumeChunks = []
+		        agent.resumeStream(
+		            ( chunk ) => { resumeChunks.append( chunk ) },
+		            [ { decision: "approve" }, { decision: "reject", reason: "not needed" } ],
+		            "bedrock-converse-stream-reject"
+		        )
+
+		        finalText = resumeChunks
+		            .filter( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() )
+		            .map( c => c.choices.first().delta.content ?: "" )
+		            .toList( "" )
+		        isFinalText      = finalText == "all handled"
+		        toolARan         = toolACalls == 1
+		        toolBSkipped     = toolBCalls == 0
+		        twoLLMCallsTotal = wrapCalls == 2
+		        noStop           = !resumeChunks.some( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
+
+		        // The rejection goes back as a Converse toolResult carrying status:"error" against
+		        // the BLOCKED call's toolUseId, while the approved one carries no status at all
+		        // (Converse defaults it to success, and only failures are worth the field).
+		        errorResultIds = []
+		        okResultIds    = []
+		        for( m in followUpBody ){
+		            if( !isArray( m.content ?: "" ) ){ continue }
+		            for( b in m.content ){
+		                if( !isStruct( b ) || !isStruct( b.toolResult ?: "" ) ){ continue }
+		                if( ( b.toolResult.status ?: "" ) == "error" ){
+		                    errorResultIds.append( b.toolResult.toolUseId ?: "" )
+		                } else {
+		                    okResultIds.append( b.toolResult.toolUseId ?: "" )
+		                }
+		            }
+		        }
+		        rejectedIsErrorResult = errorResultIds.toList() == "tu_b"
+		        approvedIsOkResult    = okResultIds.toList() == "tu_a"
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolARan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolBSkipped" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "twoLLMCallsTotal" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noStop" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "rejectedIsErrorResult" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "approvedIsOkResult" ) ) ).isTrue();
 	}
 
 	@DisplayName( "CohereService streaming: two approval-requiring tools suspend ONCE as a batch and checkpoint" )
@@ -2067,7 +2365,8 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 	// surviving record of a pass-1 `ctx.toolArgs` rewrite. Before the ledger carried it, every
 	// resumed batch re-derived its arguments from the raw assistant tool call and silently ran
 	// the model's ORIGINAL arguments instead of the middleware-approved ones.
-	// One per provider, each in that provider's native tool-call shape.
+	// BedrockServiceTest.testConverseSuspendedLedgerCarriesRewrittenToolArgs is the model these
+	// three mirror, one per remaining provider and each in that provider's native tool-call shape.
 
 	@DisplayName( "ClaudeService: a suspended batch records the middleware-rewritten toolArgs in its resume ledger, and the resume runs them" )
 	@Test
