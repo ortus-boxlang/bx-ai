@@ -673,7 +673,12 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			"toolPlan"         : "",
 			"finishReason"     : ""
 		};
-		var emitNormalizedChunk = ( parsedChunk ) => {
+		var streamCallbackError = newStreamCallbackErrorHolder();
+		// Accumulate one Cohere v1 stream event into streamState and return the normalized chunk to
+		// hand the caller, or null when the event is state-only (`tool-calls-generation`, an empty
+		// tool-plan delta). Deliberately separate from the emission below so accumulation can stay
+		// INSIDE the SSE parse guard while the caller's callback runs outside it.
+		var buildNormalizedChunk = ( parsedChunk ) => {
 			var eventType = parsedChunk.event_type ?: ""
 			var content = parsedChunk.text ?: ""
 			var finishReason = ""
@@ -685,13 +690,13 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				streamState.toolPlan &= content;
 				accumulateToolCallDelta( streamState, parsedChunk );
 				if( content.len() ){
-					userCallback( {
+					return {
 						"provider": "Cohere",
 						"model"   : requestedModel,
 						"object"  : "chat.completion.chunk",
 						"choices" : [ { "index": 0, "delta": { "role": "assistant", "reasoning": content }, "finish_reason": "" } ],
 						"raw"     : parsedChunk
-					} );
+					};
 				}
 				return;
 			}
@@ -719,7 +724,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 
 			cohereContent &= content;
 
-			userCallback( {
+			return {
 				"provider": "Cohere",
 				"model": requestedModel,
 				"object": "chat.completion.chunk",
@@ -734,7 +739,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 					}
 				],
 				"raw": parsedChunk
-			} );
+			};
 		};
 
 		// Cohere has a different message format
@@ -859,7 +864,9 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				return;
 			}
 
-			// Try to parse and send to callback
+			// Parse / normalize / accumulate under the guard: a malformed frame is Cohere's problem
+			// and is logged, not raised.
+			var chunkToEmit = javacast( "null", "" );
 			try {
 				var parsedChunk = jsonDeserialize( chunk.data );
 
@@ -872,13 +879,19 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 					cohereUsage.raw          = parsedChunk.response.meta;
 				}
 
-				emitNormalizedChunk( parsedChunk );
+				chunkToEmit = buildNormalizedChunk( local.parsedChunk );
 			} catch( any e ){
 				writeLog(
 					text: "Error parsing Cohere stream chunk: #e.message# - Data: #chunk.data#",
 					type: "error",
 					log : "ai"
 				)
+				return;
+			}
+
+			// Emit OUTSIDE the guard - see BaseService::emitStreamChunkGuarded().
+			if( !isNull( chunkToEmit ) ){
+				emitStreamChunkGuarded( userCallback, chunkToEmit, thisChatRequest, streamCallbackError );
 			}
 		};
 
@@ -887,6 +900,13 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 			.body( jsonSerialize( dataPacket ) )
 			.onChunk( ( chunk, lastEventId, httpResult, httpClient, response ) => processSSEChunk( chunk ) )
 			.onError( ( error, httpResult ) => {
+				// The client funnels an exception thrown by a chunk handler in here as though it
+				// were a transport failure. It is not: it is the caller's own callback, already
+				// announced and re-raised after the transport returns with its real type.
+				if( streamCallbackError.captured ){
+					return;
+				}
+
 				var errorMessage = "HTTP Error: #error.message#";
 
 				writeLog(
@@ -911,6 +931,12 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				);
 			} )
 			.onComplete( ( httpResult ) => {
+				// A stream the caller's callback aborted did not complete - announcing
+				// streamComplete here would tell listeners it did.
+				if( streamCallbackError.captured ){
+					return;
+				}
+
 				// Log the response if enabled
 				if( thisChatRequest.getLogResponse() ){
 					writeLog(
@@ -966,6 +992,13 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				timestamp        : now()
 			} )
 		}
+
+		// The caller's callback blew up mid-stream and the HTTP client kept the exception to
+		// itself. (On a replayed stream the throw already escaped through emitSSEChunk, so this is
+		// a no-op there.) Re-raised only now that the usage above has been announced: the model was
+		// already called and billed by the time a chunk reached the caller, and a billed call that
+		// loses its onAITokenCount is a hole in every cost/audit listener.
+		rethrowStreamCallbackError( streamCallbackError );
 
 		// Fold any per-index `tool_call_delta` buffers into complete tool calls. Only used when the
 		// stream never sent an authoritative `tool-calls-generation` event.
@@ -1114,20 +1147,27 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 	 * chunk. Cohere only streams the first turn; anything produced after tool results is a single
 	 * blocking call (same trade-off ClaudeService.chatStream() makes).
 	 *
-	 * @callback The streaming callback
-	 * @text      The text to emit — nothing is emitted when empty
-	 * @model     The model name to stamp on the chunk
+	 * @callback     The streaming callback
+	 * @text         The text to emit — nothing is emitted when empty
+	 * @model        The model name to stamp on the chunk
+	 * @chatRequest The in-flight chat request, so a throw from the caller's callback is announced
+	 *                on onAIError before it propagates — this is a call that happened and was
+	 *                billed, and it is the last emission of the turn, so nothing else would.
 	 */
-	private void function emitStreamText( required function callback, required string text, required string model ){
+	private void function emitStreamText( required function callback, required string text, required string model, required AiChatRequest chatRequest ){
 		if( !arguments.text.len() ){
 			return;
 		}
-		arguments.callback( {
-			"provider": "Cohere",
-			"model"   : arguments.model,
-			"object"  : "chat.completion.chunk",
-			"choices" : [ { "index": 0, "delta": { "role": "assistant", "content": arguments.text }, "finish_reason": "stop" } ]
-		} );
+		emitStreamChunkGuarded(
+			arguments.callback,
+			{
+				"provider": "Cohere",
+				"model"   : arguments.model,
+				"object"  : "chat.completion.chunk",
+				"choices" : [ { "index": 0, "delta": { "role": "assistant", "content": arguments.text }, "finish_reason": "stop" } ]
+			},
+			arguments.chatRequest
+		);
 	}
 
 	/**
@@ -1204,7 +1244,8 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 				callback        : userCallback,
 				tools           : boundTools
 			),
-			thisChatRequest.getModel()
+			thisChatRequest.getModel(),
+			thisChatRequest
 		)
 	}
 
@@ -1575,14 +1616,19 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		emitStreamText(
 			arguments.callback,
 			stringifyStreamPayload( finalResponse ),
-			arguments.chatRequest.getModel()
+			arguments.chatRequest.getModel(),
+			arguments.chatRequest
 		)
-		arguments.callback( {
-			"provider": "Cohere",
-			"model"   : arguments.chatRequest.getModel(),
-			"object"  : "chat.completion.chunk",
-			"choices" : [ { "index": 0, "delta": { "role": "assistant", "content": "" }, "finish_reason": "stop" } ]
-		} )
+		emitStreamChunkGuarded(
+			arguments.callback,
+			{
+				"provider": "Cohere",
+				"model"   : arguments.chatRequest.getModel(),
+				"object"  : "chat.completion.chunk",
+				"choices" : [ { "index": 0, "delta": { "role": "assistant", "content": "" }, "finish_reason": "stop" } ]
+			},
+			arguments.chatRequest
+		)
 	}
 
 	/**

@@ -495,6 +495,126 @@ abstract class implements="IAiService" {
 	}
 
 	/**
+	 * Hand ONE normalized chunk to the caller's own stream callback.
+	 *
+	 * This is the single seam every provider's stream loop emits through, and the rule it exists
+	 * to enforce is: parse, normalize and accumulate a chunk INSIDE the provider's try/catch, then
+	 * emit through here OUTSIDE it. The callback is the caller's code, so an exception it throws is
+	 * the caller's bug and must propagate out of chatStream(). Called from inside the parse guard
+	 * it was instead logged as though the FRAME were unparseable and the stream carried on — a
+	 * callback doing `chunk.choices.first()` on the usage-only final chunk (choices: []) failed on
+	 * every stream and nobody ever saw it.
+	 *
+	 * Grep for `emitStreamChunk` to find every emission site in the module.
+	 *
+	 * @userCallback The caller's `function( chunk )` handed to chatStream()
+	 * @chunk        The normalized chunk to emit
+	 */
+	private void function emitStreamChunk( required function userCallback, required any chunk ){
+		arguments.userCallback( arguments.chunk );
+	}
+
+	/**
+	 * Emit ONE chunk and, when the caller's callback throws, announce it before letting it out.
+	 *
+	 * This is the seam every emission site uses; the bare emitStreamChunk() above is only for a
+	 * nested normalizer that is ALREADY running inside one of these guards (Gemini's).
+	 *
+	 * The try/catch lives here, in a method, rather than inline at every call site on purpose:
+	 * those call sites are closures handed to the HTTP client, and an unqualified identifier read
+	 * inside a `catch` body resolves against the class `variables` scope before function locals on
+	 * BoxLang <= 1.13 — for which a closure-captured `var` has no qualifier that would work at all.
+	 * Inside this method the catch reads nothing but `arguments.*` and `e`.
+	 *
+	 * @userCallback The caller's `function( chunk )` handed to chatStream()
+	 * @chunk        The normalized chunk to emit
+	 * @chatRequest  The in-flight chat request, for the onAIError announce
+	 * @errorHolder  Holder recording the failure so a mid-stream throw can be re-raised once the
+	 *                transport returns. Defaults to a throwaway holder, which is what a POST-stream
+	 *                emission wants: nothing sits between it and chatStream() there, so the throw
+	 *                propagates by itself and only the announce would otherwise be missing.
+	 */
+	private void function emitStreamChunkGuarded(
+		required function userCallback,
+		required any chunk,
+		required AiChatRequest chatRequest,
+		struct errorHolder = newStreamCallbackErrorHolder()
+	){
+		try {
+			emitStreamChunk( arguments.userCallback, arguments.chunk );
+		} catch( any e ){
+			captureStreamCallbackError( arguments.errorHolder, e, arguments.chatRequest );
+			rethrow;
+		}
+	}
+
+	/**
+	 * A fresh holder for the caller's stream-callback exception.
+	 *
+	 * It is a struct, not a plain local, because the chunk handler that records the failure is a
+	 * closure: an unqualified assignment inside it would write the closure's own scope, not the
+	 * stream method's, and the record would be lost by the time the transport returns.
+	 */
+	private struct function newStreamCallbackErrorHolder(){
+		return { "captured": false, "type": "", "message": "", "detail": "" };
+	}
+
+	/**
+	 * Record the caller's stream-callback exception and announce it on onAIError, exactly once per
+	 * stream. The caller MUST `rethrow` straight after calling this.
+	 *
+	 * The announce matters as much as the propagation: the model has already been called and
+	 * billed by the time a chunk reaches the caller, so a callback failure is a call that happened
+	 * and failed — with no onAIError, audit/replay middleware has no record of it at all.
+	 *
+	 * @holder      The holder from newStreamCallbackErrorHolder()
+	 * @error       The caught exception
+	 * @chatRequest The in-flight chat request
+	 */
+	private void function captureStreamCallbackError( required struct holder, required any error, required AiChatRequest chatRequest ){
+		if( arguments.holder.captured ){
+			return;
+		}
+
+		arguments.holder.captured = true;
+		arguments.holder.type     = arguments.error.type;
+		arguments.holder.message  = arguments.error.message;
+		arguments.holder.detail   = arguments.error.detail ?: "";
+
+		BoxAnnounce( "onAIError", {
+			error: arguments.error,
+			errorMessage: "Stream callback error: [#arguments.holder.message#]",
+			provider: this,
+			operation: "stream",
+			aiRequest: arguments.chatRequest,
+			canRetry: false
+		} );
+	}
+
+	/**
+	 * Re-raise a recorded stream-callback exception once the transport has returned.
+	 *
+	 * The BoxLang HTTP client abandons the stream when a chunk handler throws but does NOT
+	 * re-raise, so on that path the exception would otherwise be lost between the handler and
+	 * chatStream(). Type, message and detail are carried over so the caller catches what it threw.
+	 * A no-op when nothing was recorded, and when the throw already escaped by itself (a replayed
+	 * stream calls the handler directly, with no client in between).
+	 *
+	 * @holder The holder from newStreamCallbackErrorHolder()
+	 */
+	private void function rethrowStreamCallbackError( required struct holder ){
+		if( !arguments.holder.captured ){
+			return;
+		}
+
+		throw(
+			type   : arguments.holder.type,
+			message: arguments.holder.message,
+			detail : arguments.holder.detail
+		);
+	}
+
+	/**
 	 * A generic HTTP proxy to send streaming requests to the provider
 	 *
 	 * @chatRequest The chatRequest object to use in the request
@@ -502,13 +622,19 @@ abstract class implements="IAiService" {
 	 * @callback A callback function to be called with each chunk of the stream: function( chunk )
 	 * chatUrl Optional URL to override the default chat endpoint (some providers use the same endpoint for chat and embeddings)
 	 *
+	 * @errorHolder Optional stream-callback error holder owned by the CALLER. Pass one when the
+	 *               caller has usage accounting to finish before the caller's exception is allowed
+	 *               out (see OpenAIService.chatStream) — it then owns the rethrow. Omit it and this
+	 *               method re-raises before returning.
+	 *
 	 * @return void
 	 */
 	private struct function sendStreamRequest(
 		required AiChatRequest chatRequest,
 		required struct dataPacket,
 		required function callback,
-		chatUrl = getChatURL()
+		chatUrl = getChatURL(),
+		struct errorHolder
 	 ){
 		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback;
@@ -520,6 +646,8 @@ abstract class implements="IAiService" {
 			"toolCalls": [],
 			"usage": {}
 		};
+		var callerOwnsRethrow   = arguments.keyExists( "errorHolder" );
+		var streamCallbackError = callerOwnsRethrow ? arguments.errorHolder : newStreamCallbackErrorHolder();
 
 		// Announce the request
 		BoxAnnounce(
@@ -580,21 +708,39 @@ abstract class implements="IAiService" {
 					return;
 				}
 
-				// Try to parse and send to callback
+				// Parse / normalize / accumulate under the guard: a malformed frame is the
+				// provider's problem and is logged, not raised.
+				var chunkToEmit = javacast( "null", "" );
 				try {
 					var parsedChunk = jsonDeserialize( chunk.data );
 					normalizeReasoningDelta( parsedChunk );
 					updateStreamState( streamState, parsedChunk );
-					userCallback( parsedChunk );
+					chunkToEmit = local.parsedChunk;
 				} catch( any e ){
 					writeLog(
 						text: "Error parsing stream chunk: [#e.message#] - Data: [#chunk.data#]",
 						type: "error",
 						log : "ai"
 					)
+					return;
+				}
+
+				// Emit OUTSIDE the guard - see emitStreamChunkGuarded(). The HTTP client abandons
+				// the stream but does NOT re-raise an exception thrown from a chunk handler, so it
+				// is recorded in the holder and re-raised once .send() returns.
+				if( !isNull( chunkToEmit ) ){
+					emitStreamChunkGuarded( userCallback, chunkToEmit, thisChatRequest, streamCallbackError );
 				}
 			} )
 			.onError( ( error, httpResult ) => {
+				// The client funnels an exception thrown by a chunk handler in here as though it
+				// were a transport failure. It is not: it is the caller's own callback, already
+				// recorded, announced and re-raised after .send() with its real type. Reporting it
+				// as an HTTP ProviderError here would both mislabel it and double-announce.
+				if( streamCallbackError.captured ){
+					return;
+				}
+
 				var errorMessage = "HTTP Error: [#error.message#]";
 
 				writeLog(
@@ -619,6 +765,12 @@ abstract class implements="IAiService" {
 				);
 			} )
 			.onComplete( ( httpResult ) => {
+				// A stream the caller's callback aborted did not complete - announcing
+				// streamComplete here would tell listeners it did.
+				if( streamCallbackError.captured ){
+					return;
+				}
+
 				// Log the response if enabled
 				if( thisChatRequest.getLogResponse() ){
 					writeLog(
@@ -638,6 +790,13 @@ abstract class implements="IAiService" {
 				);
 			} )
 			.send();
+
+		// The caller's callback blew up mid-stream and the client kept the exception to itself.
+		// When the caller handed us its own holder it re-raises instead, once it has finished
+		// accounting for the usage the (already billed) call produced.
+		if( !callerOwnsRethrow ){
+			rethrowStreamCallbackError( streamCallbackError );
+		}
 
 		return streamState;
 	}

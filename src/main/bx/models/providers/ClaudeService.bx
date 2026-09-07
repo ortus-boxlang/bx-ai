@@ -159,6 +159,109 @@ class extends="BaseService" implements="IAiChatService" {
 			"emittedAnyText": false,
 			"usage": { "input_tokens": 0, "output_tokens": 0 }
 		};
+		var streamCallbackError = newStreamCallbackErrorHolder();
+
+		// Accumulate one Anthropic stream event into streamState and return the normalized chunk to
+		// hand the caller, or null when the event is state-only (message_start, tool_use blocks,
+		// input_json_delta, message_delta). Kept apart from the transport handler below so the
+		// accumulation can stay INSIDE the parse guard while the emission stays outside it.
+		var buildStreamChunk = ( parsedChunk ) => {
+			if( parsedChunk.type == "message_start" ){
+				streamState.model = parsedChunk.message?.model ?: streamState.model;
+				streamState.messageId = parsedChunk.message?.id ?: streamState.messageId;
+				if( !isNull( parsedChunk.message?.usage ) ){
+					streamState.usage.input_tokens = parsedChunk.message.usage.input_tokens ?: 0;
+				}
+				return;
+			}
+
+			if( parsedChunk.type == "content_block_start" && parsedChunk.content_block?.type == "tool_use" ){
+				var contentBlockIndex = parsedChunk.index ?: 0;
+				var newToolCall = {
+					"type": "tool_use",
+					"id": parsedChunk.content_block.id ?: "",
+					"name": parsedChunk.content_block.name ?: "",
+					"input": parsedChunk.content_block.input ?: {},
+					"contentIndex": contentBlockIndex
+				};
+
+				streamState.toolCalls.append( newToolCall );
+				streamState.toolCallIndexMap[ toString( contentBlockIndex ) ] = streamState.toolCalls.len();
+				streamState.toolInputBuffers[ toString( contentBlockIndex ) ] = "";
+				return;
+			}
+
+			if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "input_json_delta" ){
+				var bufferKey = toString( parsedChunk.index ?: 0 );
+				if( !streamState.toolInputBuffers.keyExists( bufferKey ) ){
+					streamState.toolInputBuffers[ bufferKey ] = "";
+				}
+				streamState.toolInputBuffers[ bufferKey ] &= parsedChunk.delta.partial_json ?: "";
+				return;
+			}
+
+			// Extended thinking: Anthropic streams the model's reasoning as its own
+			// content-block type, BEFORE any text. Normalize it onto the standard
+			// `delta.reasoning` key so consumers read reasoning identically here and
+			// on every OpenAI-shaped provider — never merged into `content`, which
+			// is the answer and is what gets persisted to memory.
+			// `signature_delta` (Anthropic's verification signature) and redacted
+			// thinking blocks have no cross-provider equivalent and are deliberately
+			// not surfaced on the normalized envelope.
+			if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "thinking_delta" ){
+				var thinkingChunk = parsedChunk.delta.thinking ?: "";
+				if( !thinkingChunk.len() ){
+					return;
+				}
+				streamState.reasoning &= thinkingChunk;
+
+				return {
+					"id": streamState.messageId,
+					"provider": "Claude",
+					"model": streamState.model,
+					"object": "chat.completion.chunk",
+					"choices": [
+						{
+							"index": 0,
+							"delta": {
+								"role": "assistant",
+								"reasoning": thinkingChunk
+							}
+						}
+					]
+				};
+			}
+
+			if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "text_delta" ){
+				var textChunk = parsedChunk.delta.text ?: "";
+				streamState.emittedAnyText = streamState.emittedAnyText || textChunk.len();
+				streamState.content &= textChunk;
+
+				return {
+					"id": streamState.messageId,
+					"provider": "Claude",
+					"model": streamState.model,
+					"object": "chat.completion.chunk",
+					"choices": [
+						{
+							"index": 0,
+							"delta": {
+								"role": "assistant",
+								"content": textChunk
+							}
+						}
+					]
+				};
+			}
+
+			if( parsedChunk.type == "message_delta" ){
+				streamState.stopReason = parsedChunk.delta?.stop_reason ?: streamState.stopReason;
+				if( !isNull( parsedChunk.usage ) ){
+					streamState.usage.output_tokens = parsedChunk.usage.output_tokens ?: 0;
+				}
+				return;
+			}
+		};
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire beforeLLMCall middleware (streaming) ---
@@ -189,115 +292,36 @@ class extends="BaseService" implements="IAiChatService" {
 					return;
 				}
 
+				// Parse / accumulate under the guard: a malformed frame is Anthropic's problem and is
+				// logged, not raised.
+				var chunkToEmit = javacast( "null", "" );
 				try {
-					var parsedChunk = jsonDeserialize( chunk.data );
-
-					if( parsedChunk.type == "message_start" ){
-						streamState.model = parsedChunk.message?.model ?: streamState.model;
-						streamState.messageId = parsedChunk.message?.id ?: streamState.messageId;
-						if( !isNull( parsedChunk.message?.usage ) ){
-							streamState.usage.input_tokens = parsedChunk.message.usage.input_tokens ?: 0;
-						}
-						return;
-					}
-
-					if( parsedChunk.type == "content_block_start" && parsedChunk.content_block?.type == "tool_use" ){
-						var contentBlockIndex = parsedChunk.index ?: 0;
-						var newToolCall = {
-							"type": "tool_use",
-							"id": parsedChunk.content_block.id ?: "",
-							"name": parsedChunk.content_block.name ?: "",
-							"input": parsedChunk.content_block.input ?: {},
-							"contentIndex": contentBlockIndex
-						};
-
-						streamState.toolCalls.append( newToolCall );
-						streamState.toolCallIndexMap[ toString( contentBlockIndex ) ] = streamState.toolCalls.len();
-						streamState.toolInputBuffers[ toString( contentBlockIndex ) ] = "";
-						return;
-					}
-
-					if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "input_json_delta" ){
-						var bufferKey = toString( parsedChunk.index ?: 0 );
-						if( !streamState.toolInputBuffers.keyExists( bufferKey ) ){
-							streamState.toolInputBuffers[ bufferKey ] = "";
-						}
-						streamState.toolInputBuffers[ bufferKey ] &= parsedChunk.delta.partial_json ?: "";
-						return;
-					}
-
-					// Extended thinking: Anthropic streams the model's reasoning as its own
-					// content-block type, BEFORE any text. Normalize it onto the standard
-					// `delta.reasoning` key so consumers read reasoning identically here and
-					// on every OpenAI-shaped provider — never merged into `content`, which
-					// is the answer and is what gets persisted to memory.
-					// `signature_delta` (Anthropic's verification signature) and redacted
-					// thinking blocks have no cross-provider equivalent and are deliberately
-					// not surfaced on the normalized envelope.
-					if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "thinking_delta" ){
-						var thinkingChunk = parsedChunk.delta.thinking ?: "";
-						if( !thinkingChunk.len() ){
-							return;
-						}
-						streamState.reasoning &= thinkingChunk;
-
-						userCallback({
-							"id": streamState.messageId,
-							"provider": "Claude",
-							"model": streamState.model,
-							"object": "chat.completion.chunk",
-							"choices": [
-								{
-									"index": 0,
-									"delta": {
-										"role": "assistant",
-										"reasoning": thinkingChunk
-									}
-								}
-							]
-						});
-						return;
-					}
-
-					if( parsedChunk.type == "content_block_delta" && parsedChunk.delta?.type == "text_delta" ){
-						var textChunk = parsedChunk.delta.text ?: "";
-						streamState.emittedAnyText = streamState.emittedAnyText || textChunk.len();
-						streamState.content &= textChunk;
-
-						userCallback({
-							"id": streamState.messageId,
-							"provider": "Claude",
-							"model": streamState.model,
-							"object": "chat.completion.chunk",
-							"choices": [
-								{
-									"index": 0,
-									"delta": {
-										"role": "assistant",
-										"content": textChunk
-									}
-								}
-							]
-						});
-						return;
-					}
-
-					if( parsedChunk.type == "message_delta" ){
-						streamState.stopReason = parsedChunk.delta?.stop_reason ?: streamState.stopReason;
-						if( !isNull( parsedChunk.usage ) ){
-							streamState.usage.output_tokens = parsedChunk.usage.output_tokens ?: 0;
-						}
-						return;
-					}
+					chunkToEmit = buildStreamChunk( jsonDeserialize( chunk.data ) );
 				} catch( any e ){
 					writeLog(
 						text: "Error parsing stream chunk: #e.message# - Data: #chunk.data#",
 						type: "error",
 						log : "ai"
 					)
+					return;
+				}
+
+				// Emit OUTSIDE the guard - see BaseService::emitStreamChunkGuarded(). The HTTP client
+				// abandons the stream but does NOT re-raise an exception thrown from a chunk handler,
+				// so it is recorded in the holder and re-raised once .send() returns.
+				if( !isNull( chunkToEmit ) ){
+					emitStreamChunkGuarded( userCallback, chunkToEmit, thisChatRequest, streamCallbackError );
 				}
 			} )
 			.onError( ( error, httpResult ) => {
+				// The client funnels an exception thrown by a chunk handler in here as though it
+				// were a transport failure. It is not: it is the caller's own callback, already
+				// recorded, announced and re-raised after .send() with its real type. Reporting it
+				// as an HTTP ProviderError here would both mislabel it and double-announce.
+				if( streamCallbackError.captured ){
+					return;
+				}
+
 				var errorMessage = "HTTP Error: #error.message#";
 
 				writeLog(
@@ -321,6 +345,12 @@ class extends="BaseService" implements="IAiChatService" {
 				);
 			} )
 			.onComplete( ( httpResult ) => {
+				// A stream the caller's callback aborted did not complete - announcing
+				// streamComplete here would tell listeners it did.
+				if( streamCallbackError.captured ){
+					return;
+				}
+
 				if( thisChatRequest.getLogResponse() ){
 					writeLog(
 						text: "Stream completed successfully",
@@ -358,6 +388,13 @@ class extends="BaseService" implements="IAiChatService" {
 			} )
 		}
 
+		// The caller's callback blew up mid-stream and the client kept the exception to itself.
+		// Re-raised only now that the usage above has been announced: the model was already called
+		// and billed by the time a chunk reached the caller, and a billed call that loses its
+		// onAITokenCount is a hole in every cost/audit listener. Still ahead of everything below,
+		// which all describes a call that produced a complete response.
+		rethrowStreamCallbackError( streamCallbackError );
+
 		if( streamState.stopReason == "tool_use" && streamState.toolCalls.len() ){
 			var runtimeChatRequest = arguments.chatRequest;
 
@@ -386,7 +423,11 @@ class extends="BaseService" implements="IAiChatService" {
 				var fallbackFromToolUse = chat( runtimeChatRequest );
 				var fallbackToolText = isSimpleValue( fallbackFromToolUse ) ? toString( fallbackFromToolUse ) : "";
 				if( fallbackToolText.len() ){
-					userCallback({
+					// Post-stream emission: the throw propagates by itself here (no HTTP client in
+					// between), but it still has to be announced - this is a call that happened and
+					// was billed. Same holder as the stream loop, so onAIError fires exactly once
+					// however far into the turn the caller's callback fails.
+					emitStreamChunkGuarded( userCallback, {
 						"id": streamState.messageId,
 						"provider": "Claude",
 						"model": streamState.model,
@@ -400,7 +441,7 @@ class extends="BaseService" implements="IAiChatService" {
 								}
 							}
 						]
-					});
+					}, thisChatRequest, streamCallbackError );
 				}
 				return;
 			}
@@ -553,7 +594,7 @@ class extends="BaseService" implements="IAiChatService" {
 			var finalText = isSimpleValue( finalResponse ) ? toString( finalResponse ) : "";
 
 			if( finalText.len() ){
-				userCallback({
+				emitStreamChunkGuarded( userCallback, {
 					"id": streamState.messageId,
 					"provider": "Claude",
 					"model": streamState.model,
@@ -567,7 +608,7 @@ class extends="BaseService" implements="IAiChatService" {
 							}
 						}
 					]
-				});
+				}, thisChatRequest, streamCallbackError );
 			}
 		}
 
@@ -575,7 +616,7 @@ class extends="BaseService" implements="IAiChatService" {
 			var fallbackResponse = chat( arguments.chatRequest );
 			var fallbackText = isSimpleValue( fallbackResponse ) ? toString( fallbackResponse ) : "";
 			if( fallbackText.len() ){
-				userCallback({
+				emitStreamChunkGuarded( userCallback, {
 					"id": streamState.messageId,
 					"provider": "Claude",
 					"model": streamState.model,
@@ -589,7 +630,7 @@ class extends="BaseService" implements="IAiChatService" {
 							}
 						}
 					]
-				});
+				}, thisChatRequest, streamCallbackError );
 			}
 		}
 
@@ -1173,13 +1214,13 @@ class extends="BaseService" implements="IAiChatService" {
 		}
 		var finalText = isSimpleValue( finalResponse ) ? toString( finalResponse ) : ""
 		if ( finalText.len() ) {
-			userCallback( {
+			emitStreamChunkGuarded( userCallback, {
 				"id"      : "",
 				"provider": "Claude",
 				"model"   : thisChatRequest.getModel(),
 				"object"  : "chat.completion.chunk",
 				"choices" : [ { "index": 0, "delta": { "role": "assistant", "content": finalText } } ]
-			} )
+			}, thisChatRequest )
 		}
 	}
 

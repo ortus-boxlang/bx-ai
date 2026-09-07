@@ -631,7 +631,17 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		// -------------------------------------------------------------------------------------------
 		// --- Stream the chat response, with streaming tool call support ---
 		// -------------------------------------------------------------------------------------------
-		var streamState = sendStreamRequest( arguments.chatRequest, dataPacket, arguments.callback )
+		// The holder is owned HERE, not by sendStreamRequest, so the caller's mid-stream callback
+		// exception is re-raised only after the usage below has been announced: the model was
+		// already called and billed by the time a chunk reached the caller, and a billed call that
+		// loses its onAITokenCount is a hole in every cost/audit listener.
+		var streamCallbackError = newStreamCallbackErrorHolder()
+		var streamState         = sendStreamRequest(
+			chatRequest: arguments.chatRequest,
+			dataPacket : dataPacket,
+			callback   : arguments.callback,
+			errorHolder: streamCallbackError
+		)
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire local callback for post mods ---
@@ -657,6 +667,10 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				} )
 			}
 		}
+
+		// Usage is accounted for; now let the caller's own callback exception out - before
+		// afterLLMCall, which describes a call that produced a complete response.
+		rethrowStreamCallbackError( streamCallbackError )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire afterLLMCall middleware, in reverse order ---

@@ -618,4 +618,69 @@ public class ClaudeTest extends BaseIntegrationTest {
 		// Verify callback was invoked
 		assertThat( variables.get( "chunkCount" ) ).isNotNull();
 	}
+
+	@DisplayName( "An exception thrown by the caller's stream callback propagates out of chatStream(), announced on onAIError once" )
+	@Test
+	public void testStreamCallbackErrorPropagates() throws Exception {
+		// chatStream() has no wrapLLMCall seam around its SSE transport, so a local server stands
+		// in for Anthropic (same idiom as testStreamBeforeToolCallInputPatchIsHonoured).
+		String		sse		= String.join( "\n\n",
+		    "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"claude-sonnet-4-5\",\"usage\":{\"input_tokens\":5}}}",
+		    "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}",
+		    "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":2}}",
+		    "data: [DONE]",
+		    "" );
+
+		HttpServer	server	= HttpServer.create( new InetSocketAddress( "127.0.0.1", 0 ), 0 );
+		server.createContext( "/v1/messages", exchange -> {
+			byte[] body = sse.getBytes( StandardCharsets.UTF_8 );
+			exchange.getResponseHeaders().set( "Content-Type", "text/event-stream" );
+			exchange.sendResponseHeaders( 200, body.length );
+			try ( OutputStream os = exchange.getResponseBody() ) {
+				os.write( body );
+			}
+		} );
+		server.start();
+
+		try {
+			String url = "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/messages";
+			// @formatter:off
+			runtime.executeSource(
+				"""
+					// The counter lives in THIS script's variables scope, so a leaked registration
+					// only ever increments a scope no later test reads.
+					errorEvents = 0
+					BoxRegisterInterceptor( function( data ) { errorEvents++ }, "onAIError" )
+
+					provider = aiService( "claude", { apiKey: "dummy-key" } )
+					provider.setChatURL( "%s" )
+
+					chatRequest = aiChatRequest(
+						aiMessage().user( "hi" ),
+						{ model: "claude-sonnet-4-5", max_tokens: 50 },
+						{ provider: "claude" }
+					)
+
+					errType = ""
+					errMsg  = ""
+					try {
+						provider.chatStream( chatRequest, ( chunk ) => {
+							throw( type: "CallerBoom", message: "caller callback failed" )
+						} )
+					} catch ( any e ) {
+						errType = e.type
+						errMsg  = e.message
+					}
+				""".formatted( url ),
+				context
+			);
+			// @formatter:on
+
+			assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "CallerBoom" );
+			assertThat( variables.get( Key.of( "errMsg" ) ).toString() ).contains( "caller callback failed" );
+			assertThat( variables.getAsInteger( Key.of( "errorEvents" ) ) ).isEqualTo( 1 );
+		} finally {
+			server.stop( 0 );
+		}
+	}
 }

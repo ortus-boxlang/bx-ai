@@ -173,7 +173,11 @@ class extends="OpenAIService" {
 		required AiChatRequest chatRequest,
 		required struct dataPacket,
 		required function callback,
-		chatUrl = getChatURL()
+		chatUrl = getChatURL(),
+		// Accepted only to match the real transport's signature (OpenAIService.chatStream hands one
+		// down). The mock emits directly, with no HTTP client in between, so a callback exception
+		// propagates by itself and there is nothing to record here.
+		struct errorHolder
 	){
 		BoxAnnounce( "onAIChatRequest", {
 			"dataPacket" : arguments.dataPacket,

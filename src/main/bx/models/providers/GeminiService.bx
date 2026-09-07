@@ -333,35 +333,80 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		var geminiUsage = { "promptTokens": 0, "completionTokens": 0, "totalTokens": 0, "raw": {} };
 		// Accumulate the streamed assistant text so afterLLMCall middleware can inspect it
 		var geminiContent = "";
-		var normalizedCallback = ( chunk ) => {
-			var content = chunk.candidates?.first()?.content?.parts?.first()?.text ?: "";
-			var finishReason = chunk.candidates?.first()?.finishReason ?: "";
-			geminiContent &= content;
+		var streamCallbackError = newStreamCallbackErrorHolder();
 
-			// Capture usage metadata from Gemini chunks
-			if( !isNull( chunk.usageMetadata ) ){
-				geminiUsage.promptTokens     = chunk.usageMetadata.promptTokenCount ?: 0;
-				geminiUsage.completionTokens = chunk.usageMetadata.candidatesTokenCount ?: 0;
-				geminiUsage.totalTokens      = chunk.usageMetadata.totalTokenCount ?: 0;
-				geminiUsage.raw              = chunk.usageMetadata;
+		// Gemini's transport is BaseService.sendStreamRequest, and this normalizer is what it is
+		// handed as the "user callback" - so it runs INSIDE that transport's emit guard, where an
+		// exception is recorded and re-raised as the CALLER's. Gemini's own normalization
+		// therefore has to be guarded here, or a frame Gemini's shape rules do not cover aborts
+		// the stream and gets blamed on the caller. The rule is unchanged, just one level in:
+		// normalize under this guard, emit the caller's callback outside it.
+		var normalizedCallback = ( chunk ) => {
+			var chunkToEmit = javacast( "null", "" );
+
+			try {
+				// `candidates` is EMPTY on a blocked prompt (promptFeedback only) and a candidate
+				// can carry no `parts` at all, so every .first() needs a length check first -
+				// .first() on an empty array throws, and `?.` does not guard that.
+				var candidate    = ( isArray( chunk.candidates ?: [] ) && ( chunk.candidates ?: [] ).len() )
+					? chunk.candidates.first()
+					: {};
+				var parts        = candidate.content?.parts ?: [];
+				var content      = ( isArray( parts ) && parts.len() ) ? ( parts.first().text ?: "" ) : "";
+				var finishReason = candidate.finishReason ?: "";
+
+				// A frame with no candidate at all carries no assistant text - usage and prompt
+				// feedback only. Nothing to hand the caller.
+				if( structIsEmpty( candidate ) ){
+					writeLog(
+						text: "Gemini stream frame carried no candidates (blocked prompt or usage-only frame), skipping: #left( jsonSerialize( chunk ), 500 )#",
+						type: "debug",
+						log : "ai"
+					);
+				}
+
+				geminiContent &= content;
+
+				// Capture usage metadata from Gemini chunks
+				if( !isNull( chunk.usageMetadata ) ){
+					geminiUsage.promptTokens     = chunk.usageMetadata.promptTokenCount ?: 0;
+					geminiUsage.completionTokens = chunk.usageMetadata.candidatesTokenCount ?: 0;
+					geminiUsage.totalTokens      = chunk.usageMetadata.totalTokenCount ?: 0;
+					geminiUsage.raw              = chunk.usageMetadata;
+				}
+
+				if( !structIsEmpty( candidate ) ){
+					chunkToEmit = {
+						"provider": "Gemini",
+						"model": requestedModel,
+						"object": "chat.completion.chunk",
+						"choices": [
+							{
+								"index": 0,
+								"delta": {
+									"role": "assistant",
+									"content": local.content
+								},
+								"finish_reason": local.finishReason
+							}
+						],
+						"raw": chunk
+					};
+				}
+			} catch( any e ){
+				writeLog(
+					text: "Error normalizing Gemini stream chunk: #e.message#",
+					type: "error",
+					log : "ai"
+				);
+				return;
 			}
 
-			userCallback({
-				"provider": "Gemini",
-				"model": requestedModel,
-				"object": "chat.completion.chunk",
-				"choices": [
-					{
-						"index": 0,
-						"delta": {
-							"role": "assistant",
-							"content": content
-						},
-						"finish_reason": finishReason
-					}
-				],
-				"raw": chunk
-			});
+			// Emit OUTSIDE the guard above. The bare seam, not the guarded one: the transport is
+			// already holding this call inside emitStreamChunkGuarded() with the holder above.
+			if( !isNull( chunkToEmit ) ){
+				emitStreamChunk( userCallback, chunkToEmit );
+			}
 		};
 
 		// -------------------------------------------------------------------------------------------
@@ -374,7 +419,13 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		}
 
 		// Send it with streaming
-		sendStreamRequest( chatRequest, dataPacket, normalizedCallback, streamingURL )
+		sendStreamRequest(
+			chatRequest: chatRequest,
+			dataPacket : dataPacket,
+			callback   : normalizedCallback,
+			chatUrl    : streamingURL,
+			errorHolder: streamCallbackError
+		)
 
 		// -------------------------------------------------------------------------------------------
 		// --- Usage Event Announcement (Streaming) ---
@@ -392,6 +443,11 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 				timestamp        : now()
 			} )
 		}
+
+		// The caller's callback blew up mid-stream. Usage is accounted for above - the model was
+		// already called and billed - so let it out now, before afterLLMCall, which describes a
+		// call that produced a complete response.
+		rethrowStreamCallbackError( streamCallbackError )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Fire afterLLMCall middleware (streaming), in reverse order ---

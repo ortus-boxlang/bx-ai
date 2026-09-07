@@ -960,4 +960,57 @@ public class CohereStreamingToolsTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "isFinalText" ) ) ).isTrue();
 	}
 
+	@DisplayName( "An exception thrown by the caller's stream callback propagates out of chatStream(), announced on onAIError once" )
+	@Test
+	public void testStreamCallbackErrorPropagates() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        // The counter lives in THIS script's variables scope, so a leaked registration only
+		        // ever increments a scope no later test reads.
+		        errorEvents = 0
+		        BoxRegisterInterceptor( function( data ) { errorEvents++ }, "onAIError" )
+
+		        provider    = aiService( "cohere", { apiKey: "dummy-key" } )
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "What is the weather in Paris?" ),
+		            { model: "command-a-03-2025" },
+		            { provider: "cohere" }
+		        )
+
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                ctx.emitSSEChunk( { "data": jsonSerialize( { "event_type": "text-generation", "text": "It is sunny." } ) } )
+		                ctx.emitSSEChunk( { "data": jsonSerialize( {
+		                    "event_type"   : "stream-end",
+		                    "finish_reason": "COMPLETE",
+		                    "response"     : { "meta": { "billed_units": { "input_tokens": 10, "output_tokens": 5 } } }
+		                } ) } )
+		                return {}
+		            }
+		        } )
+
+		        errType = ""
+		        errMsg  = ""
+		        try {
+		            // The readme idiom: fine on the text-generation chunk, throws on stream-end,
+		            // whose delta carries the terminal finish_reason.
+		            provider.chatStream( chatRequest, ( chunk ) => {
+		                if ( ( chunk.choices?.first()?.finish_reason ?: "" ).len() ) {
+		                    throw( type: "CallerBoom", message: "caller callback failed" )
+		                }
+		            } )
+		        } catch ( any e ) {
+		            errType = e.type
+		            errMsg  = e.message
+		        }
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "CallerBoom" );
+		assertThat( variables.get( Key.of( "errMsg" ) ).toString() ).contains( "caller callback failed" );
+		assertThat( variables.getAsInteger( Key.of( "errorEvents" ) ) ).isEqualTo( 1 );
+	}
 }

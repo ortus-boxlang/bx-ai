@@ -331,7 +331,8 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 		required AiChatRequest chatRequest,
 		required struct dataPacket,
 		required function callback,
-		chatUrl = getChatURL()
+		chatUrl = getChatURL(),
+		struct errorHolder
 	 ){
 		// Capture callback and chatRequest in local variables for closure scope
 		var userCallback = arguments.callback
@@ -347,6 +348,10 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Running 0-based offset so tool calls that arrive across multiple streaming
 		// chunks get unique indices that slot correctly into mergeToolCallDeltas().
 		var toolCallIndexOffset = 0
+		// Owned by OpenAIService.chatStream (our caller) when it hands one down, so the caller's
+		// callback exception waits for its onAITokenCount announce - see BaseService.
+		var callerOwnsRethrow   = arguments.keyExists( "errorHolder" )
+		var streamCallbackError = callerOwnsRethrow ? arguments.errorHolder : newStreamCallbackErrorHolder()
 
 		// Announce the request
 		BoxAnnounce(
@@ -400,6 +405,7 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 
 				// Deserialize the chunk and normalize it to the OpenAI streaming format
 				// (our internal standard) so user callbacks work the same across all providers.
+				var chunkToEmit = javacast( "null", "" )
 				try{
 					var parsedChunk = jsonDeserialize( content )
 
@@ -468,28 +474,36 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 							"total_tokens"     : promptTokens + completionTokens
 						}
 					}
+
+					// Accumulation belongs INSIDE this guard with the parse: a malformed frame is
+					// Ollama's problem and is logged, not raised. Only the emission below moves out.
+					updateStreamState( streamState, normalizedChunk )
+					chunkToEmit = local.normalizedChunk
 				} catch( any e ){
 					writeLog(
-						text: "Error deserializing Ollama stream chunk: #e.message# - Chunk content: #content#",
+						text: "Error deserializing Ollama stream chunk: #e.message# - Chunk content: #arguments.content#",
 						type: "error",
 						log : "ai"
 					)
 					return
 				}
 
-				// Emit normalized chunk to the user callback
-				try {
-					userCallback( normalizedChunk )
-					updateStreamState( streamState, normalizedChunk )
-				} catch( any e ){
-					writeLog(
-						text: "Error emitting normalized chunk: #e.message# #e.detail# - Normalized chunk: #normalizedChunk.toString()#",
-						type: "error",
-						log : "ai"
-					)
+				// Emit OUTSIDE the parse guard above - see BaseService::emitStreamChunkGuarded().
+				// This emission used to sit in a try/catch of its own that logged the caller's own
+				// exception and moved on; the HTTP client abandons the stream but does NOT
+				// re-raise, so it is recorded in the holder and re-raised once .send() returns.
+				if( !isNull( chunkToEmit ) ){
+					emitStreamChunkGuarded( userCallback, chunkToEmit, thisChatRequest, streamCallbackError )
 				}
 			} )
 			.onError( ( error, httpResult ) => {
+				// The client funnels an exception thrown by a chunk handler in here as though it
+				// were a transport failure. It is not: it is the caller's own callback, already
+				// announced and re-raised after .send() with its real type.
+				if( streamCallbackError.captured ){
+					return;
+				}
+
 				var errorMessage = "HTTP Error: [#error.message#]";
 
 				writeLog(
@@ -514,6 +528,12 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 				)
 			} )
 			.onComplete( ( httpResult ) => {
+				// A stream the caller's callback aborted did not complete - announcing
+				// streamComplete here would tell listeners it did.
+				if( streamCallbackError.captured ){
+					return;
+				}
+
 				// Log the response if enabled
 				if( thisChatRequest.getLogResponse() ){
 					writeLog(
@@ -533,6 +553,13 @@ class extends="OpenAiService" implements="IAiChatService, IAiEmbeddingsService" 
 				)
 			} )
 			.send()
+
+		// The caller's callback blew up mid-stream and the client kept the exception to itself.
+		// When our caller handed us its own holder it re-raises instead, once it has announced the
+		// usage the (already billed) call produced.
+		if( !callerOwnsRethrow ){
+			rethrowStreamCallbackError( streamCallbackError )
+		}
 
 		return streamState;
 	}
