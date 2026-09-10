@@ -26,6 +26,7 @@ import io.github.cdimascio.dotenv.Dotenv;
 import ortus.boxlang.runtime.BoxRuntime;
 import ortus.boxlang.runtime.context.IBoxContext;
 import ortus.boxlang.runtime.context.ScriptingRequestBoxContext;
+import ortus.boxlang.runtime.modules.BoxModuleConfig;
 import ortus.boxlang.runtime.modules.ModuleRecord;
 import ortus.boxlang.runtime.scopes.IScope;
 import ortus.boxlang.runtime.scopes.Key;
@@ -87,7 +88,7 @@ public abstract class BaseIntegrationTest {
 
 			// Execute the onRuntimeStart() lifecycle method to ensure tools are registered
 			// Since we are lazy loading the module
-			moduleRecord.moduleConfig.dereferenceAndInvoke(
+			( ( BoxModuleConfig ) moduleRecord.moduleConfig ).getBxClass().dereferenceAndInvoke(
 			    context,
 			    Key.of( "onRuntimeStart" ),
 			    new Object[] {},

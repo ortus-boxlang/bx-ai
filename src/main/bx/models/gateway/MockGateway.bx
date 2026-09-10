@@ -53,6 +53,11 @@ class extends="BaseGateway" {
 	property name="deliveredEvents" type="array" default=[];
 
 	/**
+	 * Every set of query params a verifyHandshake() call was answered with, in order
+	 */
+	property name="handshakes" type="array" default=[];
+
+	/**
 	 * Every HumanInteractionRequest presented via requestHumanInteraction(), keyed by request id
 	 */
 	property name="pendingInteractions" type="struct" default={};
@@ -77,6 +82,7 @@ class extends="BaseGateway" {
 		variables.name              = "mock"
 		variables.description       = "Deterministic in-memory reference gateway for testing"
 		variables.deliveredEvents   = []
+		variables.handshakes        = []
 		variables.pendingInteractions = {}
 		variables.resolvedDecisions   = {}
 		variables.scriptedDecisions   = []
@@ -134,7 +140,7 @@ class extends="BaseGateway" {
 	 * Declares the capabilities this reference gateway supports.
 	 */
 	array function getDeclaredCapabilities(){
-		return [ "inboundMessages", "outboundMessages", "humanApproval" ]
+		return [ "inboundMessages", "outboundMessages", "humanApproval", "verifyHandshake" ]
 	}
 
 	// -------------------------------------------------------------------------
@@ -144,6 +150,21 @@ class extends="BaseGateway" {
 	boolean function verifyInbound( required any payload, struct requestContext = {} ){
 		// No real transport/signature to verify for an in-memory mock
 		return true
+	}
+
+	/**
+	 * Reference implementation of a platform URL-verification handshake: echo the
+	 * `challenge` query param back as plain text, the shape every real one takes
+	 * (Meta's WhatsApp Cloud `hub.challenge`, for instance). Every answered handshake
+	 * is recorded in getHandshakes() so a test can assert what the platform sent.
+	 */
+	struct function verifyHandshake( struct params = {} ){
+		variables.handshakes.append( arguments.params )
+		return {
+			"statusCode" : 200,
+			"body"       : arguments.params.challenge ?: "",
+			"contentType": "text/plain"
+		}
 	}
 
 	array function parseInbound( required any payload, struct requestContext = {} ){

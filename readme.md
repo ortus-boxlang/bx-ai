@@ -823,7 +823,7 @@ agent = aiAgent(
 | `http` | Network-reachable: HMAC-SHA256 signing, nonce dedup, TTL-bounded interactions, atomic decision claims |
 | `mock` | In-memory gateway for tests and examples |
 
-**Capabilities** a gateway may declare: `inboundMessages`, `outboundMessages`, `streaming`, `threads`, `attachments`, `messageEditing`, `interactiveActions`, `humanApproval`, `argumentEditing`, `authentication`.
+**Capabilities** a gateway may declare: `inboundMessages`, `outboundMessages`, `streaming`, `threads`, `attachments`, `messageEditing`, `interactiveActions`, `humanApproval`, `argumentEditing`, `authentication`, `verifyHandshake`.
 
 **External gateways** (Slack, Discord, Teams, …) ship as their own modules and register themselves at load time:
 
@@ -835,6 +835,38 @@ myGateway = aiGateway( "my-platform" )
 `aiGateway()` can also auto-register the instance it constructs — pass `register: true` (and optionally `module`) instead of calling `aiGatewayRegistry().register()` yourself: `aiGateway( name: "http", register: true, module: "my-module" )`.
 
 Implement `IGateway` to build your own — every capability method has a safe default, so you only override what you actually support.
+
+### Hosting the gateway surface
+
+`GatewayRequestProcessor` turns an inbound platform request into a processed result. Its transport-agnostic statics take the pieces of a request and hand back `{ statusCode, body, contentType, headers }` — no CGI, no response writing — so a framework that already has a router (ColdBox, for instance) can mount the surface wherever it likes:
+
+```javascript
+import bxModules.bxai.models.gateway.http.GatewayRequestProcessor;
+
+// Verify the signature, parse the payload, and dispatch every parsed message as an
+// agent turn. Returns 202 immediately — the turn is NOT waited on, because a platform
+// webhook times out in seconds and an agent turn does not.
+result = GatewayRequestProcessor::processInbound(
+    gatewayName: "slack",
+    rawBody    : rawRequestBody,   // exactly as received — signatures are computed over it
+    headers    : requestHeaders,
+    session    : mySession         // omit to parse only, dispatching nothing
+)
+
+GatewayRequestProcessor::processHandshake( "whatsapp-cloud", queryParams )  // platform URL verification
+GatewayRequestProcessor::readInteraction( requestID )                       // poll a pending HITL interaction
+GatewayRequestProcessor::submitDecision( requestID, rawBody, headers )      // signed human decision
+```
+
+With a session, the 202 body reports which thread each message landed on (`{ accepted, messages: [ { id, threadId } ] }`) so the caller can correlate the reply that arrives later; a single-message event echoes the same value as an `X-Thread-Id` header.
+
+For callers with no router of their own, `public/gateway.bxm` mounts `processHttp()` on top of the exact same statics, dispatching on `cgi.PATH_INFO`:
+
+```
+POST /~bxai/gateway.bxm/gateways/{gatewayName}/events
+GET  /~bxai/gateway.bxm/interactions/{requestID}
+POST /~bxai/gateway.bxm/interactions/{requestID}/decisions
+```
 
 ### Gateway Sessions — wiring an agent to one or more gateways
 
