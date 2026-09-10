@@ -221,6 +221,33 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		}
 
 		// -------------------------------------------------------------------------------------------
+		// --- Error Detection: Invalid Response Shape ---
+		// -------------------------------------------------------------------------------------------
+		if( !result.keyExists( "choices" ) || !isArray( result.choices ) || !result.choices.len() ){
+			var providerErrorMessage = result.message ?: "Invalid chat response from provider. Response: #result.toString()#"
+			writeLog(
+				text: providerErrorMessage,
+				type: "error",
+				log : "ai"
+			)
+
+			// Announce the error
+			BoxAnnounce( "onAIError", {
+				error       : result,
+				errorMessage: providerErrorMessage,
+				provider    : this,
+				operation   : "chat",
+				aiRequest   : arguments.chatRequest,
+				canRetry    : true
+			} )
+
+			throw(
+				type   : "ProviderError",
+				message: providerErrorMessage
+			)
+		}
+
+		// -------------------------------------------------------------------------------------------
 		// --- Usage Event Announcement ---
 		// -------------------------------------------------------------------------------------------
 		if( result.keyExists( "usage" ) ){
