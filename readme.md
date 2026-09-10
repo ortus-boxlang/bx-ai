@@ -202,7 +202,7 @@ Just make sure you have already a server setup with BoxLang.  You can check our 
 
 The following are the AI providers supported by this module. **Please note that in order to interact with these providers you will need to have an account with them and an API key.** 🔑
 
-- ☁️ [AWS Bedrock](https://aws.amazon.com/bedrock/) - Claude, Titan, Llama, Mistral via AWS
+- ☁️ [AWS Bedrock](https://aws.amazon.com/bedrock/) - Claude, OpenAI (gpt-oss), Cohere Command R/R+, Amazon Titan & Nova, Meta Llama, Mistral, AI21 Jamba, DeepSeek, Qwen and other OpenAI-shaped families via AWS
 - 🧠 [Claude Anthropic](https://www.anthropic.com/claude)
 - 🧬 [Cohere](https://cohere.com/)
 - 🔍 [DeepSeek](https://www.deepseek.com/)
@@ -228,7 +228,7 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 
 | Provider            | Chat & Streaming | Real-time Tools | Embeddings       | TTS (Speech)     | STT (Transcription) |
 |---------------------|------------------|-----------------|------------------|------------------|---------------------|
-| AWS Bedrock         | ✅               | ✅              | ✅               | ❌               | ❌                  |
+| AWS Bedrock         | ✅               | ✅ (per family) | ✅               | ❌               | ❌                  |
 | Claude              | ✅               | ✅              | ❌               | ❌               | ❌                  |
 | Cohere              | ✅               | ✅              | ✅               | ❌               | ❌                  |
 | DeepSeek            | ✅               | ✅              | ✅               | ❌               | ❌                  |
@@ -246,6 +246,87 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | OpenRouter          | ✅               | ✅              | ✅               | ❌               | ❌                  |
 | Perplexity          | ✅               | ✅              | ❌               | ❌               | ❌                  |
 | Voyage              | ❌               | ❌              | ✅ (Specialized) | ❌               | ❌                  |
+
+> **AWS Bedrock — two runtime APIs.** Bedrock exposes a model-agnostic **Converse** /
+> **ConverseStream** operation and the older per-vendor **InvokeModel** /
+> **InvokeModelWithResponseStream** bodies. This module speaks **Converse by default**, and keeps
+> InvokeModel as an explicitly selectable — and automatically applied — fallback.
+>
+> ```javascript
+> // Per request
+> aiChatRequest(
+>     aiMessage().user( "hi" ),
+>     { model: "amazon.nova-pro-v1:0" },
+>     { provider: "bedrock", providerOptions: { bedrockApi: "invoke" } }
+> )
+>
+> // Per service / module settings — settings.providers.Bedrock.options
+> aiService( "bedrock", { region: "us-east-1", bedrockApi: "converse" } )
+> ```
+>
+> Resolution order, highest first: `providerOptions.bedrockApi` → the
+> `BOXLANG_MODULES_BXAI_BEDROCK_API` environment variable → the `bxai_bedrockApi` application-scope
+> key → the configured module/service setting → `converse`. An unrecognized value falls through to
+> the next source rather than throwing.
+>
+> **Automatic fallback to InvokeModel** happens when Converse cannot serve the request at all:
+>
+> - the model id is a known text-completion model with no `messages[]` representation
+>   (`cohere.command-text-*`, `cohere.command-light-text-*`, `ai21.j2-*`);
+> - the request carries `providerOptions.rawBody` — an InvokeModel-only escape hatch whose struct
+>   replaces the request transform wholesale;
+> - Converse answered with a `ValidationException` saying the model or operation is unsupported, in
+>   which case the request is rebuilt and retried **once** over InvokeModel. No other error class
+>   ever falls back. Each fallback is logged at `info` on the `ai` log, once per model id.
+>
+> **On the Converse path** one transform serves every family: typed content blocks (`text`,
+> `image`, `document`, `toolUse`, `toolResult`, `reasoningContent`, `cachePoint`), `system[]`,
+> `inferenceConfig`, a model-agnostic `toolConfig` with `toolChoice`, first-class `guardrailConfig`
+> and `performanceConfig`, and `additionalModelRequestFields` for everything Converse does not model
+> itself (Claude's `thinking`, `top_k`, `anthropic_beta`, `reasoning_effort`, …). `cache_control` on
+> a system message or a message becomes a sibling `cachePoint` block. Structured output is the
+> forced `structured_output` tool for **all** families, and `usage` reports
+> `cache_read_input_tokens` / `cache_creation_input_tokens` alongside the OpenAI-shaped totals.
+> `countTokens( chatRequest )` exposes Bedrock's `CountTokens` operation, counting whichever body
+> the request would actually send (`input.converse` or `input.invokeModel`). AWS currently serves it
+> only for a **bare Anthropic foundation-model id** (`anthropic.claude-haiku-4-5-20251001-v1:0`);
+> an inference profile (`global.`/`eu.`/`us.` prefix) or another vendor's model answers
+> `400 The provided model doesn't support counting tokens`, surfaced as a `ProviderError` whose
+> message names the restriction.
+>
+> Guardrail and performance-config provider options are accepted under **either** spelling —
+> `guardrailIdentifier` / `guardrailVersion` / `guardrailTrace`, or the
+> `X-Amzn-Bedrock-Guardrail*` / `X-Amzn-Bedrock-Trace` header names (including inside the
+> `bedrockHeaders` shorthand) — and are mapped onto Converse's `guardrailConfig` either way.
+>
+> Multimodal content must carry its **bytes**: a `data:` URI or an Anthropic `source.base64` block
+> becomes an `image`/`document` block. Converse has no URL source, so a remote `http(s)` image URL
+> is dropped with a warning instead of being silently faked — embed the file, or use
+> `bedrockApi: "invoke"`.
+>
+> **On the InvokeModel path** the per-vendor shapes still apply, and tool calling is wired up
+> family by family:
+>
+> | Bedrock family | Converse | Tools (sync) | Tools (streaming) | Schema-typed structured output |
+> |---|---|---|---|---|
+> | `anthropic.claude-*` (and opaque `arn:` inference profiles) | ✅ | ✅ | ✅ | ✅ (forced `structured_output` tool) |
+> | `openai.gpt-oss-*` — and the OpenAI-shaped catch-all: Nova, DeepSeek, Qwen, AI21 Jamba, modern Mistral, GLM, Kimi, Nemotron, Gemma | ✅ | ✅ | ✅ | ✅ (`response_format` json_schema) |
+> | `cohere.command-r*` (Command R / R+) | ✅ | ✅ (`tools` / `tool_results`) | ✅ (`tool-calls-generation`) | ❌ — invoke: Bedrock's Cohere body documents no `response_format`; Converse: a forced `toolChoice` is honoured for Anthropic / Mistral Large / Nova only |
+> | `meta.llama*`, legacy `mistral.*` (7B / Mixtral / *-2402) | ✅ | Converse ✅ (AWS decides) · invoke ❌ | Converse ✅ (AWS decides) · invoke ❌ | ❌ |
+> | `amazon.titan-*` | ✅ (text only) | ❌ | ❌ | ❌ |
+> | `cohere.command-text-*`, `cohere.command-light-text-*` (legacy), `ai21.j2-*` | ❌ (always InvokeModel) | ❌ | ❌ | ❌ |
+>
+> The `UnsupportedProviderCapability` gate is mostly an **InvokeModel** gate — it describes the
+> reach of this module's per-vendor transforms, not the models — so on Converse a model that
+> genuinely cannot do tools says so itself and AWS's `ValidationException` is surfaced verbatim.
+> Two cases stay gated on Converse too, because they are known-unserviceable rather than merely
+> unknown: **tools on Titan** (no tool-use capability at all) and **schema-typed structured
+> output on Titan / Llama / Mistral / Cohere**, which this module implements on Converse as
+> a *forced* `toolChoice` — a model that does not honour a forced tool choice simply never returns
+> the block, and the failure would arrive after a paid round trip. Cohere is gated for the whole
+> family, Command R included: AWS documents `toolChoice` support for Anthropic, Mistral Large and
+> Nova only. Command R still does plain **tool calling** on both APIs; it is only the forced-choice
+> structured-output path that is refused.
 
 ### 🔍 Provider Capability Discovery
 
@@ -331,7 +412,9 @@ Whatever the provider calls it on the wire (Anthropic `thinking_delta`, DeepSeek
 
 ```javascript
 aiChatStream( "Why is the sky blue?", ( chunk ) => {
-    var delta     = chunk.choices?.first()?.delta ?: {}
+    // A chunk may carry zero choices (usage-only frames): guard on len(), not on `?.` —
+    // safe navigation short-circuits a null, not an empty array, and first() throws on one.
+    var delta     = ( chunk.choices ?: [] ).len() ? chunk.choices.first().delta : {}
     var reasoning = delta.reasoning ?: ""   // the model's thinking
     var content   = delta.content   ?: ""   // the actual answer
 } )
