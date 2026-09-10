@@ -717,7 +717,8 @@ class {
 
 	/**
 	 * Read the assistant text from a middleware afterLLMCall context across all known
-	 * provider response shapes (OpenAI/compat, Claude, Gemini, Cohere) and streaming.
+	 * provider response shapes (Bedrock Converse, OpenAI/compat, Claude, Gemini, Cohere,
+	 * Bedrock native Titan/Llama/Mistral/Cohere) and streaming.
 	 * Returns "" for unknown shapes.
 	 *
 	 * @context The afterLLMCall context ({ chatRequest, result } or { chatRequest, streamState })
@@ -732,6 +733,18 @@ class {
 		}
 		var result = arguments.context.result
 
+		// Bedrock Converse: output.message.content[] blocks → ALL text blocks, joined.
+		// afterLLMCall fires with the RAW Converse body — BedrockService.chat() only calls
+		// transformResponseFromConverse() AFTER the hook — so this, not the OpenAI shape, is what a
+		// guard sees on the now-default Bedrock path. Joined with char(10) to match that transform.
+		// toolUse and reasoningContent blocks are not text and are skipped.
+		if( result.keyExists( "output" ) && isStruct( result.output ) ){
+			var converseBlocks = result.output?.message?.content ?: []
+			if( isArray( converseBlocks ) ){
+				var converseText = converseBlocks.filter( b -> isStruct( b ) && b.keyExists( "text" ) && isSimpleValue( b.text ) )
+				return converseText.isEmpty() ? "" : converseText.map( b -> b.text ).toList( char( 10 ) )
+			}
+		}
 		// OpenAI / OpenAI-compatible
 		if( result.keyExists( "choices" ) && isArray( result.choices ) && result.choices.len() ){
 			return result.choices.first().message.content ?: ""
@@ -792,6 +805,35 @@ class {
 		}
 		var result = arguments.context.result
 
+		// Bedrock Converse: same collapse rule as the Claude branch below — the getter joined every
+		// text block, so the redacted string covers all of them. First text block takes the new
+		// text, later ones are removed; toolUse/reasoningContent blocks are preserved in order
+		// (Bedrock rejects a tool-use turn whose reasoning blocks were modified, and the tool-call
+		// path re-sends this same array as the assistant turn).
+		if( result.keyExists( "output" ) && isStruct( result.output ) ){
+			var converseBlocks = result.output?.message?.content ?: []
+			if( isArray( converseBlocks ) ){
+				var converseTextIndexes = []
+				for( var i = 1; i <= converseBlocks.len(); i++ ){
+					var converseBlock = converseBlocks[ i ]
+					if( isStruct( converseBlock ) && converseBlock.keyExists( "text" ) && isSimpleValue( converseBlock.text ) ){
+						converseTextIndexes.append( i )
+					}
+				}
+				if( !converseTextIndexes.isEmpty() ){
+					for( var i = converseTextIndexes.len(); i > 1; i-- ){
+						converseBlocks.deleteAt( converseTextIndexes[ i ] )
+					}
+					if( len( arguments.text ) ){
+						converseBlocks[ converseTextIndexes.first() ].text = arguments.text
+					} else {
+						// An empty text block is rejected on the round trip — drop it instead.
+						converseBlocks.deleteAt( converseTextIndexes.first() )
+					}
+					return true
+				}
+			}
+		}
 		if( result.keyExists( "choices" ) && isArray( result.choices ) && result.choices.len() ){
 			result.choices.first().message.content = arguments.text
 			return true
