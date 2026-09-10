@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🥊 Added
+
+- **Transport-agnostic gateway processing API**: `GatewayRequestProcessor` now exposes `processInbound()`, `processHandshake()`, `readInteraction()`, and `submitDecision()` as statics that touch no transport at all — they take the pieces of a request (gateway name, raw body, headers, query params) and return a normalized `{ statusCode, body, contentType, headers }` result. A host framework that already has a router (ColdBox's `route( "/gateways" ).toAiGateway()` terminator) mounts the gateway surface wherever it likes instead of being tied to `cgi.PATH_INFO` and `public/gateway.bxm`. `processHttp()` is now a thin layer over the same statics, so the existing `/~bxai/gateway.bxm` surface is unchanged.
+- **`processInbound()` dispatches, not just parses**: pass a `GatewaySession` and every parsed message is handed to `handleInbound()` and acked `202` immediately — the returned BoxFutures are deliberately never joined, since a platform webhook times out in seconds while an agent turn does not. The response reports which thread each message landed on (`{ accepted, messages: [ { id, threadId } ] }`, plus an `X-Thread-Id` header for single-message events) so a caller can correlate the reply that arrives later. Called without a session it parses only and returns `200` with the normalized messages, exactly as before.
+- **`IGateway.verifyHandshake()` + the `"verifyHandshake"` capability**: answers the GET a platform sends to verify a webhook URL before it starts POSTing to it (Meta's WhatsApp Cloud `hub.challenge` echo being the canonical example). Defaults to `GatewayCapabilityNotSupported`, so only gateways whose platform performs one override it; `MockGateway` is the reference implementation, and `processHandshake()` answers `405` for any gateway that does not declare it.
+- **`GatewaySession.resolveThreadId()` is now public**: pure and side-effect free, it was already the only way to know which thread a message resolves to. A caller that dispatches without waiting on the turn needs it to report where the work landed, and `getQueueDepth()`/`cancelRun()` are addressed by a thread id the caller has to be able to compute in the first place.
+
+### 🐛 Fixed
+
+- An inbound event whose body is not valid JSON is now rejected with `400` and a message naming the parse failure, instead of surfacing as a generic `500`.
+
 ## [3.4.0] - 2026-09-01
 
 ### 🥊 Added

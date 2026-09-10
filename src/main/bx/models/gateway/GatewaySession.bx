@@ -276,11 +276,17 @@ class {
 	// ==================== Private Helpers ====================
 
 	/**
-	 * Closed by default: a message's own threadId always wins if present (matches
-	 * AiAgent's threadId); otherwise namespaced by source gateway name, so two gateways
-	 * producing the same raw conversation id never collide.
+	 * Which thread a message belongs to: a message's own threadId always wins if present
+	 * (matches AiAgent's threadId); otherwise namespaced by source gateway name, so two
+	 * gateways producing the same raw conversation id never collide.
+	 *
+	 * Public and pure — no state is read or written, so calling it never affects (or is
+	 * affected by) a dispatch. A caller that hands a message to handleInbound() without
+	 * waiting on the turn (an HTTP webhook acking a platform in milliseconds, say) needs
+	 * this to report WHICH thread the work landed on, and getQueueDepth()/cancelRun() are
+	 * likewise addressed by a thread id the caller has to be able to compute.
 	 */
-	private string function resolveThreadId( required GatewayMessage message, required IGateway sourceGateway ) {
+	string function resolveThreadId( required GatewayMessage message, required IGateway sourceGateway ) {
 		var explicit = arguments.message.getContext().getThreadID()
 		if ( len( explicit ) ) {
 			return explicit

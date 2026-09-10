@@ -12,9 +12,22 @@
  * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
  * governing permissions and limitations under the License.
  * ----------------------------------------------------------------------------------
- * HTTP front controller for the generic Gateway SPI — the transport-agnostic
- * processing logic behind public/gateway.bxm, mirroring MCPRequestProcessor's
- * transport/processHttp() shape but routing REST-style instead of JSON-RPC.
+ * Front controller for the generic Gateway SPI — the transport-agnostic processing
+ * logic behind public/gateway.bxm, mirroring MCPRequestProcessor's transport/processHttp()
+ * shape but routing REST-style instead of JSON-RPC.
+ *
+ * ## Two layers
+ *
+ * The four `process*`/`readInteraction`/`submitDecision` statics are the real API and
+ * touch no transport at all: they take the pieces of a request (gateway name, raw body,
+ * headers, query params) and return a normalized
+ * `{ statusCode, body, contentType, headers }` result. A host framework that already did
+ * its own routing — ColdBox's `route( "/gateways" ).toAiGateway()` terminator, say —
+ * calls those directly and writes the response itself.
+ *
+ * `processHttp()` is the thin layer above them for callers with no router of their own:
+ * it reads the raw request, dispatches on `cgi.PATH_INFO`, and writes the response back.
+ * This is what public/gateway.bxm mounts.
  *
  * Reuses mcp/transports/HTTPTransport as-is (CGI request/response, CORS, security
  * headers) rather than subclassing it — path routing is a processor concern, not a
@@ -22,7 +35,7 @@
  * writeResponse(), getSecurityHeaders(), handlePreflight()) is generic enough to
  * reuse directly.
  *
- * Routes:
+ * Routes (processHttp only):
  *   POST /bxai/gateways/{gatewayName}/events         — inbound platform event
  *   GET  /bxai/interactions/{requestID}               — poll a pending interaction
  *   POST /bxai/interactions/{requestID}/decisions      — submit a human's decision
@@ -53,6 +66,221 @@ class {
 	static any function getHttpTransport() {
 		return static.httpTransport;
 	}
+
+	// -------------------------------------------------------------------------
+	// Transport-agnostic API — no CGI, no HTTPTransport, no response writing.
+	// Every one returns { statusCode, body, contentType, headers }.
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Verify, parse, and (optionally) dispatch one inbound platform event.
+	 *
+	 * With a `session`, every parsed message is handed to `GatewaySession.handleInbound()`
+	 * and the result is a `202` — the returned BoxFutures are deliberately never joined,
+	 * since a platform webhook (Slack, Telegram, Meta) times out in seconds while an agent
+	 * turn does not. The caller gets back the thread each message landed on so it can
+	 * correlate the eventual reply.
+	 *
+	 * Without one, nothing is dispatched and the parsed messages come back as a `200` —
+	 * the original behavior of this processor, for callers that drive the agent themselves.
+	 *
+	 * @gatewayName The registered gateway name to route to (see aiGatewayRegistry())
+	 * @rawBody     The exact raw request body string — signatures are computed over this,
+	 *              so it must not be re-serialized before it gets here
+	 * @headers     The inbound request headers, for signature verification
+	 * @session     Optional GatewaySession to dispatch parsed messages into
+	 *
+	 * @return { statusCode, body, contentType, headers }
+	 */
+	static struct function processInbound(
+		required string gatewayName,
+		required string rawBody,
+		struct headers = {},
+		any    session
+	) {
+		var gw = resolveGateway( arguments.gatewayName )
+		if ( isNull( gw ) ) {
+			return newError( 404, "Unknown gateway: #arguments.gatewayName#" )
+		}
+
+		var requestContext = { "headers": arguments.headers, "rawBody": arguments.rawBody }
+
+		if ( !gw.verifyInbound( arguments.rawBody, requestContext ) ) {
+			return newError( 401, "Signature verification failed." )
+		}
+
+		var payload = ""
+		try {
+			payload = jsonDeserialize( arguments.rawBody )
+		} catch ( any e ) {
+			return newError( 400, "Inbound payload is not valid JSON: #e.message#" )
+		}
+
+		var messages       = gw.parseInbound( payload, requestContext )
+		var resultHeaders  = { "X-Gateway-Name": gw.getName() }
+
+		// Parse-only: no session to dispatch into.
+		if ( isNull( arguments.session ) ) {
+			return newResult(
+				statusCode: 200,
+				body      : { "messages": messages.map( ( message ) => serializeMessage( message ) ) },
+				headers   : resultHeaders
+			)
+		}
+
+		// Captured so the closure below reads the session, not its own arguments scope.
+		var gatewaySession = arguments.session
+		var accepted       = messages.map( ( message ) => {
+			// Resolved before dispatch purely to report it — resolveThreadId() is a pure
+			// function of the message and its gateway, so this can't disagree with the
+			// thread handleInbound() goes on to claim.
+			var threadId = gatewaySession.resolveThreadId( message, gw )
+			gatewaySession.handleInbound( message, gw )
+			return { "id": message.getId(), "threadId": threadId }
+		} )
+
+		// Single-message events (the overwhelmingly common case) get the thread as a
+		// header too, matching how the rest of the stack echoes X-Thread-Id.
+		if ( accepted.len() == 1 ) {
+			resultHeaders[ "X-Thread-Id" ] = accepted[ 1 ].threadId
+		}
+
+		return newResult(
+			statusCode: 202,
+			body      : { "accepted": accepted.len(), "messages": accepted },
+			headers   : resultHeaders
+		)
+	}
+
+	/**
+	 * Run a platform's inbound-URL verification handshake against a gateway.
+	 *
+	 * Platforms that verify a webhook URL before ever POSTing to it (Meta's WhatsApp
+	 * Cloud `hub.challenge` echo, for instance) GET the same URL they will later POST to.
+	 * That exchange is the gateway's own — its scheme, its response body — so this only
+	 * resolves the gateway, checks it declares `"verifyHandshake"`, and normalizes what
+	 * `verifyHandshake()` hands back.
+	 *
+	 * @gatewayName The registered gateway name to route to
+	 * @params      The inbound query parameters
+	 *
+	 * @return { statusCode, body, contentType, headers }
+	 */
+	static struct function processHandshake( required string gatewayName, struct params = {} ) {
+		var gw = resolveGateway( arguments.gatewayName )
+		if ( isNull( gw ) ) {
+			return newError( 404, "Unknown gateway: #arguments.gatewayName#" )
+		}
+
+		if ( !gw.supports( "verifyHandshake" ) ) {
+			return newError( 405, "Gateway [#gw.getName()#] does not support a verification handshake." )
+		}
+
+		var handshake = gw.verifyHandshake( arguments.params )
+
+		return newResult(
+			statusCode : handshake.statusCode ?: 200,
+			body       : handshake.body ?: "",
+			contentType: handshake.contentType ?: "text/plain",
+			headers    : handshake.headers ?: {}
+		)
+	}
+
+	/**
+	 * Read one pending human-in-the-loop interaction.
+	 *
+	 * @requestID The interaction id to look up
+	 *
+	 * @return { statusCode, body, contentType, headers }
+	 */
+	static struct function readInteraction( required string requestID ) {
+		var gw = findGatewayForInteraction( arguments.requestID )
+		if ( isNull( gw ) ) {
+			return newError( 404, "Interaction not found." )
+		}
+
+		if ( gw.isInteractionExpired( arguments.requestID ) ) {
+			return newError( 410, "Interaction has expired." )
+		}
+
+		var record = gw.getInteraction( arguments.requestID )
+		var req    = record.request
+
+		return newResult( body: {
+			"requestID"       : req.getId(),
+			"interactionType" : req.getInteractionType(),
+			"title"           : req.getTitle(),
+			"message"         : req.getMessage(),
+			"allowedDecisions": req.getAllowedDecisions(),
+			"pendingAction"   : req.getPendingAction(),
+			"status"          : isNull( record.decision ) ? "pending" : "resolved",
+			"threadID"        : record.context.getThreadID(),
+			"agentID"         : record.context.getAgentID()
+		} )
+	}
+
+	/**
+	 * Submit a human's decision on a pending interaction. The request must be signed —
+	 * see models/gateway/http/GatewaySecurity.bx.
+	 *
+	 * @requestID The interaction id being decided
+	 * @rawBody   The exact raw request body string the signature was computed over
+	 * @headers   The inbound request headers, carrying the signature triplet
+	 *
+	 * @return { statusCode, body, contentType, headers }
+	 */
+	static struct function submitDecision(
+		required string requestID,
+		required string rawBody,
+		struct headers = {}
+	) {
+		var gw = findGatewayForInteraction( arguments.requestID )
+		if ( isNull( gw ) ) {
+			return newError( 404, "Interaction not found." )
+		}
+
+		var verifyResult = gw.verifySignedRequest( { "headers": arguments.headers, "rawBody": arguments.rawBody } )
+		if ( !verifyResult.valid ) {
+			return newError( 401, verifyResult.reason )
+		}
+
+		var body  = jsonDeserialize( arguments.rawBody )
+		var event = new GatewayEvent(
+			type: "interaction.decision",
+			data: {
+				"requestID" : arguments.requestID,
+				"decision"  : body.decision ?: "",
+				"editedData": body.editedData ?: {},
+				"reason"    : body.reason ?: "",
+				"decidedBy" : body.decidedBy ?: ""
+			}
+		)
+		var decision = gw.parseHumanDecision( event )
+
+		try {
+			var resolved = gw.resolveInteraction( arguments.requestID, decision )
+		} catch ( InteractionAlreadyResolved e ) {
+			return newError( 409, e.message )
+		} catch ( InteractionExpired e ) {
+			return newError( 410, e.message )
+		}
+
+		var record = gw.getInteraction( arguments.requestID )
+
+		return newResult( body: {
+			"requestID"  : arguments.requestID,
+			"decision"   : resolved.getDecision(),
+			"editedData" : resolved.getEditedData(),
+			"reason"     : resolved.getReason(),
+			"threadID"   : record.context.getThreadID(),
+			"agentID"    : record.context.getAgentID(),
+			"executionID": record.context.getExecutionID()
+		} )
+	}
+
+	// -------------------------------------------------------------------------
+	// HTTP layer — for callers with no router of their own (public/gateway.bxm)
+	// -------------------------------------------------------------------------
 
 	/**
 	 * Entry point for public/gateway.bxm. Reads the request from the HTTP context,
@@ -92,13 +320,19 @@ class {
 
 		try {
 			if ( segments.len() == 3 && segments[ 1 ] == "gateways" && segments[ 3 ] == "events" && arguments.requestData.method == "POST" ) {
-				return handleInboundEvent( segments[ 2 ], arguments.requestData, response )
+				return toHttpResponse(
+					processInbound( segments[ 2 ], arguments.requestData.body, arguments.requestData.headers ),
+					response
+				)
 			}
 			if ( segments.len() == 2 && segments[ 1 ] == "interactions" && arguments.requestData.method == "GET" ) {
-				return handleGetInteraction( segments[ 2 ], response )
+				return toHttpResponse( readInteraction( segments[ 2 ] ), response )
 			}
 			if ( segments.len() == 3 && segments[ 1 ] == "interactions" && segments[ 3 ] == "decisions" && arguments.requestData.method == "POST" ) {
-				return handleDecision( segments[ 2 ], arguments.requestData, response )
+				return toHttpResponse(
+					submitDecision( segments[ 2 ], arguments.requestData.body, arguments.requestData.headers ),
+					response
+				)
 			}
 		} catch ( any e ) {
 			static.gwLogger.error( "Gateway request processing error: #e.message#" )
@@ -112,131 +346,70 @@ class {
 		return response
 	}
 
-	// -------------------------------------------------------------------------
-	// Route handlers
-	// -------------------------------------------------------------------------
-
-	private static struct function handleInboundEvent(
-		required string gatewayName,
-		required struct requestData,
-		required struct response
-	) {
-		var gw = resolveGateway( arguments.gatewayName )
-		if ( isNull( gw ) ) {
-			arguments.response.statusCode = 404
-			arguments.response.content    = jsonSerialize( { "error": "Unknown gateway: #arguments.gatewayName#" } )
-			return arguments.response
-		}
-
-		var requestContext = { "headers": arguments.requestData.headers, "rawBody": arguments.requestData.body }
-
-		if ( !gw.verifyInbound( arguments.requestData.body, requestContext ) ) {
-			arguments.response.statusCode = 401
-			arguments.response.content    = jsonSerialize( { "error": "Signature verification failed." } )
-			return arguments.response
-		}
-
-		var payload  = jsonDeserialize( arguments.requestData.body )
-		var messages = gw.parseInbound( payload, requestContext )
-
-		arguments.response.content = jsonSerialize( {
-			"messages": messages.map( ( m ) => {
-				return {
-					"id"     : m.getId(),
-					"text"   : m.getText(),
-					"context": m.getContext().toStruct()
-				}
-			} )
-		} )
+	/**
+	 * Fold a transport-agnostic result into the HTTP response struct, preserving the
+	 * transport's own security/request-id headers.
+	 *
+	 * @result   A { statusCode, body, contentType, headers } result
+	 * @response The response struct being built by route()
+	 */
+	private static struct function toHttpResponse( required struct result, required struct response ) {
+		arguments.response.statusCode  = arguments.result.statusCode
+		arguments.response.contentType = arguments.result.contentType
+		arguments.response.content     = findNoCase( "json", arguments.result.contentType )
+			? jsonSerialize( arguments.result.body )
+			: toString( arguments.result.body )
+		arguments.response.headers.append( arguments.result.headers, true )
 		return arguments.response
 	}
 
-	private static struct function handleGetInteraction( required string requestID, required struct response ) {
-		var gw = findGatewayForInteraction( arguments.requestID )
-		if ( isNull( gw ) ) {
-			arguments.response.statusCode = 404
-			arguments.response.content    = jsonSerialize( { "error": "Interaction not found." } )
-			return arguments.response
+	// -------------------------------------------------------------------------
+	// Result helpers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Build the normalized result every transport-agnostic method returns.
+	 *
+	 * @statusCode  The HTTP status code the caller should send
+	 * @body        The response body — a struct for JSON, a string for anything else
+	 * @contentType The body's content type
+	 * @headers     Response headers to add on top of whatever the transport sends
+	 */
+	private static struct function newResult(
+		numeric statusCode  = 200,
+		any     body        = {},
+		string  contentType = "application/json",
+		struct  headers     = {}
+	) {
+		return {
+			"statusCode" : arguments.statusCode,
+			"body"       : arguments.body,
+			"contentType": arguments.contentType,
+			"headers"    : arguments.headers
 		}
-
-		if ( gw.isInteractionExpired( arguments.requestID ) ) {
-			arguments.response.statusCode = 410
-			arguments.response.content    = jsonSerialize( { "error": "Interaction has expired." } )
-			return arguments.response
-		}
-
-		var record = gw.getInteraction( arguments.requestID )
-		var req    = record.request
-
-		arguments.response.content = jsonSerialize( {
-			"requestID"       : req.getId(),
-			"interactionType" : req.getInteractionType(),
-			"title"           : req.getTitle(),
-			"message"         : req.getMessage(),
-			"allowedDecisions": req.getAllowedDecisions(),
-			"pendingAction"   : req.getPendingAction(),
-			"status"          : isNull( record.decision ) ? "pending" : "resolved",
-			"threadID"        : record.context.getThreadID(),
-			"agentID"         : record.context.getAgentID()
-		} )
-		return arguments.response
 	}
 
-	private static struct function handleDecision(
-		required string requestID,
-		required struct requestData,
-		required struct response
-	) {
-		var gw = findGatewayForInteraction( arguments.requestID )
-		if ( isNull( gw ) ) {
-			arguments.response.statusCode = 404
-			arguments.response.content    = jsonSerialize( { "error": "Interaction not found." } )
-			return arguments.response
+	/**
+	 * An error result: the standard `{ "error": message }` body every failure path uses.
+	 *
+	 * @statusCode The HTTP status code the caller should send
+	 * @message    The error message
+	 */
+	private static struct function newError( required numeric statusCode, required string message ) {
+		return newResult( statusCode: arguments.statusCode, body: { "error": arguments.message } )
+	}
+
+	/**
+	 * The wire shape of one normalized inbound message.
+	 *
+	 * @message The GatewayMessage to serialize
+	 */
+	private static struct function serializeMessage( required any message ) {
+		return {
+			"id"     : arguments.message.getId(),
+			"text"   : arguments.message.getText(),
+			"context": arguments.message.getContext().toStruct()
 		}
-
-		var verifyResult = gw.verifySignedRequest( { "headers": arguments.requestData.headers, "rawBody": arguments.requestData.body } )
-		if ( !verifyResult.valid ) {
-			arguments.response.statusCode = 401
-			arguments.response.content    = jsonSerialize( { "error": verifyResult.reason } )
-			return arguments.response
-		}
-
-		var body  = jsonDeserialize( arguments.requestData.body )
-		var event = new GatewayEvent(
-			type: "interaction.decision",
-			data: {
-				"requestID" : arguments.requestID,
-				"decision"  : body.decision ?: "",
-				"editedData": body.editedData ?: {},
-				"reason"    : body.reason ?: "",
-				"decidedBy" : body.decidedBy ?: ""
-			}
-		)
-		var decision = gw.parseHumanDecision( event )
-
-		try {
-			var resolved = gw.resolveInteraction( arguments.requestID, decision )
-		} catch ( InteractionAlreadyResolved e ) {
-			arguments.response.statusCode = 409
-			arguments.response.content    = jsonSerialize( { "error": e.message } )
-			return arguments.response
-		} catch ( InteractionExpired e ) {
-			arguments.response.statusCode = 410
-			arguments.response.content    = jsonSerialize( { "error": e.message } )
-			return arguments.response
-		}
-
-		var record = gw.getInteraction( arguments.requestID )
-		arguments.response.content = jsonSerialize( {
-			"requestID"  : arguments.requestID,
-			"decision"   : resolved.getDecision(),
-			"editedData" : resolved.getEditedData(),
-			"reason"     : resolved.getReason(),
-			"threadID"   : record.context.getThreadID(),
-			"agentID"    : record.context.getAgentID(),
-			"executionID": record.context.getExecutionID()
-		} )
-		return arguments.response
 	}
 
 	// -------------------------------------------------------------------------

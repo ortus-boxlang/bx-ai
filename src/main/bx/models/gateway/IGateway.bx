@@ -66,7 +66,7 @@ interface {
 	 * Returns all capabilities this gateway supports.
 	 * Possible values: "inboundMessages", "outboundMessages", "streaming", "threads",
 	 * "attachments", "messageEditing", "interactiveActions", "humanApproval",
-	 * "argumentEditing", "authentication"
+	 * "argumentEditing", "authentication", "verifyHandshake"
 	 *
 	 * @return Array of capability strings
 	 */
@@ -220,6 +220,28 @@ interface {
 		throw(
 			type   : "GatewayCapabilityNotSupported",
 			message: "Gateway [#getName()#] does not support inbound message parsing."
+		);
+	}
+
+	/**
+	 * Answer a platform's inbound-URL verification handshake — the GET a platform sends to
+	 * the webhook URL it is about to start POSTing to, proving the URL is really yours
+	 * (Meta's WhatsApp Cloud `hub.challenge` echo is the canonical example).
+	 *
+	 * Override this and declare "verifyHandshake" for any gateway whose platform performs
+	 * one. The scheme and the response body are entirely the platform's, so this returns a
+	 * response rather than a boolean: most handshakes echo a challenge back as plain text,
+	 * not JSON.
+	 *
+	 * @params The inbound query parameters of the verification request
+	 *
+	 * @return { statusCode, body, contentType } — body is a raw string for a plain-text
+	 *         echo, or a struct when contentType is JSON
+	 */
+	default public struct function verifyHandshake( struct params = {} ){
+		throw(
+			type   : "GatewayCapabilityNotSupported",
+			message: "Gateway [#getName()#] does not support a verification handshake."
 		);
 	}
 
