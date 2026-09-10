@@ -176,12 +176,41 @@ class extends="BaseAiMiddleware" {
 	 *   passthrough : delegate to handler unchanged
 	 *   record      : call handler, capture request + response, flush snapshot
 	 *   replay      : return recorded response without calling handler
+	 *
+	 * A STREAMING call (`context.stream` is true — see CohereService/BedrockService, which route
+	 * their SSE transport through this same hook) is not a request/response round trip: the handler
+	 * returns the transport's own return value while the chunks have already gone to the caller's
+	 * callback. So record captures only a marker instead of a body it cannot meaningfully replay,
+	 * and replay refuses outright rather than substituting a recorded blocking response for a
+	 * stream — which reaches the provider as a middleware that emitted nothing (a stream the caller
+	 * never receives, or a mangled body).
 	 */
 	any function wrapLLMCall( required struct context, required function handler ) {
 		_lazyInit()
 
 		if ( variables.mode == "passthrough" ) {
 			return arguments.handler()
+		}
+
+		var isStreaming = arguments.context.stream ?: false
+
+		if ( variables.mode == "replay" && isStreaming ) {
+			throw(
+				type   : "FlightRecorderStreamingReplayUnsupported",
+				message: "FlightRecorderMiddleware cannot replay a STREAMING LLM call. Run the streamed turn "
+					& "with mode ""record"" or ""passthrough"", or replay it through a non-streaming chat() call.",
+				detail : "flight-recorder-streaming-replay"
+			)
+		}
+
+		if ( variables.mode == "record" && isStreaming ) {
+			var streamResponse = arguments.handler()
+			_appendInteraction( {
+				"type"    : "llm",
+				"request" : arguments.context.dataPacket ?: {},
+				"response": { "stream": true }
+			} )
+			return streamResponse
 		}
 
 		if ( variables.mode == "record" ) {
