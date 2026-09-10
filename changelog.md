@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🐛 Fixed
 
 - An inbound event whose body is not valid JSON is now rejected with `400` and a message naming the parse failure, instead of surfacing as a generic `500`.
+- OpenAI-compatible chat providers now fail with a `ProviderError` when a response omits `choices` and use top-level `message` when present, preventing intermittent Mistral tool-call crashes from `KeyNotFoundException`.
 
 ## [3.4.0] - 2026-09-01
 
