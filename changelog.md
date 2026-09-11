@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.5.0] - 2026-09-11
+
 ### ⚠️ Migration
 
 - **Minimum BoxLang runtime is now 1.14.0** (`box.json` `minimumVersion`, previously 1.8.0). BoxLang ≤1.13 resolves unqualified identifiers inside a `catch` body against the class `variables` scope before locals and `arguments`; 1.14.0 fixed this. The module still qualifies its own catch reads, but middleware, tools, and interceptors authored against this module should not rely on older runtimes. The build now compiles and tests against 1.17.0.
@@ -727,7 +729,8 @@ One of our biggest library updates yet! This release introduces a powerful new d
 
 - First iteration of this module
 
-[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.4.0...HEAD
+[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.5.0...HEAD
+[3.5.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.3.2...v3.4.0
 [3.3.2]: https://github.com/ortus-boxlang/bx-ai/compare/v3.3.1...v3.3.2
 [3.3.1]: https://github.com/ortus-boxlang/bx-ai/compare/v3.3.0...v3.3.1
