@@ -532,4 +532,93 @@ public class ClosureToolTest extends BaseIntegrationTest {
 		assertThat( variables.get( result ) ).isEqualTo( "override" );
 	}
 
+	// -------------------------------------------------------------------------
+	// _chatRequest injection
+	// -------------------------------------------------------------------------
+
+	@DisplayName( "doInvoke() injects _chatRequest into a callable that declares it" )
+	@Test
+	public void testChatRequestInjectedWhenDeclared() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+
+				gotRequest = false
+				tool = new ClosureTool( "ctxTool", "Wants context", ( required string city, _chatRequest ) => {
+					gotRequest = !isNull( arguments._chatRequest )
+					return "ok"
+				} )
+
+				chatRequest = aiChatRequest( aiMessage().user( "hi" ), { model: "mock-model" }, { provider: "mock" } )
+				out         = tool.invoke( { city: "paris" }, chatRequest )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "gotRequest" ) ) ).isTrue();
+	}
+
+	@DisplayName( "doInvoke() does NOT inject _chatRequest into a callable that does not declare it, and never mutates the caller's args" )
+	@Test
+	public void testChatRequestNotInjectedWhenNotDeclared() {
+		// Behaviour change: _chatRequest used to be handed to EVERY callable, which leaked into
+		// argumentCollection-forwarding tools and into anything serializing its own arguments
+		// scope — and, because the incoming struct is the live tool_use.input in message history,
+		// mutating it closed a reference cycle no serializer can walk.
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+
+				sawKeys = []
+				tool = new ClosureTool( "plainTool", "No context", ( required string city ) => {
+					sawKeys = arguments.keyArray()
+					return "ok"
+				} )
+
+				liveArgs    = { city: "paris" }
+				chatRequest = aiChatRequest( aiMessage().user( "hi" ), { model: "mock-model" }, { provider: "mock" } )
+				out         = tool.invoke( liveArgs, chatRequest )
+
+				injected      = sawKeys.findNoCase( "_chatRequest" ) > 0
+				callerMutated = liveArgs.keyExists( "_chatRequest" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "injected" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "callerMutated" ) ) ).isFalse();
+	}
+
+	@DisplayName( "A hand-set methodParameters list cannot suppress _chatRequest injection" )
+	@Test
+	public void testMethodParametersDoesNotSuppressInjection() {
+		// methodParameters is a SCHEMA override (the MCP/remote-tool path sets it). Deciding
+		// injection from it meant a list that omits _chatRequest — the normal case, since the
+		// parameter is internal and never advertised to the model — ran the callable without the
+		// context it explicitly declared.
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+
+				gotRequest = false
+				tool = new ClosureTool( "mcpish", "Schema overridden", ( required string city, _chatRequest ) => {
+					gotRequest = !isNull( arguments._chatRequest )
+					return "ok"
+				} )
+				tool.setMethodParameters( [ { name: "city", type: "string", required: true } ] )
+
+				chatRequest = aiChatRequest( aiMessage().user( "hi" ), { model: "mock-model" }, { provider: "mock" } )
+				out         = tool.invoke( { city: "paris" }, chatRequest )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "gotRequest" ) ) ).isTrue();
+	}
 }
