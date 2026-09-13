@@ -357,7 +357,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				}
 
 				var tool     = toolAttempt.get()
-				var toolArgs = JSONDeserialize( toolCall.function.arguments )
+				var toolArgs = toolCallArgs( toolCall )
 				var toolContext = {
 					tool       : tool,
 					toolCall   : toolCall,
@@ -365,6 +365,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 					toolName   : toolCall.function.name ?: tool.getName(),
 					toolArgs   : toolArgs
 				}
+				var originalToolArgs = duplicate( toolArgs )
 				var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
 				// Cancel (e.g. MaxToolCallsMiddleware's limit, or a human choosing to quit in
@@ -382,7 +383,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 					break
 				}
 
-				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolArgs, result: toolBeforeResult } )
+				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: resolveToolArgs( toolContext, originalToolArgs, () => toolCallArgs( toolCall ) ), result: toolBeforeResult } )
 			}
 		}
 
@@ -427,13 +428,15 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				// walks assistantMessage's tool_calls the same way, so the two must stay aligned.
 				var resumeLedger = batch.map( ( entry ) => {
 					if ( entry.result.isDeferred() || entry.result.isSuspended() ) {
-						return { toolName: entry.toolName, status: "pending" }
+						return { toolName: entry.toolName, status: "pending", toolArgs: entry.toolArgs }
 					}
 					if ( entry.result.isRejected() ) {
 						return { toolName: entry.toolName, status: "blocked", reason: entry.result.getReason() }
 					}
 					// continue/approve (an "edit" decision already mutated toolCall in place)
-					return { toolName: entry.toolName, status: "execute" }
+					// toolArgs: the beforeToolCall-resolved arguments, so a resumed batch runs what the
+					// non-suspended path would have (middleware rewrites were lost on resume without it).
+					return { toolName: entry.toolName, status: "execute", toolArgs: entry.toolArgs }
 				} )
 				var mergedData = duplicate( batchResult.getData() )
 				mergedData[ "assistantMessage" ] = assistantMessage
@@ -455,14 +458,14 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				continue
 			}
 
-			// continue/approve — re-read the args fresh in case an "edit" decision mutated
-			// toolCall.function.arguments in place during pass 1.
-			var capturedTool         = entry.tool
-			var capturedToolCallArgs = entry.toolCall.function.arguments
+			// continue/approve — entry.toolArgs is what resolveToolArgs() settled on in pass 1
+			// (a beforeToolCall rewrite of ctx.toolArgs, or an "edit" written to function.arguments).
+			var capturedTool = entry.tool
+			var capturedArgs = entry.toolArgs
 			var toolResult = thisChatRequest.fireWrapMiddleware(
 				"wrapToolCall",
 				{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: entry.toolArgs },
-				() => capturedTool.invoke( JSONDeserialize( capturedToolCallArgs ), thisChatRequest )
+				() => capturedTool.invoke( capturedArgs, thisChatRequest )
 			)
 
 			thisChatRequest.fireMiddleware(
@@ -480,6 +483,41 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 
 		thisChatRequest.setMessages( newMessages )
 		return chat( thisChatRequest, arguments.interactionCount + 1 )
+	}
+
+	/**
+	 * The arguments carried by ONE OpenAI-shaped tool call, normalized to a struct.
+	 *
+	 * OpenAI serializes tool arguments as a JSON string, and a zero-argument tool comes back with
+	 * `function.arguments` as "" (or the key missing entirely) on both the completion and the
+	 * stream-accumulated shapes — jsonDeserialize("") throws, so a bare parse turns a perfectly
+	 * valid no-argument tool call into a failed turn. Anything that does not parse to a struct is
+	 * reported as {} with a log line, never propagated as an exception.
+	 *
+	 * @toolCall The provider-shaped tool call
+	 */
+	private struct function toolCallArgs( required struct toolCall ){
+		if ( !arguments.toolCall.keyExists( "function" ) || !isStruct( arguments.toolCall.function ) ) {
+			return {};
+		}
+		var raw = arguments.toolCall.function.arguments ?: "";
+		if ( !isSimpleValue( raw ) ) {
+			return isStruct( raw ) ? raw : {};
+		}
+		if ( !len( trim( raw ) ) ) {
+			return {};
+		}
+		try {
+			var parsed = jsonDeserialize( raw );
+			return isStruct( parsed ) ? parsed : {};
+		} catch ( any e ) {
+			writeLog(
+				text: "Could not parse tool arguments for [#arguments.toolCall.function.name ?: "unknown"#]: #local.e.message#",
+				type: "warning",
+				log : "ai"
+			);
+			return {};
+		}
 	}
 
 	/**
@@ -550,7 +588,8 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 			}
 
 			var tool     = toolAttempt.get()
-			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs : JSONDeserialize( toolCall.function.arguments )
+			var toolArgs = isStruct( ledgerEntry.editedArgs ?: "" ) ? ledgerEntry.editedArgs
+				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : toolCallArgs( toolCall ) )
 			var capturedTool = tool
 			var capturedArgs = toolArgs
 			var toolResult = thisChatRequest.fireWrapMiddleware(
@@ -740,17 +779,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				break
 			}
 			var toolAttempt   = thisChatRequest.getTool( toolCall.function.name ?: "" )
-			var toolArguments = {}
-
-			try {
-				toolArguments = JSONDeserialize( toolCall.function.arguments ?: "{}" )
-			} catch( any e ){
-				writeLog(
-					text: "Unable to deserialize tool call arguments for '#toolCall.function.name ?: "unknown"#': #e.message#",
-					type: "warning",
-					log : "ai"
-				)
-			}
+			var toolArguments = toolCallArgs( toolCall )
 
 			if( !toolAttempt.isPresent() ){
 				writeLog(
@@ -776,6 +805,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				toolName   : toolCall.function.name ?: tool.getName(),
 				toolArgs   : toolArguments
 			};
+			var originalStreamToolArgs = duplicate( toolArguments );
 			var streamToolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", streamToolCtx );
 
 			// Cancel means abort the run outright — hard-stop immediately, exactly as before.
@@ -791,7 +821,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				break
 			}
 
-			batch.append( { tool: tool, toolCall: toolCall, toolName: streamToolCtx.toolName, toolArgs: toolArguments, result: streamToolBeforeResult } )
+			batch.append( { tool: tool, toolCall: toolCall, toolName: streamToolCtx.toolName, toolArgs: resolveToolArgs( streamToolCtx, originalStreamToolArgs, () => toolCallArgs( toolCall ) ), result: streamToolBeforeResult } )
 		}
 
 		if ( isObject( terminalToolResult ) ) {
@@ -829,12 +859,14 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 				}
 				var resumeLedger = batch.map( ( entry ) => {
 					if ( entry.result.isDeferred() || entry.result.isSuspended() ) {
-						return { toolName: entry.toolName, status: "pending" }
+						return { toolName: entry.toolName, status: "pending", toolArgs: entry.toolArgs }
 					}
 					if ( entry.result.isRejected() ) {
 						return { toolName: entry.toolName, status: "blocked", reason: entry.result.getReason() }
 					}
-					return { toolName: entry.toolName, status: "execute" }
+					// toolArgs: the beforeToolCall-resolved arguments, so a resumed batch runs what the
+					// non-suspended path would have (middleware rewrites were lost on resume without it).
+					return { toolName: entry.toolName, status: "execute", toolArgs: entry.toolArgs }
 				} )
 				var mergedData = duplicate( batchResult.getData() )
 				mergedData[ "assistantMessage" ] = assistantMessage
@@ -960,7 +992,8 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 			}
 
 			var tool     = toolAttempt.get()
-			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs : JSONDeserialize( toolCall.function.arguments )
+			var toolArgs = isStruct( ledgerEntry.editedArgs ?: "" ) ? ledgerEntry.editedArgs
+				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : toolCallArgs( toolCall ) )
 			var capturedTool = tool
 			var capturedArgs = toolArgs
 			var toolResult = thisChatRequest.fireWrapMiddleware(
