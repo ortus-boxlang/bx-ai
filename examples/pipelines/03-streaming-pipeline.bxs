@@ -23,7 +23,7 @@ chunkCount = 0
 
 storyGenerator.stream(
     ( chunk ) => {
-        content = chunk.choices?.first()?.delta?.content ?: ""
+        content = ( chunk.choices ?: [] ).len() ? ( chunk.choices.first().delta.content ?: "" ) : ""
         fullText &= content
         chunkCount++
         writeOutput( content )
@@ -55,7 +55,7 @@ progressMarkers = [ 100, 200, 300, 400, 500 ]
 
 explainer.stream(
     ( chunk ) => {
-        content = chunk.choices?.first()?.delta?.content ?: ""
+        content = ( chunk.choices ?: [] ).len() ? ( chunk.choices.first().delta.content ?: "" ) : ""
         fullResponse &= content
 
         // Update word count
@@ -98,7 +98,7 @@ lineNumber = 0
 
 listGenerator.stream(
     ( chunk ) => {
-        content = chunk.choices?.first()?.delta?.content ?: ""
+        content = ( chunk.choices ?: [] ).len() ? ( chunk.choices.first().delta.content ?: "" ) : ""
         buffer &= content
 
         // Process complete lines
@@ -140,7 +140,7 @@ codeBlockDetected = false
 
 codeGenerator.stream(
     ( chunk ) => {
-        content = chunk.choices?.first()?.delta?.content ?: ""
+        content = ( chunk.choices ?: [] ).len() ? ( chunk.choices.first().delta.content ?: "" ) : ""
         fullCode &= content
 
         // Detect code blocks

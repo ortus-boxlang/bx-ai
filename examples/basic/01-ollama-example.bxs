@@ -44,7 +44,7 @@ println( "Streaming Example:" )
 aiChatStream(
     "Tell me a short story about a robot",
     ( chunk ) => {
-        content = chunk.choices?.first()?.delta?.content ?: ""
+        content = ( chunk.choices ?: [] ).len() ? ( chunk.choices.first().delta.content ?: "" ) : ""
         print( content )
     },
     { model: "llama3.2" },
