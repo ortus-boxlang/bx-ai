@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🥊 Added
+
+- **Cloudflare Workers AI provider** (`cloudflare`): chat, streaming, tool calling and embeddings through the Workers AI OpenAI compatible endpoints. Requires an account ID via the `accountId` option or the `CLOUDFLARE_ACCOUNT_ID` environment variable, plus `CLOUDFLARE_API_KEY`. Defaults to `@cf/openai/gpt-oss-20b` for chat and `@cf/baai/bge-base-en-v1.5` for embeddings.
+
 ## [3.5.0] - 2026-09-11
 
 ### ⚠️ Migration

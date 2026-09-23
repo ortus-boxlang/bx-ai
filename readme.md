@@ -204,6 +204,7 @@ The following are the AI providers supported by this module. **Please note that 
 
 - ☁️ [AWS Bedrock](https://aws.amazon.com/bedrock/) - Claude, Titan, Llama, Mistral via AWS
 - 🧠 [Claude Anthropic](https://www.anthropic.com/claude)
+- 🟠 [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/) - Requires `CLOUDFLARE_ACCOUNT_ID` (or the `accountId` option) alongside `CLOUDFLARE_API_KEY`
 - 🧬 [Cohere](https://cohere.com/)
 - 🔍 [DeepSeek](https://www.deepseek.com/)
 - 🐳 [Docker Model Runner](https://docs.docker.com/ai/model-runner/) - Local models via Docker Desktop
@@ -230,6 +231,7 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 |---------------------|------------------|-----------------|------------------|------------------|---------------------|
 | AWS Bedrock         | ✅               | ✅              | ✅               | ❌               | ❌                  |
 | Claude              | ✅               | ✅              | ❌               | ❌               | ❌                  |
+| Cloudflare          | ✅               | ✅              | ✅               | ❌               | ❌                  |
 | Cohere              | ✅               | ✅              | ✅               | ❌               | ❌                  |
 | DeepSeek            | ✅               | ✅              | ✅               | ❌               | ❌                  |
 | Docker Model Runner | ✅               | ✅              | ✅               | ❌               | ❌                  |

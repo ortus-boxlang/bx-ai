@@ -28,6 +28,7 @@ class {
 		final CORE_PROVIDERS = [
 			"bedrock",
 			"claude",
+			"cloudflare",
 			"cohere",
 			"deepseek",
 			"docker",
@@ -88,6 +89,9 @@ class {
 				break
 			case "claude":
 				targetClass = "bxModules.bxai.models.providers.ClaudeService"
+				break
+			case "cloudflare":
+				targetClass = "bxModules.bxai.models.providers.CloudflareService"
 				break
             case "cohere":
                 targetClass = "bxModules.bxai.models.providers.CohereService"

@@ -64,6 +64,10 @@ export CLAUDE_API_KEY="sk-ant-..."
 # Google (Gemini models)
 export GEMINI_API_KEY="..."
 
+# Cloudflare Workers AI (requires both)
+export CLOUDFLARE_API_KEY="..."
+export CLOUDFLARE_ACCOUNT_ID="..."
+
 # Cohere
 export COHERE_API_KEY="..."
 
@@ -101,6 +105,7 @@ response = aiChat(
 - **OpenAI**: https://platform.openai.com/api-keys
 - **Anthropic (Claude)**: https://console.anthropic.com/
 - **Google (Gemini)**: https://makersuite.google.com/app/apikey
+- **Cloudflare**: https://dash.cloudflare.com/profile/api-tokens
 - **Cohere**: https://dashboard.cohere.com/api-keys
 - **Voyage AI**: https://www.voyageai.com/
 - **Groq**: https://console.groq.com/
