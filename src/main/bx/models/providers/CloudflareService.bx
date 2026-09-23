@@ -1,0 +1,135 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Cloudflare Workers AI Service Provider
+ * Uses the OpenAI compatible endpoints of Workers AI.
+ * https://developers.cloudflare.com/workers-ai/configuration/open-ai-compatibility/
+ *
+ * Requires a Cloudflare Account ID which can be provided via:
+ * 1. The `accountId` option
+ * 2. The `CLOUDFLARE_ACCOUNT_ID` environment variable or system property
+ */
+import bxModules.bxai.models.providers.capabilities.IAiChatService;
+import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
+
+class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" {
+
+	/**
+	 * The Cloudflare Account ID
+	 */
+	property name="accountId" type="string" default="";
+
+	/**
+	 * Static defaults
+	 */
+	static {
+		CAPABILITIES = [ "chat", "stream", "embeddings" ]
+		BASE_URL     = "https://api.cloudflare.com/client/v4/accounts"
+		DEFAULT_CHAT_PARAMS = {
+			// https://developers.cloudflare.com/workers-ai/models/
+			"model" : "@cf/openai/gpt-oss-20b"
+		}
+		DEFAULT_EMBED_PARAMS = {
+			"model" : "@cf/baai/bge-base-en-v1.5"
+		}
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		variables.name = "Cloudflare"
+	}
+
+	/**
+	 * Configure the service. The account ID is resolved from the options first, then from the
+	 * `CLOUDFLARE_ACCOUNT_ID` environment setting.
+	 */
+	@override
+	IAiService function configure( required any options ){
+		super.configure( arguments.options )
+
+		// variables.options holds the passed options merged with the module's providers.cloudflare.options
+		if ( len( variables.options.accountId ?: "" ) ) {
+			variables.accountId = variables.options.accountId.trim()
+		} else {
+			variables.accountId = getSystemSetting( "CLOUDFLARE_ACCOUNT_ID", "" )
+		}
+
+		var baseURL             = "#static.BASE_URL#/#variables.accountId#/ai/v1"
+		variables.chatURL       = baseURL & "/chat/completions"
+		variables.embeddingsURL = baseURL & "/embeddings"
+
+		return this
+	}
+
+	@override
+	public array function getDeclaredCapabilities() {
+		return static.CAPABILITIES
+	}
+
+	@override
+	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
+		verifyAccountId()
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.chat( arguments.chatRequest, arguments.interactionCount )
+	}
+
+	@override
+	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
+		verifyAccountId()
+		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
+		return super.chatStream( arguments.chatRequest, arguments.callback, arguments.interactionCount )
+	}
+
+	@override
+	public function embeddings( required AiEmbeddingRequest embeddingRequest ){
+		verifyAccountId()
+		arguments.embeddingRequest.mergeServiceParams( static.DEFAULT_EMBED_PARAMS )
+		return super.embeddings( arguments.embeddingRequest )
+	}
+
+	/**
+	 * Workers AI rejects `content: null`, which OpenAI sends on assistant tool call messages.
+	 * Replace it with an empty string so tool calling round trips work.
+	 */
+	@override
+	private struct function preRequest(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required string operation
+	) {
+		if ( ( arguments.operation == "chat" || arguments.operation == "stream" ) && isArray( arguments.dataPacket.messages ?: "" ) ) {
+			arguments.dataPacket.messages.each( ( message ) => {
+				if ( isStruct( message ) && isNull( message.content ) ) {
+					message.content = ""
+				}
+			} )
+		}
+		return arguments.dataPacket
+	}
+
+	/**
+	 * Throws if no account ID has been configured
+	 */
+	private function verifyAccountId(){
+		if ( !len( variables.accountId ) ) {
+			throw(
+				type   : "InvalidConfiguration",
+				message: "The Cloudflare provider requires an account ID. Pass the [accountId] option or set the [CLOUDFLARE_ACCOUNT_ID] environment variable."
+			);
+		}
+	}
+
+}

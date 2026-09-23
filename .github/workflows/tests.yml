@@ -18,6 +18,8 @@ jobs:
       DB_USER: root
       DB_PASSWORD: root
       CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
       COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
