@@ -22,8 +22,13 @@
  *   - passthrough (default) : calls real providers and tools, no recording
  *   - record                : calls through to real providers/tools, captures each interaction
  *                             to a JSON fixture file incrementally (crash-safe)
+ *   - observe               : calls through to real providers/tools, captures each interaction
+ *                             in memory (and fires `storageCallback`) like record, but never
+ *                             writes a fixture file to disk
  *   - replay                : reads a previously recorded fixture file and returns interactions
  *                             in sequence; no provider or tool is invoked
+ *
+ * Any other mode value throws `FlightRecorder.InvalidMode` at construction time.
  *
  * Quick start — record a successful run:
  *   aiAgent(
@@ -52,6 +57,21 @@
  *     { "seq": 3, "type": "llm",  "request": { ... }, "response": { ... } }
  *   ]
  * }
+ *
+ * Streaming provider calls:
+ * A streaming transport (`context.stream == true`) is not a chat round trip, so it is never
+ * taped or replayed as one — a recorded chat struct handed back to a stream transport either
+ * crashes it (Bedrock parses a raw event-stream body) or silently yields nothing (Cohere emits
+ * through the context and discards the return). Two shapes are handled:
+ *   - raw-body transports (return a simple value, e.g. Bedrock's binary event stream) are
+ *     recorded verbatim as `{ "type": "llm", "stream": true, "response": "<raw body>" }` and
+ *     replayed byte-for-byte
+ *   - emit-based transports (push chunks via e.g. `emitSSEChunk` and return nothing useful) are
+ *     passthrough-only: nothing is taped, and the recorder logs the gap once
+ * In replay, a stream call is matched against the recorded transport/request, so one provider can
+ * never consume another's raw body. With no matching `stream: true` interaction, strict replay
+ * throws FlightRecorder.StreamReplayUnsupported (a strict replay promises zero live calls) while
+ * lenient replay falls through to the real handler.
  */
 import bxModules.bxai.models.middleware.BaseAiMiddleware;
 import bxModules.bxai.models.middleware.AiMiddlewareResult;
@@ -59,7 +79,7 @@ import bxModules.bxai.models.middleware.AiMiddlewareResult;
 class extends="BaseAiMiddleware" {
 
 	/**
-	 * Operating mode: "passthrough", "record", or "replay"
+	 * Operating mode: "passthrough", "record", "observe", or "replay"
 	 */
 	property name="mode" type="string" default="passthrough";
 
@@ -89,7 +109,22 @@ class extends="BaseAiMiddleware" {
 	 */
 	property name="strict" type="boolean" default=true;
 
+	/**
+	 * Optional callback invoked after each interaction is appended to the tape (record and
+	 * observe modes only): `storageCallback( tape, interaction )`. Must be a closure or
+	 * custom function; ignored otherwise. Exceptions thrown by the callback are caught and
+	 * logged — they never interrupt recording.
+	 */
+	property name="storageCallback" type="any" default="";
+
 	// ==================== Internal State ====================
+
+	static {
+		/**
+		 * Modes accepted by `mode`. Anything else throws `FlightRecorder.InvalidMode` on init.
+		 */
+		VALID_MODES = [ "passthrough", "record", "observe", "replay" ];
+	}
 
 	/**
 	 * In-memory tape written during recording.
@@ -113,42 +148,59 @@ class extends="BaseAiMiddleware" {
 	variables._initialized   = false;
 
 	/**
+	 * Whether the "streaming is passthrough-only" notice has already been logged, so an
+	 * emit-based stream transport logs once per recorder instead of once per chunked call.
+	 */
+	variables._streamPassthroughLogged = false;
+
+	/**
 	 * Constructor
 	 *
-	 * @mode         "passthrough" | "record" | "replay"
-	 * @fixturePath  Explicit fixture path. Omit to auto-generate in record mode.
-	 * @fixtureDir   Base directory for auto-generated fixtures. Default: .agents/flight-recorder/
-	 * @recordTools  Whether tool interactions are captured/replayed. Default: true
-	 * @strict       In replay mode, throw on interaction type mismatch. Default: true
+	 * @mode            "passthrough" | "record" | "observe" | "replay"
+	 * @fixturePath     Explicit fixture path. Omit to auto-generate in record mode.
+	 * @fixtureDir      Base directory for auto-generated fixtures. Default: .agents/flight-recorder/
+	 * @recordTools     Whether tool interactions are captured/replayed. Default: true
+	 * @strict          In replay mode, throw on interaction type mismatch. Default: true
+	 * @storageCallback Optional closure/function( tape, interaction ) invoked after each interaction
+	 *                  is captured, in record and observe modes only. Default: none.
 	 */
 	function init(
-		string  mode        = "passthrough",
-		string  fixturePath = "",
-		string  fixtureDir  = "/.agents/flight-recorder",
-		boolean recordTools = true,
-		boolean strict      = true
+		string  mode            = "passthrough",
+		string  fixturePath     = "",
+		string  fixtureDir      = "/.agents/flight-recorder",
+		boolean recordTools     = true,
+		boolean strict          = true,
+		any     storageCallback = ""
 	) {
-		variables.mode        = arguments.mode
-		variables.fixturePath = arguments.fixturePath
-		variables.fixtureDir  = arguments.fixtureDir
-		variables.recordTools = arguments.recordTools
-		variables.strict      = arguments.strict
+		if ( !static.VALID_MODES.contains( arguments.mode ) ) {
+			throw(
+				type   : "FlightRecorder.InvalidMode",
+				message: "Invalid FlightRecorder mode '#arguments.mode#'. Valid modes: #static.VALID_MODES.toList( ", " )#"
+			)
+		}
+
+		variables.mode            = arguments.mode
+		variables.fixturePath     = arguments.fixturePath
+		variables.fixtureDir      = arguments.fixtureDir
+		variables.recordTools     = arguments.recordTools
+		variables.strict          = arguments.strict
+		variables.storageCallback = arguments.storageCallback
 		variables.name = "Flight Recorder Middleware"
 		variables.description = "Captures a structured trace of every LLM provider round-trip and tool invocation during an agent run, written as a human-readable JSON fixture. " &
-			"Supports three modes: passthrough (no recording), record (capture interactions to a fixture file), and replay (return interactions from a fixture file without live calls). Configurable fixture path, recording of tool calls, and strictness of replay matching."
+			"Supports four modes: passthrough (no recording), record (capture interactions to a fixture file), observe (capture interactions in memory / via storageCallback without writing a file), and replay (return interactions from a fixture file without live calls). Configurable fixture path, recording of tool calls, strictness of replay matching, and an optional storageCallback hook."
 		return this
 	}
 
 	// ==================== Sequential Hooks ====================
 
 	/**
-	 * Record mode : initialise a fresh tape for this run.
-	 * Replay mode : load the fixture and reset the playback cursor.
+	 * Record / observe mode : initialise a fresh tape for this run.
+	 * Replay mode          : load the fixture and reset the playback cursor.
 	 */
 	AiMiddlewareResult function beforeAgentRun( required struct context ) {
 		variables._agentName = context.agent?.getAgentName() ?: "default"
 
-		if ( variables.mode == "record" ) {
+		if ( _isCapturing() ) {
 			_initTape( variables._agentName )
 		} else if ( variables.mode == "replay" ) {
 			_assertFixturePath()
@@ -161,6 +213,7 @@ class extends="BaseAiMiddleware" {
 
 	/**
 	 * Record mode : write the final snapshot so the fixture is complete.
+	 * Observe mode: never writes a fixture file — nothing to do here.
 	 */
 	AiMiddlewareResult function afterAgentRun( required struct context ) {
 		if ( variables.mode == "record" && variables._initialized ) {
@@ -173,9 +226,12 @@ class extends="BaseAiMiddleware" {
 
 	/**
 	 * Intercept the LLM provider call.
-	 *   passthrough : delegate to handler unchanged
-	 *   record      : call handler, capture request + response, flush snapshot
-	 *   replay      : return recorded response without calling handler
+	 *   passthrough    : delegate to handler unchanged
+	 *   record/observe : call handler, capture request + response (record also flushes to disk)
+	 *   replay         : return recorded response without calling handler
+	 *
+	 * Streaming calls (`context.stream == true`) take the separate path in _wrapStreamLLMCall() —
+	 * they are not chat round trips and must never be handed a recorded chat struct.
 	 */
 	any function wrapLLMCall( required struct context, required function handler ) {
 		_lazyInit()
@@ -184,11 +240,17 @@ class extends="BaseAiMiddleware" {
 			return arguments.handler()
 		}
 
-		if ( variables.mode == "record" ) {
+		if ( isBoolean( context.stream ?: false ) && ( context.stream ?: false ) ) {
+			return _wrapStreamLLMCall( arguments.context, arguments.handler )
+		}
+
+		if ( _isCapturing() ) {
 			var response = arguments.handler()
+			// duplicate(): providers hand over an alias of the live messages array, which the tool
+			// loop keeps appending to — an aliased tape would fingerprint the FINAL turn, not this one.
 			_appendInteraction( {
 				"type"    : "llm",
-				"request" : context.dataPacket ?: {},
+				"request" : duplicate( context.dataPacket ?: {} ),
 				"response": response
 			} )
 			return response
@@ -202,7 +264,8 @@ class extends="BaseAiMiddleware" {
 	/**
 	 * Intercept a tool invocation.
 	 *   passthrough / recordTools=false : delegate to handler unchanged
-	 *   record                           : call handler, capture tool name + args + result, flush
+	 *   record/observe                   : call handler, capture tool name + args + result
+	 *                                      (record also flushes to disk)
 	 *   replay                           : return recorded result without calling handler
 	 */
 	any function wrapToolCall( required struct context, required function handler ) {
@@ -220,7 +283,7 @@ class extends="BaseAiMiddleware" {
 		var rawArgs  = context.toolCall?.function?.arguments ?: "{}"
 		var toolArgs = isStruct( rawArgs ) ? rawArgs : jsonDeserialize( rawArgs )
 
-		if ( variables.mode == "record" ) {
+		if ( _isCapturing() ) {
 			var result = arguments.handler()
 			_appendInteraction( {
 				"type"    : "tool",
@@ -234,6 +297,182 @@ class extends="BaseAiMiddleware" {
 		// replay
 		var interaction = _nextInteraction( "tool" )
 		return interaction.result
+	}
+
+	/**
+	 * Streaming LLM transport seam (`context.stream == true`).
+	 *
+	 * Two shapes reach here. A raw-body transport returns the provider's whole response body for the
+	 * caller to parse — a string, or a byte[] (Bedrock's binary event stream, which is NOT a simple
+	 * value); that body is the entire interaction and is recorded/replayed verbatim under a
+	 * `stream: true` marker, base64-encoded when binary. An
+	 * emit-based transport instead pushes chunks out through the context (e.g. Cohere's
+	 * emitSSEChunk) and returns nothing useful — there is no value to tape, so those calls are
+	 * passthrough-only, logged once per recorder so the gap in the fixture isn't silent.
+	 *
+	 * Replay never fabricates a stream: without a matching `stream: true` interaction the call
+	 * falls through to the real handler rather than throwing ReplayExhausted or — far worse —
+	 * handing a chat-shaped struct to a transport that expects a raw body.
+	 *
+	 * @context The LLM call context
+	 * @handler The downstream transport
+	 *
+	 * @return The handler's return value, or the recorded raw body during replay
+	 */
+	private any function _wrapStreamLLMCall( required struct context, required function handler ) {
+		if ( _isCapturing() ) {
+			var response = arguments.handler()
+
+			// Binary raw body (Bedrock's event stream) — fails isSimpleValue(), so tape it
+			// base64-encoded behind an explicit marker replay decodes back to a byte[].
+			if ( !isNull( response ) && isBinary( response ) ) {
+				_appendInteraction( {
+					"type"    : "llm",
+					"stream"  : true,
+					"encoding": "base64",
+					"transport": context.transport ?: "",
+					"modelId" : context.modelId ?: "",
+					"operation": context.operation ?: "",
+					"request" : duplicate( context.dataPacket ?: {} ),
+					"response": toBase64( response )
+				} )
+				return response
+			}
+
+			if ( !isNull( response ) && isSimpleValue( response ) ) {
+				_appendInteraction( {
+					"type"    : "llm",
+					"stream"  : true,
+					"transport": context.transport ?: "",
+					"modelId" : context.modelId ?: "",
+					"operation": context.operation ?: "",
+					"request" : duplicate( context.dataPacket ?: {} ),
+					"response": response
+				} )
+				return response
+			}
+
+			// Emit-based seam: nothing meaningful to tape
+			if ( !variables._streamPassthroughLogged ) {
+				variables._streamPassthroughLogged = true
+				writeLog(
+					text: "FlightRecorder: streaming for this provider is passthrough-only — no interaction recorded (emit-based stream transport).",
+					type: "information",
+					log : "ai"
+				)
+			}
+
+			return isNull( response ) ? javacast( "null", "" ) : response
+		}
+
+		// replay — only a recorded raw stream body FOR THIS TRANSPORT/REQUEST can satisfy a stream call
+		var recorded = _peekStreamInteraction( arguments.context )
+		if ( !isNull( recorded ) ) {
+			return ( recorded.encoding ?: "" ) == "base64"
+				? toBinary( recorded.response )
+				: recorded.response
+		}
+
+		// Strict replay is a promise of zero live calls: an emit-based transport (nothing was ever
+		// taped) or a tape belonging to a different provider/request must fail loudly rather than
+		// quietly hitting the network. Lenient replay keeps the historical passthrough.
+		if ( variables.strict ) {
+			var wantedTransport = context.transport ?: ""
+			throw(
+				type   : "FlightRecorder.StreamReplayUnsupported",
+				message: "Flight recorder replay found no recorded stream interaction matching this call " &
+					"(transport '#wantedTransport#', seq #variables._playbackSeq#). Streaming for this " &
+					"provider may be emit-based (nothing is taped), or the fixture was recorded from a " &
+					"different provider/request. Set strict=false to fall through to the live transport."
+			)
+		}
+
+		return arguments.handler()
+	}
+
+	/**
+	 * Look ahead for the next unplayed `stream: true` llm interaction carrying a simple-value
+	 * response AND belonging to this call (same transport and same request shape), consuming it
+	 * (advancing the playback cursor) only on a match.
+	 *
+	 * The transport/request discriminator is what stops one provider replaying another provider's
+	 * raw body — e.g. an emit-based Cohere stream swallowing Bedrock's binary event stream, which
+	 * looks like a valid `stream: true` interaction to a type-only check.
+	 *
+	 * @context The streaming LLM call context
+	 *
+	 * @return The matching interaction, or null when there is none
+	 */
+	private any function _peekStreamInteraction( required struct context ) {
+		var interactions = variables._tape.interactions ?: []
+
+		for ( var i = variables._playbackSeq + 1; i <= interactions.len(); i++ ) {
+			var candidate = interactions[ i ]
+			if (
+				( candidate.type ?: "" ) == "llm"
+				&& ( candidate.stream ?: false ) == true
+				&& !isNull( candidate.response ?: javacast( "null", "" ) )
+				&& isSimpleValue( candidate.response ?: {} )
+				&& _streamInteractionMatches( candidate, arguments.context )
+			) {
+				variables._playbackSeq = i
+				return candidate
+			}
+			// Strict mode only ever considers the immediate next interaction
+			if ( variables.strict ) {
+				break
+			}
+		}
+
+		return javacast( "null", "" )
+	}
+
+	/**
+	 * Whether a recorded `stream: true` interaction belongs to the call being replayed.
+	 *
+	 * Identity fields are checked when recorded; older fixtures fall back to packet matching.
+	 * A recorded request must fingerprint-match the request now being made.
+	 *
+	 * @candidate The recorded interaction
+	 * @context   The streaming LLM call context
+	 *
+	 * @return true when the interaction may satisfy this call
+	 */
+	private boolean function _streamInteractionMatches( required struct candidate, required struct context ) {
+		var recordedTransport = arguments.candidate.transport ?: ""
+		if ( len( recordedTransport ) && recordedTransport != ( arguments.context.transport ?: "" ) ) {
+			return false
+		}
+
+		// The model is in Bedrock's URL, not its packet; both APIs share the transport name.
+		// New recordings therefore carry the identity supplied by the transport explicitly.
+		for ( var identityKey in [ "modelId", "operation" ] ) {
+			var recordedIdentity = arguments.candidate[ identityKey ] ?: "";
+			if ( len( recordedIdentity ) && compare( recordedIdentity, arguments.context[ identityKey ] ?: "" ) != 0 ) {
+				return false;
+			}
+		}
+
+		var recordedRequest = arguments.candidate.request ?: {}
+		var liveRequest     = arguments.context.dataPacket ?: {}
+		if ( !isStruct( recordedRequest ) || recordedRequest.isEmpty() || !isStruct( liveRequest ) || liveRequest.isEmpty() ) {
+			return true
+		}
+
+		return _requestFingerprint( recordedRequest ) == _requestFingerprint( liveRequest )
+	}
+
+	/**
+	 * Fingerprint the complete packet. A model/message-count pair cannot distinguish vendor
+	 * dialects when the model lives in the URL, or different prompts of the same length.
+	 * This also protects older recordings that lack explicit model/operation fields.
+	 *
+	 * @request The provider data packet
+	 *
+	 * @return Fingerprint string
+	 */
+	private string function _requestFingerprint( required struct request ) {
+		return hash( jsonSerialize( arguments.request ), "SHA-256" )
 	}
 
 	// ==================== Public Utility Methods ====================
@@ -264,6 +503,7 @@ class extends="BaseAiMiddleware" {
 		variables._tape        = {}
 		variables._playbackSeq = 0
 		variables._initialized = false
+		variables._streamPassthroughLogged = false
 	}
 
 	// ==================== Private Helpers ====================
@@ -276,7 +516,7 @@ class extends="BaseAiMiddleware" {
 		if ( variables._initialized ) {
 			return
 		}
-		if ( variables.mode == "record" ) {
+		if ( _isCapturing() ) {
 			_initTape( variables._agentName )
 		} else if ( variables.mode == "replay" ) {
 			_assertFixturePath()
@@ -324,7 +564,8 @@ class extends="BaseAiMiddleware" {
 	}
 
 	/**
-	 * Append one interaction to the tape and flush a snapshot to disk.
+	 * Append one interaction to the tape, flush a snapshot to disk (record mode only), and
+	 * fire `storageCallback` (record and observe modes).
 	 * Flushing on every interaction means a partial recording is preserved even if
 	 * the agent run crashes or is interrupted.
 	 *
@@ -334,13 +575,58 @@ class extends="BaseAiMiddleware" {
 		var seq = variables._tape.interactions.len() + 1
 		arguments.interaction.seq = seq
 		variables._tape.interactions.append( arguments.interaction )
-		_saveSnapshot()
+
+		if ( variables.mode == "record" ) {
+			_saveSnapshot()
+		}
+
+		_fireStorageCallback( arguments.interaction )
+	}
+
+	/**
+	 * Invoke `storageCallback( tape, interaction )`, if configured, guarding against any
+	 * exception it throws so a misbehaving callback never breaks the underlying call.
+	 *
+	 * CONTRACT: the tape handed to the callback is a point-in-time snapshot whose interaction
+	 * entries are SHARED with the live tape — treat both the entries and `interaction` as
+	 * read-only. Only the `interactions` array itself is copied, so later appends never appear in
+	 * an earlier snapshot; a deep copy is deliberately avoided because every streamed interaction
+	 * carries a base64 body and duplicating them per interaction is O(bytes) per call.
+	 *
+	 * @interaction The interaction struct just appended to the tape
+	 */
+	private void function _fireStorageCallback( required struct interaction ) {
+		if ( !( isCustomFunction( variables.storageCallback ) || isClosure( variables.storageCallback ) ) ) {
+			return
+		}
+		try {
+			variables.storageCallback( _tapeSnapshot(), arguments.interaction )
+		} catch ( any e ) {
+			writeLog( text: "FlightRecorder storageCallback error: #e.message#", type: "warning", log: "ai" )
+		}
+	}
+
+	/**
+	 * Point-in-time view of the tape for the storage callback: a shallow struct copy whose
+	 * `interactions` is a NEW array holding the same entry references. O(interactions), not
+	 * O(bytes) — see the contract on _fireStorageCallback().
+	 *
+	 * @return The snapshot struct
+	 */
+	private struct function _tapeSnapshot() {
+		var snapshot = structCopy( variables._tape )
+		var frozen   = []
+		frozen.append( variables._tape.interactions ?: [], true )
+		snapshot[ "interactions" ] = frozen
+		return snapshot
 	}
 
 	/**
 	 * Serialise the in-memory tape to the fixture file.
+	 * Public (not private) so subclasses may override it to persist the tape elsewhere
+	 * (e.g. a database or remote store) instead of — or in addition to — the local filesystem.
 	 */
-	private void function _saveSnapshot() {
+	public void function _saveSnapshot() {
 		_ensureDirectory( getDirectoryFromPath( variables.fixturePath ) )
 		fileWrite( variables.fixturePath, jsonSerialize( variables._tape, true ), "UTF-8" )
 	}
@@ -372,6 +658,15 @@ class extends="BaseAiMiddleware" {
 					message: "Flight recorder type mismatch at seq #variables._playbackSeq#: expected '#arguments.expectedType#' but tape has '#interaction.type#'"
 				)
 			}
+			// A `stream: true` llm entry is a raw provider body, not a chat round trip — handing it
+			// back to the sync path yields garbage (or a crash) downstream.
+			if ( _isRawStreamInteraction( arguments.expectedType, interaction ) ) {
+				throw(
+					type   : "FlightRecorder.TypeMismatch",
+					message: "Flight recorder type mismatch at seq #variables._playbackSeq#: expected a non-streaming " &
+						"'llm' interaction but tape has a raw stream body (stream: true)"
+				)
+			}
 			return interaction
 		}
 
@@ -379,7 +674,7 @@ class extends="BaseAiMiddleware" {
 		var searchFrom = variables._playbackSeq + 1
 		var found      = 0
 		for ( var i = searchFrom; i <= interactions.len(); i++ ) {
-			if ( interactions[ i ].type == arguments.expectedType ) {
+			if ( interactions[ i ].type == arguments.expectedType && !_isRawStreamInteraction( arguments.expectedType, interactions[ i ] ) ) {
 				found = i
 				break
 			}
@@ -392,6 +687,27 @@ class extends="BaseAiMiddleware" {
 		}
 		variables._playbackSeq = found
 		return interactions[ found ]
+	}
+
+	/**
+	 * Whether an interaction is a recorded raw STREAM body being requested by the sync llm path.
+	 *
+	 * @expectedType The type the caller asked for
+	 * @interaction  The candidate interaction
+	 *
+	 * @return true when a sync "llm" request landed on a `stream: true` entry
+	 */
+	private boolean function _isRawStreamInteraction( required string expectedType, required struct interaction ) {
+		return arguments.expectedType == "llm" && ( arguments.interaction.stream ?: false ) == true
+	}
+
+	/**
+	 * Whether this recorder is currently capturing interactions (record or observe mode).
+	 *
+	 * @return true in "record" or "observe" mode
+	 */
+	private boolean function _isCapturing() {
+		return variables.mode == "record" || variables.mode == "observe"
 	}
 
 	/**
