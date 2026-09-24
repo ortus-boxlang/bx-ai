@@ -173,8 +173,14 @@ class extends="OpenAIService" {
 		required AiChatRequest chatRequest,
 		required struct dataPacket,
 		required function callback,
-		chatUrl = getChatURL()
+		chatUrl = getChatURL(),
+		// Owned by the CALLER when supplied (OpenAIService.chatStream hands one down so usage is
+		// announced before the caller's exception is allowed out); otherwise owned here.
+		struct errorHolder
 	){
+		var callerOwnsRethrow = arguments.keyExists( "errorHolder" )
+		var callbackError     = callerOwnsRethrow ? arguments.errorHolder : newStreamCallbackErrorHolder()
+
 		BoxAnnounce( "onAIChatRequest", {
 			"dataPacket" : arguments.dataPacket,
 			"chatRequest": arguments.chatRequest,
@@ -201,8 +207,8 @@ class extends="OpenAIService" {
 		if( len( streamState.reasoning ) ){
 			var reasoningWords = streamState.reasoning.listToArray( " " )
 			for( var r = 1; r <= reasoningWords.len(); r++ ){
-				var isLastReasoning = ( r == reasoningWords.len() )
-				arguments.callback( {
+				var isLastReasoning  = ( r == reasoningWords.len() )
+				var reasoningEmitted = emitMockChunk( arguments.callback, {
 					"id"      : completion.id ?: "",
 					"provider": "mock",
 					"model"   : completion.model ?: "",
@@ -216,7 +222,10 @@ class extends="OpenAIService" {
 							}
 						}
 					]
-				} )
+				}, arguments.chatRequest, callbackError )
+				if( !reasoningEmitted ){
+					break
+				}
 			}
 		}
 
@@ -225,8 +234,8 @@ class extends="OpenAIService" {
 		if( len( streamState.content ) ){
 			var words = streamState.content.listToArray( " " )
 			for( var i = 1; i <= words.len(); i++ ){
-				var isLast = ( i == words.len() )
-				arguments.callback( {
+				var isLast         = ( i == words.len() )
+				var contentEmitted = emitMockChunk( arguments.callback, {
 					"id"      : completion.id ?: "",
 					"provider": "mock",
 					"model"   : completion.model ?: "",
@@ -238,11 +247,44 @@ class extends="OpenAIService" {
 							"finish_reason": isLast ? streamState.finishReason : javacast( "null", "" )
 						}
 					]
-				} )
+				}, arguments.chatRequest, callbackError )
+				if( !contentEmitted ){
+					break
+				}
 			}
 		}
 
+		if( !callerOwnsRethrow ){
+			rethrowStreamCallbackError( callbackError )
+		}
+
 		return streamState
+	}
+
+	/**
+	 * Emit ONE chunk through the shared guard and report whether it made it.
+	 *
+	 * The mock has no HTTP client between the emission and the caller's callback, so a raw throw
+	 * would leave sendStreamRequest() before chatStream() announced the usage of a call the model
+	 * already "billed" — the very hole the guard exists to close. Swallowing here, after the guard
+	 * has recorded the failure on the holder and announced onAIError, gives the mock the same shape
+	 * as the real SSE transport: the stream stops, the aggregated state is returned, and whoever
+	 * owns the holder re-raises.
+	 *
+	 * @return true when the callback accepted the chunk, false when it threw
+	 */
+	private boolean function emitMockChunk(
+		required function callback,
+		required struct chunk,
+		required AiChatRequest chatRequest,
+		required struct errorHolder
+	){
+		try {
+			emitStreamChunkGuarded( arguments.callback, arguments.chunk, arguments.chatRequest, arguments.errorHolder )
+			return true
+		} catch ( any e ) {
+			return false
+		}
 	}
 
 	/**
