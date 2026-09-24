@@ -2887,9 +2887,11 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 					{ modelId: "eu.anthropic.claude-sonnet-4-6",        expected: "claude"  },
 					{ modelId: "amazon.titan-text-express-v1",          expected: "titan"   },
 					{ modelId: "meta.llama3-70b-instruct-v1:0",         expected: "llama"   },
-					// No dedicated Cohere transform exists; the fix preserves Cohere on the
-					// Claude-shape request rather than letting it fall into the new openai default.
-					{ modelId: "cohere.command-r-v1:0",                 expected: "claude"  },
+					// Cohere now has its own request transform: Command R/R+ get the chat shape,
+					// legacy command-text gets the prompt/generate shape.
+					{ modelId: "cohere.command-r-v1:0",                 expected: "cohere"  },
+					{ modelId: "cohere.command-r-plus-v1:0",            expected: "cohere"  },
+					{ modelId: "cohere.command-text-v14",               expected: "cohere-legacy" },
 					// ai21 Jamba is OpenAI-shaped; the removed ai21 branch used to route it to
 					// the Claude transform instead (silent zero chunks on stream).
 					{ modelId: "ai21.jamba-1-5-large-v1:0",             expected: "openai"  },
@@ -2936,12 +2938,18 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 					shape = "unrecognized-shape"
 					if ( packet.keyExists( "anthropic_version" ) ) {
 						shape = "claude"
+					} else if ( packet.keyExists( "message" ) ) {
+						shape = "cohere"
 					} else if ( packet.keyExists( "inputText" ) ) {
 						shape = "titan"
 					} else if ( packet.keyExists( "prompt" ) && packet.keyExists( "max_gen_len" ) ) {
 						shape = "llama"
-					} else if ( packet.keyExists( "prompt" ) ) {
+					} else if ( packet.keyExists( "prompt" ) && packet.prompt.findNoCase( "[INST]" ) > 0 ) {
+						// Legacy Mistral's prompt is the only one wrapped in <s>[INST]...[/INST];
+						// legacy Cohere's is the same key carrying the raw flattened messages.
 						shape = "mistral"
+					} else if ( packet.keyExists( "prompt" ) ) {
+						shape = "cohere-legacy"
 					} else if ( packet.keyExists( "messages" ) ) {
 						shape = "openai"
 					}
@@ -2963,5 +2971,1719 @@ public class BedrockServiceTest extends BaseIntegrationTest {
 			System.out.println( "Model family detection mismatches:\n" + variables.get( Key.of( "mismatchSummary" ) ) );
 		}
 		assertThat( mismatchCount ).isEqualTo( 0 );
+	}
+
+	// ============================================================================================
+	// Streaming: AWS event-stream decoding, tool loop, suspend/resume, structured output
+	// ============================================================================================
+
+	/**
+	 * Build one AWS event-stream frame: prelude(8) + preludeCRC(4) + headers + payload +
+	 * messageCRC(4). CRCs are zero — the decoder does not validate them.
+	 *
+	 * @param headers alternating name/value pairs; a Boolean value is encoded as header value
+	 *                type 0/1 (no value bytes), a String as type 7 (2-byte length prefix)
+	 */
+	private static byte[] frame( byte[] payload, Object... headers ) {
+		java.io.ByteArrayOutputStream hb = new java.io.ByteArrayOutputStream();
+		for ( int i = 0; i < headers.length; i += 2 ) {
+			byte[] name = ( ( String ) headers[ i ] ).getBytes( java.nio.charset.StandardCharsets.UTF_8 );
+			hb.write( name.length );
+			hb.write( name, 0, name.length );
+			Object value = headers[ i + 1 ];
+			if ( value instanceof Boolean ) {
+				hb.write( ( ( Boolean ) value ) ? 0 : 1 );
+			} else {
+				byte[] v = ( ( String ) value ).getBytes( java.nio.charset.StandardCharsets.UTF_8 );
+				hb.write( 7 );
+				hb.write( ( v.length >> 8 ) & 0xFF );
+				hb.write( v.length & 0xFF );
+				hb.write( v, 0, v.length );
+			}
+		}
+		byte[]				headerBytes	= hb.toByteArray();
+		int					total		= 8 + 4 + headerBytes.length + payload.length + 4;
+		java.nio.ByteBuffer	bb			= java.nio.ByteBuffer.allocate( total );
+		bb.putInt( total );
+		bb.putInt( headerBytes.length );
+		bb.putInt( 0 );
+		bb.put( headerBytes );
+		bb.put( payload );
+		bb.putInt( 0 );
+		return bb.array();
+	}
+
+	/** Wrap a model JSON event in the `{"bytes":"<base64>"}` envelope Bedrock uses for chunk frames. */
+	private static byte[] chunkPayload( String modelJson ) {
+		String b64 = java.util.Base64.getEncoder()
+		    .encodeToString( modelJson.getBytes( java.nio.charset.StandardCharsets.UTF_8 ) );
+		return ( "{\"bytes\":\"" + b64 + "\"}" ).getBytes( java.nio.charset.StandardCharsets.UTF_8 );
+	}
+
+	/** Concatenate frames and base64 them, ready for binaryDecode() inside a BoxLang test script. */
+	private static String streamBody( byte[]... frames ) {
+		java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+		for ( byte[] f : frames ) {
+			out.write( f, 0, f.length );
+		}
+		return java.util.Base64.getEncoder().encodeToString( out.toByteArray() );
+	}
+
+	private static final String	EVENT_HEADERS_MSG	= ":message-type";
+	private static final String	EVENT_HEADERS_EVT	= ":event-type";
+
+	@Test
+	@DisplayName( "Event-stream decoder walks the frame header block and delivers the chunk payloads" )
+	public void testEventStreamDecoderParsesHeaderedFrames() {
+		// A hand-built binary event-stream: three `:message-type: event` / `:event-type: chunk`
+		// frames. The first carries a BOOLEAN header (value type 0, no value bytes) ahead of the
+		// string headers, so the header walk has to honour per-type widths — get that wrong and
+		// the payload offset is garbage and nothing decodes.
+		String body = streamBody(
+		    frame( chunkPayload( "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello \"}}" ),
+		        "x-flag", Boolean.TRUE, EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk", ":content-type", "application/json" ),
+		    frame( chunkPayload( "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"world\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload( "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":3}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", max_tokens: 50 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" )
+				} )
+
+				chunks = []
+				provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+				text = chunks
+					.filter( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() )
+					.map( c => c.choices.first().delta.content ?: "" )
+					.toList( "" )
+				sawStop = chunks.some( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() && ( c.choices.first().finish_reason ?: "" ) == "end_turn" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION, body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "text" ) ).toString() ).isEqualTo( "Hello world" );
+		assertThat( variables.getAsBoolean( Key.of( "sawStop" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "An exception frame mid-stream throws BedrockStreamError instead of ending silently" )
+	public void testEventStreamExceptionFrameThrows() {
+		// Before the header block was decoded, a throttlingException frame was just an untyped
+		// payload: it transformed to a null chunk and was logged at DEBUG, so a throttled stream
+		// was indistinguishable from a short answer.
+		String body = streamBody(
+		    frame( chunkPayload( "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"partial\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( "{\"message\":\"Too many tokens, please wait\"}".getBytes( java.nio.charset.StandardCharsets.UTF_8 ),
+		        EVENT_HEADERS_MSG, "exception", ":exception-type", "throttlingException", ":content-type", "application/json" )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", max_tokens: 50 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" )
+				} )
+
+				errType = ""
+				errMsg  = ""
+				chunks  = []
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+				} catch ( any e ) {
+					errType = e.type
+					errMsg  = e.message
+				}
+				sawException  = errType == "BedrockStreamError"
+				namesKind     = errMsg.findNoCase( "throttlingException" ) > 0
+				carriesDetail = errMsg.findNoCase( "Too many tokens" ) > 0
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION, body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "sawException" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "namesKind" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "carriesDetail" ) ) ).isTrue();
+	}
+
+	/**
+	 * BoxLang preamble shared by the streaming tool tests: `evt()` renders one model event into the
+	 * `{"bytes":"..."}` envelope, and the concatenation is fed to wrapLLMCall as a STRING body,
+	 * which parseBedrockEventStream() handles through its documented non-binary fallback.
+	 */
+	private static final String STREAM_EVENT_HELPER = """
+	                                                  evt = ( data ) => '{"bytes":"' & binaryEncode( charsetDecode( jsonSerialize( data ), "utf-8" ), "base64" ) & '"}'
+	                                                  toolStream = evt( { "type": "message_start", "message": { "id": "msg_1", "model": "claude", "usage": { "input_tokens": 7 } } } )
+	                                                      & evt( { "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "tu_1", "name": "getWeather" } } )
+	                                                      & evt( { "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": '{"city":"Par' } } )
+	                                                      & evt( { "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": 'is"}' } } )
+	                                                      & evt( { "type": "content_block_stop", "index": 0 } )
+	                                                      & evt( { "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 11 } } )
+	                                                  textStream = evt( { "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "Sunny in Paris" } } )
+	                                                      & evt( { "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 4 } } )
+	                                                  """;
+
+	@Test
+	@DisplayName( "Streamed tool_use is accumulated across content_block_start/input_json_delta/stop into a normalized tool call" )
+	public void testStreamedToolUseAccumulation() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			STREAM_EVENT_HELPER + """
+				tool     = aiTool( "getWeather", "Get weather", ( required string city ) => "sunny in " & city )
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather in Paris?" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+
+				wrapCalls = 0
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						wrapCalls++
+						return wrapCalls == 1 ? toolStream : textStream
+					}
+				} )
+
+				chunks = []
+				provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+				toolChunks = chunks.filter( c =>
+					isStruct( c )
+					&& isArray( c.choices ?: "" )
+					&& c.choices.len()
+					&& isStruct( c.choices.first().delta ?: "" )
+					&& c.choices.first().delta.keyExists( "tool_calls" )
+				)
+				toolChunkCount = toolChunks.len()
+				emittedCall    = toolChunkCount ? toolChunks.first().choices.first().delta.tool_calls.first() : {}
+				emittedName    = emittedCall.function.name ?: ""
+				parsedArgs     = toolChunkCount ? jsonDeserialize( emittedCall.function.arguments ) : {}
+				parsedCity     = parsedArgs.city ?: ""
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "toolChunkCount" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "emittedName" ) ).toString() ).isEqualTo( "getWeather" );
+		assertThat( variables.get( Key.of( "parsedCity" ) ).toString() ).isEqualTo( "Paris" );
+	}
+
+	@Test
+	@DisplayName( "Streaming tool loop fires beforeToolCall, executes the tool and issues the follow-up turn" )
+	public void testStreamingToolLoopRunsMiddlewareAndFollowUp() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			STREAM_EVENT_HELPER + """
+				toolRuns = 0
+				capturedCity = ""
+				tool = aiTool( "getWeather", "Get weather", ( required string city ) => {
+					toolRuns++
+					capturedCity = city
+					return "sunny in " & city
+				} )
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather in Paris?" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+
+				wrapCalls           = 0
+				beforeToolCallFired = false
+				capturedArgs        = {}
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						wrapCalls++
+						return wrapCalls == 1 ? toolStream : textStream
+					},
+					"beforeToolCall": ( ctx ) => {
+						beforeToolCallFired = true
+						capturedArgs        = ctx.toolArgs ?: {}
+					}
+				} )
+
+				chunks = []
+				provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+				finalText = chunks
+					.filter( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() )
+					.map( c => c.choices.first().delta.content ?: "" )
+					.toList( "" )
+				sawFollowUp  = wrapCalls == 2
+				sawRealArgs  = ( capturedArgs.city ?: "" ) == "Paris"
+				toolRanOnce  = toolRuns == 1
+				sawToolResult = chatRequest.getMessages().some( m => isArray( m.content ?: "" ) && m.content.some( b => ( b.type ?: "" ) == "tool_result" ) )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "beforeToolCallFired" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawRealArgs" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolRanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawFollowUp" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawToolResult" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "finalText" ) ).toString() ).isEqualTo( "Sunny in Paris" );
+	}
+
+	@Test
+	@DisplayName( "Two approval-requiring tools suspend once as a batch in streaming; resumeToolBatchStream finishes it without replaying the LLM" )
+	public void testStreamingBatchSuspendAndResume() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+
+				evt = ( data ) => '{"bytes":"' & binaryEncode( charsetDecode( jsonSerialize( data ), "utf-8" ), "base64" ) & '"}'
+				twoToolStream = evt( { "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "tu_a", "name": "toolA" } } )
+					& evt( { "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": '{}' } } )
+					& evt( { "type": "content_block_stop", "index": 0 } )
+					& evt( { "type": "content_block_start", "index": 1, "content_block": { "type": "tool_use", "id": "tu_b", "name": "toolB" } } )
+					& evt( { "type": "content_block_delta", "index": 1, "delta": { "type": "input_json_delta", "partial_json": '{}' } } )
+					& evt( { "type": "content_block_stop", "index": 1 } )
+					& evt( { "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 8 } } )
+				textStream = evt( { "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "both done" } } )
+					& evt( { "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 2 } } )
+
+				toolACalls = 0
+				toolBCalls = 0
+				toolA = aiTool( "toolA", "Tool A", () => { toolACalls++; return "A done" } )
+				toolB = aiTool( "toolB", "Tool B", () => { toolBCalls++; return "B done" } )
+
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+
+				wrapCalls = 0
+				llmMw = {
+					"wrapLLMCall": ( ctx, handler ) => {
+						wrapCalls++
+						return wrapCalls == 1 ? twoToolStream : textStream
+					}
+				}
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "run both tools" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ toolA, toolB ] },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "toolA", "toolB" ], mode: "web" ) )
+				chatRequest.addMiddleware( llmMw )
+
+				chunks = []
+				provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+				stops        = chunks.filter( c => isStruct( c ) && ( c.type ?: "" ) == "middleware_stop" )
+				suspended    = stops.len() == 1 && stops.first().result.isSuspended()
+				suspendData  = suspended ? stops.first().result.getData() : {}
+				pendingCount = ( suspendData.pendingActions ?: [] ).len()
+				ledgerCount  = ( suspendData.resumeLedger ?: [] ).len()
+				neitherRanYet = toolACalls == 0 && toolBCalls == 0
+				calledLLMOnce = wrapCalls == 1
+
+				// ---- resume: approve both, finish the SAME batch, no replay of the suspended turn ----
+				resumeRequest = aiChatRequest(
+					aiMessage().user( "run both tools" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ toolA, toolB ] },
+					{
+						provider: "bedrock",
+						_resumeContext: {
+							assistantMessage: suspendData.assistantMessage,
+							resumeLedger    : [
+								{ toolName: "toolA", status: "execute" },
+								{ toolName: "toolB", status: "execute" }
+							]
+						}
+					}
+				)
+				resumeRequest.addMiddleware( llmMw )
+
+				resumeChunks = []
+				provider.chatStream( resumeRequest, ( chunk ) => { resumeChunks.append( chunk ) } )
+
+				finalText    = resumeChunks
+					.filter( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() )
+					.map( c => c.choices.first().delta.content ?: "" )
+					.toList( "" )
+				bothRanOnce  = toolACalls == 1 && toolBCalls == 1
+				// Only the follow-up turn touched the LLM — the suspended turn was NOT replayed
+				resumeAddedOneLLMCall = wrapCalls == 2
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "suspended" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "pendingCount" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsInteger( Key.of( "ledgerCount" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsBoolean( Key.of( "neitherRanYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "calledLLMOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "bothRanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "resumeAddedOneLLMCall" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "finalText" ) ).toString() ).isEqualTo( "both done" );
+	}
+
+	@Test
+	@DisplayName( "Streaming structured output accumulates the forced tool block and populates the struct" )
+	public void testStreamingStructuredOutputPopulates() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				evt = ( data ) => '{"bytes":"' & binaryEncode( charsetDecode( jsonSerialize( data ), "utf-8" ), "base64" ) & '"}'
+				soStream = evt( { "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "tu_so", "name": "structured_output" } } )
+					& evt( { "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": '{"name":"John ' } } )
+					& evt( { "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": 'Doe","age":30}' } } )
+					& evt( { "type": "content_block_stop", "index": 0 } )
+					& evt( { "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 12 } } )
+
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract: John Doe, age 30" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{
+						provider: "bedrock",
+						schema: {
+							"type": "object",
+							"properties": { "name": { "type": "string" }, "age": { "type": "integer" } },
+							"required": [ "name", "age" ]
+						}
+					}
+				)
+				forcedToolName = ""
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						forcedToolName = ctx.dataPacket.tool_choice.name ?: ""
+					},
+					"wrapLLMCall": ( ctx, handler ) => soStream
+				} )
+
+				chunks = []
+				result = provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+				isResultStruct = isStruct( result )
+				emittedOnStream = chunks.some( c =>
+					isStruct( c )
+					&& isArray( c.choices ?: "" )
+					&& c.choices.len()
+					&& isStruct( c.choices.first().delta ?: "" )
+					&& c.choices.first().delta.keyExists( "structured_output" )
+				)
+				resultName     = result.name ?: ""
+				resultAge      = result.age ?: 0
+				// the schema carrier is never emitted as an executable tool call
+				sawToolCallChunk = chunks.some( c =>
+					isStruct( c )
+					&& isArray( c.choices ?: "" )
+					&& c.choices.len()
+					&& isStruct( c.choices.first().delta ?: "" )
+					&& c.choices.first().delta.keyExists( "tool_calls" )
+				)
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "forcedToolName" ) ).toString() ).isEqualTo( "structured_output" );
+		assertThat( variables.getAsBoolean( Key.of( "isResultStruct" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "resultName" ) ).toString() ).isEqualTo( "John Doe" );
+		assertThat( variables.getAsInteger( Key.of( "resultAge" ) ) ).isEqualTo( 30 );
+		assertThat( variables.getAsBoolean( Key.of( "sawToolCallChunk" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "emittedOnStream" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Streaming structured output throws StructuredOutputError when the forced block never arrives" )
+	public void testStreamingStructuredOutputThrowsWhenAbsent() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				evt = ( data ) => '{"bytes":"' & binaryEncode( charsetDecode( jsonSerialize( data ), "utf-8" ), "base64" ) & '"}'
+				proseStream = evt( { "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "I cannot comply." } } )
+					& evt( { "type": "message_delta", "delta": { "stop_reason": "max_tokens" }, "usage": { "output_tokens": 4 } } )
+
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract: John Doe, age 30" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+					{
+						provider: "bedrock",
+						schema: {
+							"type": "object",
+							"properties": { "name": { "type": "string" } },
+							"required": [ "name" ]
+						}
+					}
+				)
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => proseStream } )
+
+				errType = ""
+				errMsg  = ""
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => {} )
+				} catch ( any e ) {
+					errType = e.type
+					errMsg  = e.message
+				}
+				threwStructuredError = errType == "StructuredOutputError"
+				mentionsTruncation   = errMsg.findNoCase( "max_tokens" ) > 0
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threwStructuredError" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "mentionsTruncation" ) ) ).isTrue();
+	}
+
+	// ============================================================================================
+	// Stage 2: OpenAI-shaped families, Cohere transforms, cache_control on system
+	// ============================================================================================
+
+	@Test
+	@DisplayName( "OpenAI-family request carries tools, tool_choice, response_format, reasoning_effort and stop" )
+	public void testOpenAIRequestCarriesFullParameterSet() {
+		// transformRequestForOpenAI used to emit only { messages, max_tokens, temperature, top_p },
+		// so everything below was silently dropped before it reached Bedrock.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => "sunny" )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather?" ),
+					{
+						model            : "openai.gpt-oss-120b-1:0",
+						max_tokens       : 321,
+						temperature      : 0.4,
+						top_p            : 0.8,
+						stop             : [ "STOP" ],
+						reasoning_effort : "high",
+						tool_choice      : "auto",
+						tools            : [ tool ],
+						stream           : true,
+						response_format  : { "type": "text" }
+					},
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+				provider.chat( chatRequest )
+
+				packet             = captured.packet
+				maxCompletion      = packet.max_completion_tokens
+				hasLegacyMaxTokens = packet.keyExists( "max_tokens" )
+				temperatureVal     = packet.temperature
+				topPVal            = packet.top_p
+				stopVal            = packet.stop[ 1 ]
+				reasoningEffort    = packet.reasoning_effort
+				toolChoice         = packet.tool_choice
+				responseFormatType = packet.response_format.type
+				toolCount          = packet.tools.len()
+				toolName           = packet.tools[ 1 ].function.name
+				hasModel           = packet.keyExists( "model" )
+				hasStream          = packet.keyExists( "stream" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "maxCompletion" ) ) ).isEqualTo( 321 );
+		assertThat( variables.getAsBoolean( Key.of( "hasLegacyMaxTokens" ) ) ).isFalse();
+		assertThat( variables.get( Key.of( "temperatureVal" ) ).toString() ).isEqualTo( "0.4" );
+		assertThat( variables.get( Key.of( "topPVal" ) ).toString() ).isEqualTo( "0.8" );
+		assertThat( variables.get( Key.of( "stopVal" ) ) ).isEqualTo( "STOP" );
+		assertThat( variables.get( Key.of( "reasoningEffort" ) ) ).isEqualTo( "high" );
+		assertThat( variables.get( Key.of( "toolChoice" ) ) ).isEqualTo( "auto" );
+		assertThat( variables.get( Key.of( "responseFormatType" ) ) ).isEqualTo( "text" );
+		assertThat( variables.getAsInteger( Key.of( "toolCount" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "toolName" ) ) ).isEqualTo( "getWeather" );
+		assertThat( variables.getAsBoolean( Key.of( "hasModel" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "hasStream" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "Capability gate no longer throws for tools on an OpenAI-shaped (gpt-oss) model" )
+	public void testCapabilityGateAllowsGptOssWithTools() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				tool = aiTool( "noop", "does nothing", () => "ok" )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "openai.gpt-oss-20b-1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+				caughtType = ""
+				try {
+					provider.chat( chatRequest )
+				} catch( any e ) {
+					caughtType = e.type
+				}
+				reachedTransform = captured.keyExists( "packet" )
+				toolName         = reachedTransform ? captured.packet.tools[ 1 ].function.name : ""
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "caughtType" ) ) ).isEqualTo( "" );
+		assertThat( variables.getAsBoolean( Key.of( "reachedTransform" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "toolName" ) ) ).isEqualTo( "noop" );
+	}
+
+	@Test
+	@DisplayName( "Legacy Cohere Command still throws UnsupportedProviderCapability for tools" )
+	public void testCapabilityGateStillBlocksLegacyCohereTools() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				tool = aiTool( "noop", "does nothing", () => "ok" )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "cohere.command-text-v14", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				caughtType = ""
+				caughtMsg  = ""
+				try {
+					provider.chat( chatRequest )
+				} catch( any e ) {
+					caughtType = e.type
+					caughtMsg  = e.message
+				}
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "caughtType" ) ) ).isEqualTo( "UnsupportedProviderCapability" );
+		assertThat( variables.get( Key.of( "caughtMsg" ) ).toString() ).contains( "legacy cohere Command" );
+	}
+
+	@Test
+	@DisplayName( "OpenAI-family sync tool loop fires beforeToolCall, executes the tool and issues the follow-up turn" )
+	public void testOpenAIFamilySyncToolLoop() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				toolRuns = 0
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => {
+					toolRuns++
+					return "sunny in " & city
+				} )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather in Paris?" ),
+					{ model: "openai.gpt-oss-120b-1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+
+				usage  = { "prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8 }
+				calls  = 0
+				beforeToolCallFired = false
+				capturedArgs        = {}
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						calls++
+						if ( calls == 1 ) {
+							return {
+								"choices": [ {
+									"index": 0,
+									"message": {
+										"role": "assistant",
+										"content": "",
+										"tool_calls": [ {
+											"id": "call_1",
+											"type": "function",
+											"function": { "name": "getWeather", "arguments": '{"city":"Paris"}' }
+										} ]
+									},
+									"finish_reason": "tool_calls"
+								} ],
+								"usage": usage
+							}
+						}
+						return {
+							"choices": [ { "index": 0, "message": { "role": "assistant", "content": "Sunny in Paris" }, "finish_reason": "stop" } ],
+							"usage": usage
+						}
+					},
+					"beforeToolCall": ( ctx ) => {
+						beforeToolCallFired = true
+						capturedArgs        = ctx.toolArgs ?: {}
+					}
+				} )
+
+				answer       = provider.chat( chatRequest )
+				sawFollowUp  = calls == 2
+				toolRanOnce  = toolRuns == 1
+				sawRealArgs  = ( capturedArgs.city ?: "" ) == "Paris"
+				toolMessages = chatRequest.getMessages().filter( m => ( m.role ?: "" ) == "tool" )
+				toolMsgCount = toolMessages.len()
+				toolMsgId    = toolMsgCount ? toolMessages.first().tool_call_id : ""
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "beforeToolCallFired" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawRealArgs" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolRanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawFollowUp" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "toolMsgCount" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "toolMsgId" ) ) ).isEqualTo( "call_1" );
+		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "Sunny in Paris" );
+	}
+
+	@Test
+	@DisplayName( "OpenAI-family structured output sends response_format and populates the struct" )
+	public void testOpenAIFamilyStructuredOutput() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Extract: John Doe, age 30" ),
+					{ model: "openai.gpt-oss-120b-1:0" },
+					{
+						provider: "bedrock",
+						schema: {
+							"type": "object",
+							"properties": { "name": { "type": "string" }, "age": { "type": "integer" } },
+							"required": [ "name", "age" ]
+						}
+					}
+				)
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => { captured.packet = ctx.dataPacket },
+					"wrapLLMCall" : ( ctx, handler ) => {
+						return {
+							"choices": [ { "index": 0, "message": { "role": "assistant", "content": '{"name":"John Doe","age":30}' }, "finish_reason": "stop" } ],
+							"usage": { "prompt_tokens": 5, "completion_tokens": 8, "total_tokens": 13 }
+						}
+					}
+				} )
+				result       = provider.chat( chatRequest )
+				formatType   = captured.packet.response_format.type
+				schemaName   = captured.packet.response_format.json_schema.name
+				hasSchema    = captured.packet.response_format.json_schema.keyExists( "schema" )
+				isStructRes  = isStruct( result )
+				name         = result.name
+				age          = result.age
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "formatType" ) ) ).isEqualTo( "json_schema" );
+		assertThat( variables.get( Key.of( "schemaName" ) ) ).isEqualTo( "response" );
+		assertThat( variables.getAsBoolean( Key.of( "hasSchema" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "isStructRes" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "name" ) ).toString() ).isEqualTo( "John Doe" );
+		assertThat( variables.getAsInteger( Key.of( "age" ) ) ).isEqualTo( 30 );
+	}
+
+	/**
+	 * OpenAI-shaped streaming events, delivered inside the Bedrock event-stream `{"bytes":...}`
+	 * envelope: one tool call spread over two `delta.tool_calls` fragments, closed by a
+	 * finish_reason "tool_calls" chunk, then a plain text follow-up stream.
+	 */
+	private static final String OPENAI_STREAM_EVENT_HELPER = """
+	                                                         evt = ( data ) => '{"bytes":"' & binaryEncode( charsetDecode( jsonSerialize( data ), "utf-8" ), "base64" ) & '"}'
+	                                                         oaToolStream = evt( { "choices": [ { "index": 0, "delta": { "role": "assistant", "tool_calls": [ { "index": 0, "id": "call_1", "type": "function", "function": { "name": "getWeather", "arguments": '{"city":"Par' } } ] } } ] } )
+	                                                             & evt( { "choices": [ { "index": 0, "delta": { "tool_calls": [ { "index": 0, "function": { "arguments": 'is"}' } } ] } } ] } )
+	                                                             & evt( { "choices": [ { "index": 0, "delta": {}, "finish_reason": "tool_calls" } ], "usage": { "prompt_tokens": 7, "completion_tokens": 11, "total_tokens": 18 } } )
+	                                                         oaTextStream = evt( { "choices": [ { "index": 0, "delta": { "content": "Sunny in Paris" } } ] } )
+	                                                             & evt( { "choices": [ { "index": 0, "delta": {}, "finish_reason": "stop" } ], "usage": { "prompt_tokens": 9, "completion_tokens": 4, "total_tokens": 13 } } )
+	                                                         """;
+
+	@Test
+	@DisplayName( "OpenAI-family stream accumulates delta.tool_calls fragments into a normalized tool call and runs the follow-up" )
+	public void testOpenAIFamilyStreamToolCalls() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			OPENAI_STREAM_EVENT_HELPER + """
+				toolRuns = 0
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => {
+					toolRuns++
+					return "sunny in " & city
+				} )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather in Paris?" ),
+					{ model: "openai.gpt-oss-120b-1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+
+				wrapCalls           = 0
+				beforeToolCallFired = false
+				capturedArgs        = {}
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						wrapCalls++
+						return wrapCalls == 1 ? oaToolStream : oaTextStream
+					},
+					"beforeToolCall": ( ctx ) => {
+						beforeToolCallFired = true
+						capturedArgs        = ctx.toolArgs ?: {}
+					}
+				} )
+
+				chunks = []
+				provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+				toolChunks = chunks.filter( c =>
+					isStruct( c )
+					&& isArray( c.choices ?: "" )
+					&& c.choices.len()
+					&& isStruct( c.choices.first().delta ?: "" )
+					&& c.choices.first().delta.keyExists( "tool_calls" )
+				)
+				toolChunkCount = toolChunks.len()
+				emittedCall    = toolChunkCount ? toolChunks.first().choices.first().delta.tool_calls.first() : {}
+				emittedName    = emittedCall.function.name ?: ""
+				emittedId      = emittedCall.id ?: ""
+				parsedCity     = toolChunkCount ? ( jsonDeserialize( emittedCall.function.arguments ).city ?: "" ) : ""
+				finishReason   = toolChunkCount ? ( toolChunks.first().choices.first().finish_reason ?: "" ) : ""
+
+				finalText = chunks
+					.filter( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() )
+					.map( c => c.choices.first().delta.content ?: "" )
+					.toList( "" )
+				sawFollowUp = wrapCalls == 2
+				toolRanOnce = toolRuns == 1
+				sawRealArgs = ( capturedArgs.city ?: "" ) == "Paris"
+				sawToolMsg  = chatRequest.getMessages().some( m => ( m.role ?: "" ) == "tool" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "toolChunkCount" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "emittedName" ) ).toString() ).isEqualTo( "getWeather" );
+		assertThat( variables.get( Key.of( "emittedId" ) ).toString() ).isEqualTo( "call_1" );
+		assertThat( variables.get( Key.of( "parsedCity" ) ).toString() ).isEqualTo( "Paris" );
+		assertThat( variables.get( Key.of( "finishReason" ) ).toString() ).isEqualTo( "tool_calls" );
+		assertThat( variables.getAsBoolean( Key.of( "beforeToolCallFired" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawRealArgs" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolRanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawFollowUp" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawToolMsg" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "finalText" ) ).toString() ).isEqualTo( "Sunny in Paris" );
+	}
+
+	@Test
+	@DisplayName( "Cohere Command R request is built in Cohere's chat shape, not Claude's Messages shape" )
+	public void testCohereCommandRRequestTransform() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => "sunny" )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "ignored" ),
+					{
+						model       : "cohere.command-r-plus-v1:0",
+						max_tokens  : 512,
+						temperature : 0.3,
+						top_p       : 0.7,
+						top_k       : 40,
+						stop        : [ "STOP" ],
+						tools       : [ tool ]
+					},
+					{ provider: "bedrock" }
+				)
+				chatRequest.setMessages( [
+					{ "role": "system",    "content": "You are terse." },
+					{ "role": "user",      "content": "Who discovered gravity?" },
+					{ "role": "assistant", "content": "Newton." },
+					{ "role": "user",      "content": "What are some skills?" }
+				] )
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+				provider.chat( chatRequest )
+
+				packet            = captured.packet
+				hasAnthropic      = packet.keyExists( "anthropic_version" )
+				message           = packet.message
+				preamble          = packet.preamble
+				historyLen        = packet.chat_history.len()
+				historyRole1      = packet.chat_history[ 1 ].role
+				historyRole2      = packet.chat_history[ 2 ].role
+				historyMsg2       = packet.chat_history[ 2 ].message
+				maxTokens         = packet.max_tokens
+				pVal              = packet.p
+				kVal              = packet.k
+				hasTopP           = packet.keyExists( "top_p" )
+				stopSeq           = packet.stop_sequences[ 1 ]
+				toolName          = packet.tools[ 1 ].name
+				paramType         = packet.tools[ 1 ].parameter_definitions.city.type
+				paramRequired     = packet.tools[ 1 ].parameter_definitions.city.required
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasAnthropic" ) ) ).isFalse();
+		assertThat( variables.get( Key.of( "message" ) ) ).isEqualTo( "What are some skills?" );
+		assertThat( variables.get( Key.of( "preamble" ) ) ).isEqualTo( "You are terse." );
+		assertThat( variables.getAsInteger( Key.of( "historyLen" ) ) ).isEqualTo( 2 );
+		assertThat( variables.get( Key.of( "historyRole1" ) ) ).isEqualTo( "USER" );
+		assertThat( variables.get( Key.of( "historyRole2" ) ) ).isEqualTo( "CHATBOT" );
+		assertThat( variables.get( Key.of( "historyMsg2" ) ) ).isEqualTo( "Newton." );
+		assertThat( variables.getAsInteger( Key.of( "maxTokens" ) ) ).isEqualTo( 512 );
+		assertThat( variables.get( Key.of( "pVal" ) ).toString() ).isEqualTo( "0.7" );
+		assertThat( variables.getAsInteger( Key.of( "kVal" ) ) ).isEqualTo( 40 );
+		assertThat( variables.getAsBoolean( Key.of( "hasTopP" ) ) ).isFalse();
+		assertThat( variables.get( Key.of( "stopSeq" ) ) ).isEqualTo( "STOP" );
+		assertThat( variables.get( Key.of( "toolName" ) ) ).isEqualTo( "getWeather" );
+		assertThat( variables.get( Key.of( "paramType" ) ) ).isEqualTo( "string" );
+		assertThat( variables.getAsBoolean( Key.of( "paramRequired" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Legacy Cohere Command request is built in the prompt/generate shape" )
+	public void testCohereLegacyRequestTransform() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				captured = {}
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "Tell me a joke" ),
+					{ model: "cohere.command-text-v14", max_tokens: 128, top_p: 0.6, top_k: 20 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => {
+						captured.packet = ctx.dataPacket
+						return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+					}
+				} )
+				provider.chat( chatRequest )
+
+				packet     = captured.packet
+				prompt     = packet.prompt
+				maxTokens  = packet.max_tokens
+				pVal       = packet.p
+				kVal       = packet.k
+				hasMessage = packet.keyExists( "message" )
+				hasHistory = packet.keyExists( "chat_history" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "prompt" ) ) ).isEqualTo( "Tell me a joke" );
+		assertThat( variables.getAsInteger( Key.of( "maxTokens" ) ) ).isEqualTo( 128 );
+		assertThat( variables.get( Key.of( "pVal" ) ).toString() ).isEqualTo( "0.6" );
+		assertThat( variables.getAsInteger( Key.of( "kVal" ) ) ).isEqualTo( 20 );
+		assertThat( variables.getAsBoolean( Key.of( "hasMessage" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "hasHistory" ) ) ).isFalse();
+	}
+
+	@Test
+	@DisplayName( "Cohere stream events (text-generation / stream-end) are normalized instead of being read as Claude chunks" )
+	public void testCohereStreamChunkTransform() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				evt = ( data ) => '{"bytes":"' & binaryEncode( charsetDecode( jsonSerialize( data ), "utf-8" ), "base64" ) & '"}'
+				cohereStream = evt( { "event_type": "stream-start", "generation_id": "g1" } )
+					& evt( { "event_type": "text-generation", "text": "Hello " } )
+					& evt( { "event_type": "text-generation", "text": "world" } )
+					& evt( { "event_type": "stream-end", "finish_reason": "COMPLETE", "meta": { "billed_units": { "input_tokens": 3, "output_tokens": 2 } } } )
+
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "cohere.command-r-v1:0", max_tokens: 50 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => cohereStream } )
+
+				chunks = []
+				provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+				text = chunks
+					.filter( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() )
+					.map( c => c.choices.first().delta.content ?: "" )
+					.toList( "" )
+				sawStop  = chunks.some( c => isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len() && ( c.choices.first().finish_reason ?: "" ) == "stop" )
+				sawUsage = chunks.some( c => isStruct( c ) && isStruct( c.usage ?: "" ) && ( c.usage.prompt_tokens ?: 0 ) == 3 )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "text" ) ).toString() ).isEqualTo( "Hello world" );
+		assertThat( variables.getAsBoolean( Key.of( "sawStop" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawUsage" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Cohere Command R stream tool-calls-generation is normalized and drives the tool loop" )
+	public void testCohereStreamToolCallsGeneration() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				evt = ( data ) => '{"bytes":"' & binaryEncode( charsetDecode( jsonSerialize( data ), "utf-8" ), "base64" ) & '"}'
+				cohereToolStream = evt( { "event_type": "stream-start", "generation_id": "g1" } )
+					& evt( { "event_type": "tool-calls-generation", "tool_calls": [ { "name": "getWeather", "parameters": { "city": "Paris" } } ] } )
+					& evt( { "event_type": "stream-end", "finish_reason": "COMPLETE" } )
+				cohereTextStream = evt( { "event_type": "text-generation", "text": "Sunny in Paris" } )
+					& evt( { "event_type": "stream-end", "finish_reason": "COMPLETE" } )
+
+				toolRuns = 0
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => {
+					toolRuns++
+					return "sunny in " & city
+				} )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather in Paris?" ),
+					{ model: "cohere.command-r-v1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+
+				wrapCalls    = 0
+				followUpBody = {}
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						wrapCalls++
+						if ( wrapCalls == 2 ) { followUpBody = ctx.dataPacket }
+						return wrapCalls == 1 ? cohereToolStream : cohereTextStream
+					}
+				} )
+
+				chunks = []
+				provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+				toolChunks = chunks.filter( c =>
+					isStruct( c ) && isArray( c.choices ?: "" ) && c.choices.len()
+					&& isStruct( c.choices.first().delta ?: "" )
+					&& c.choices.first().delta.keyExists( "tool_calls" )
+				)
+				toolChunkCount = toolChunks.len()
+				emittedName    = toolChunkCount ? ( toolChunks.first().choices.first().delta.tool_calls.first().function.name ?: "" ) : ""
+				toolRanOnce    = toolRuns == 1
+				sawFollowUp    = wrapCalls == 2
+				hasToolResults = isStruct( followUpBody ) && followUpBody.keyExists( "tool_results" )
+				resultName     = hasToolResults ? followUpBody.tool_results[ 1 ].call.name : ""
+				resultCity     = hasToolResults ? followUpBody.tool_results[ 1 ].call.parameters.city : ""
+				resultOutput   = hasToolResults ? followUpBody.tool_results[ 1 ].outputs[ 1 ].result : ""
+				noMessageKey   = hasToolResults && !followUpBody.keyExists( "message" )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "toolChunkCount" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "emittedName" ) ).toString() ).isEqualTo( "getWeather" );
+		assertThat( variables.getAsBoolean( Key.of( "toolRanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawFollowUp" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasToolResults" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "resultName" ) ) ).isEqualTo( "getWeather" );
+		assertThat( variables.get( Key.of( "resultCity" ) ) ).isEqualTo( "Paris" );
+		assertThat( variables.get( Key.of( "resultOutput" ) ).toString() ).isEqualTo( "sunny in Paris" );
+		assertThat( variables.getAsBoolean( Key.of( "noMessageKey" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Claude transform promotes system to text blocks when cache_control is present, and keeps the plain string otherwise" )
+	public void testClaudeSystemCacheControlPreserved() {
+		// Flattening system messages to a string silently dropped cache_control, and with it
+		// prompt caching on the (usually large) system prompt.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+
+				capture = ( messages ) => {
+					var captured = {}
+					var req = aiChatRequest(
+						aiMessage().user( "hi" ),
+						{ model: "anthropic.claude-3-sonnet-20240229-v1:0" },
+						{ provider: "bedrock" }
+					)
+					req.setMessages( messages )
+					req.addMiddleware( {
+						"beforeLLMCall": ( ctx ) => {
+							captured.packet = ctx.dataPacket
+							return new src.main.bx.models.middleware.AiMiddlewareResult( "cancel", "test-capture" )
+						}
+					} )
+					provider.chat( req )
+					return captured.packet
+				}
+
+				cached = capture( [
+					{ "role": "system", "content": "Big system prompt", "cache_control": { "type": "ephemeral" } },
+					{ "role": "user",   "content": "hi" }
+				] )
+				plain = capture( [
+					{ "role": "system", "content": "Big system prompt" },
+					{ "role": "user",   "content": "hi" }
+				] )
+				blocks = capture( [
+					{ "role": "system", "content": [ { "type": "text", "text": "Block prompt", "cache_control": { "type": "ephemeral" } } ] },
+					{ "role": "user",   "content": "hi" }
+				] )
+
+				cachedIsArray  = isArray( cached.system )
+				cachedType     = cachedIsArray ? cached.system[ 1 ].type : ""
+				cachedText     = cachedIsArray ? cached.system[ 1 ].text : ""
+				cachedControl  = cachedIsArray ? cached.system[ 1 ].cache_control.type : ""
+				plainIsString  = isSimpleValue( plain.system )
+				plainValue     = plain.system
+				blocksIsArray  = isArray( blocks.system )
+				blocksText     = blocksIsArray ? blocks.system[ 1 ].text : ""
+				blocksControl  = blocksIsArray ? blocks.system[ 1 ].cache_control.type : ""
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "cachedIsArray" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "cachedType" ) ) ).isEqualTo( "text" );
+		assertThat( variables.get( Key.of( "cachedText" ) ) ).isEqualTo( "Big system prompt" );
+		assertThat( variables.get( Key.of( "cachedControl" ) ) ).isEqualTo( "ephemeral" );
+		assertThat( variables.getAsBoolean( Key.of( "plainIsString" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "plainValue" ) ) ).isEqualTo( "Big system prompt" );
+		assertThat( variables.getAsBoolean( Key.of( "blocksIsArray" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "blocksText" ) ) ).isEqualTo( "Block prompt" );
+		assertThat( variables.get( Key.of( "blocksControl" ) ) ).isEqualTo( "ephemeral" );
+	}
+
+	@Test
+	@DisplayName( "gpt-oss stream whose tool_calls turn ends with finish_reason 'stop' still runs the tool with the REAL arguments" )
+	public void testOpenAIStreamToolCallsDrainedOnNonToolFinishReason() {
+		// The buffers were only finalized on finish_reason == "tool_calls"; any other terminator
+		// left the accumulated call sitting in streamState with `input: {}` and the tool loop —
+		// gated on toolCalls.len() alone — ran it with empty arguments.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				evt = ( data ) => '{"bytes":"' & binaryEncode( charsetDecode( jsonSerialize( data ), "utf-8" ), "base64" ) & '"}'
+				oaToolStream = evt( { "choices": [ { "index": 0, "delta": { "role": "assistant", "tool_calls": [ { "index": 0, "id": "call_1", "type": "function", "function": { "name": "getWeather", "arguments": '{"city":"Par' } } ] } } ] } )
+					& evt( { "choices": [ { "index": 0, "delta": { "tool_calls": [ { "index": 0, "function": { "arguments": 'is"}' } } ] } } ] } )
+					& evt( { "choices": [ { "index": 0, "delta": {}, "finish_reason": "stop" } ], "usage": { "prompt_tokens": 7, "completion_tokens": 11, "total_tokens": 18 } } )
+				oaTextStream = evt( { "choices": [ { "index": 0, "delta": { "content": "Sunny in Paris" } } ] } )
+					& evt( { "choices": [ { "index": 0, "delta": {}, "finish_reason": "stop" } ] } )
+
+				toolRuns     = 0
+				capturedCity = ""
+				tool = aiTool( "getWeather", "Get the weather", ( required string city ) => {
+					toolRuns++
+					capturedCity = city
+					return "sunny in " & city
+				} )
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather in Paris?" ),
+					{ model: "openai.gpt-oss-120b-1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+
+				wrapCalls    = 0
+				capturedArgs = {}
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						wrapCalls++
+						return wrapCalls == 1 ? oaToolStream : oaTextStream
+					},
+					"beforeToolCall": ( ctx ) => { capturedArgs = ctx.toolArgs ?: {} }
+				} )
+
+				chunks = []
+				provider.chatStream( chatRequest, ( chunk ) => { chunks.append( chunk ) } )
+
+				toolRanOnce = toolRuns == 1
+				sawRealArgs = ( capturedArgs.city ?: "" ) == "Paris"
+				sawFollowUp = wrapCalls == 2
+				drainedChunkEmitted = chunks.some( c =>
+					isStruct( c )
+					&& isArray( c.choices ?: "" )
+					&& c.choices.len()
+					&& isStruct( c.choices.first().delta ?: "" )
+					&& c.choices.first().delta.keyExists( "tool_calls" )
+				)
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "toolRanOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "sawRealArgs" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "capturedCity" ) ).toString() ).isEqualTo( "Paris" );
+		assertThat( variables.getAsBoolean( Key.of( "sawFollowUp" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "drainedChunkEmitted" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Claude stream truncated mid input_json_delta (max_tokens, no content_block_stop) throws instead of running the tool with {}" )
+	public void testClaudeStreamTruncatedToolInputThrows() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				evt = ( data ) => '{"bytes":"' & binaryEncode( charsetDecode( jsonSerialize( data ), "utf-8" ), "base64" ) & '"}'
+				truncatedStream = evt( { "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "tu_1", "name": "getWeather" } } )
+					& evt( { "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": '{"city":"Par' } } )
+					& evt( { "type": "message_delta", "delta": { "stop_reason": "max_tokens" }, "usage": { "output_tokens": 11 } } )
+
+				toolRuns = 0
+				tool = aiTool( "getWeather", "Get weather", ( required string city ) => { toolRuns++; return "sunny" } )
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather in Paris?" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				wrapCalls = 0
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => { wrapCalls++; return truncatedStream }
+				} )
+
+				errType = ""
+				errMsg  = ""
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => {} )
+				} catch ( any e ) {
+					errType = e.type
+					errMsg  = e.message
+				}
+				threwStreamError = errType == "BedrockStreamError"
+				namesTruncation  = errMsg.findNoCase( "truncated" ) > 0
+				namesStopReason  = errMsg.findNoCase( "max_tokens" ) > 0
+				toolNeverRan     = toolRuns == 0
+				noFollowUpTurn   = wrapCalls == 1
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threwStreamError" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "namesTruncation" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "namesStopReason" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "toolNeverRan" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "noFollowUpTurn" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Streaming beforeLLMCall/wrapLLMCall context carries stream:true, and a struct return is a BedrockStreamError not a cast error" )
+	public void testStreamWrapLLMCallContractIsAdvertisedAndEnforced() {
+		// A FlightRecorder-style replay that returns the recorded chat STRUCT used to reach
+		// parseBedrockEventStream(), which ran reMatchNoCase() over it and died with a cast error
+		// outside any try.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", max_tokens: 50 },
+					{ provider: "bedrock" }
+				)
+
+				beforeStreamFlag = ""
+				wrapStreamFlag   = ""
+				wrapTransport    = ""
+				chatRequest.addMiddleware( {
+					"beforeLLMCall": ( ctx ) => { beforeStreamFlag = ctx.stream ?: "missing" },
+					"wrapLLMCall"  : ( ctx, handler ) => {
+						wrapStreamFlag = ctx.stream ?: "missing"
+						wrapTransport  = ctx.transport ?: ""
+						// deliberately wrong: the sync-shaped canned chat response
+						return { "content": [ { "type": "text", "text": "replayed" } ], "stop_reason": "end_turn" }
+					}
+				} )
+
+				errType = ""
+				errMsg  = ""
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => {} )
+				} catch ( any e ) {
+					errType = e.type
+					errMsg  = e.message
+				}
+				threwStreamError = errType == "BedrockStreamError"
+				namesStruct      = errMsg.findNoCase( "struct" ) > 0
+				namesContract    = errMsg.findNoCase( "context.stream" ) > 0
+				beforeSawStream  = beforeStreamFlag == true
+				wrapSawStream    = wrapStreamFlag == true
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "beforeSawStream" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "wrapSawStream" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "wrapTransport" ) ).toString() ).isEqualTo( "bedrock-event-stream" );
+		assertThat( variables.getAsBoolean( Key.of( "threwStreamError" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "namesStruct" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "namesContract" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "A truncated event-stream header block fails cleanly instead of being decoded as a normal event" )
+	public void testTruncatedHeaderFrameThrows() {
+		// One well-formed frame, then a frame cut off inside its header block: the prelude still
+		// claims the full headersLength, so the header walk used to read past the end, have the
+		// exception swallowed, and hand the half-decoded headers on as an ordinary event.
+		byte[]	good	= frame(
+		    chunkPayload( "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"partial\"}}" ),
+		    EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" );
+		byte[]	full	= frame(
+		    chunkPayload( "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"never seen\"}}" ),
+		    EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" );
+		byte[]	cut		= java.util.Arrays.copyOf( full, 17 );
+		String	body	= streamBody( good, cut );
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", max_tokens: 50 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" )
+				} )
+
+				errType = ""
+				errMsg  = ""
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => {} )
+				} catch ( any e ) {
+					errType = e.type
+					errMsg  = e.message
+				}
+				threwStreamError = errType == "BedrockStreamError"
+				namesMalformed   = errMsg.findNoCase( "truncated" ) > 0 || errMsg.findNoCase( "malformed" ) > 0
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION, body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threwStreamError" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "namesMalformed" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "resumeToolBatchStream enforces the max-interactions ceiling instead of letting each resume cycle raise it" )
+	public void testResumeToolBatchStreamHonoursMaxInteractions() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				toolRuns = 0
+				tool = aiTool( "toolA", "Tool A", () => { toolRuns++; return "A done" } )
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				wrapCalls = 0
+				resumeRequest = aiChatRequest(
+					aiMessage().user( "run toolA" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ tool ] },
+					{
+						provider       : "bedrock",
+						maxInteractions: 2,
+						_resumeContext : {
+							assistantMessage: {
+								"role"   : "assistant",
+								"content": [ { "type": "tool_use", "id": "tu_a", "name": "toolA", "input": {} } ]
+							},
+							resumeLedger: [ { toolName: "toolA", status: "execute" } ]
+						}
+					}
+				)
+				resumeRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => { wrapCalls++; return "" }
+				} )
+
+				errType = ""
+				try {
+					// interactionCount already at the ceiling: the resume must not buy another turn
+					provider.chatStream( resumeRequest, ( chunk ) => {}, 2 )
+				} catch ( any e ) {
+					errType = e.type
+				}
+				threwMax     = errType == "MaxInteractionsExceeded"
+				neverCalledLLM = wrapCalls == 0
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "threwMax" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "neverCalledLLM" ) ) ).isTrue();
+	}
+
+	// ============================================================================================
+	// Review follow-ups (#282)
+	// ============================================================================================
+
+	@Test
+	@DisplayName( "RF: a body cut mid-PAYLOAD throws instead of reporting a complete stream" )
+	public void testTruncatedPayloadThrows() {
+		byte[]	full	= frame(
+		    chunkPayload( "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"this text never arrives\"}}" ),
+		    EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" );
+		// Keep every byte of prelude + CRC + headers, drop the tail of the payload: the prelude
+		// still declares the full length, so the frame claims a payload the body does not contain.
+		String	body	= streamBody(
+		    frame( chunkPayload( "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"seen\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    java.util.Arrays.copyOf( full, full.length - 12 )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", max_tokens: 50 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" ) } )
+
+				errType = ""
+				errMsg  = ""
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => {} )
+				} catch ( any e ) {
+					errType = e.type
+					errMsg  = e.message
+				}
+				namesPayload = errMsg.findNoCase( "payload" ) > 0
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION, body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "BedrockStreamError" );
+		assertThat( variables.getAsBoolean( Key.of( "namesPayload" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "RF: a Claude InvokeModel stream keeps message_start's prompt_tokens through message_delta" )
+	public void testMessageDeltaDoesNotZeroPromptTokens() {
+		// message_delta's usage carries OUTPUT tokens only. Emitting a literal prompt_tokens: 0
+		// there overwrote the input_tokens message_start had already captured, so every stream
+		// without a trailing amazon-bedrock-invocationMetrics event reported promptTokens 0.
+		String body = streamBody(
+		    frame( chunkPayload( "{\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":31}}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload( "{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" ),
+		    frame( chunkPayload( "{\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":7}}" ),
+		        EVENT_HEADERS_MSG, "event", EVENT_HEADERS_EVT, "chunk" )
+		);
+
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				promptTokens     = -1
+				completionTokens = -1
+				BoxRegisterInterceptor(
+					function( data ) { promptTokens = data.promptTokens; completionTokens = data.completionTokens },
+					"onAITokenCount"
+				)
+
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", max_tokens: 50 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => binaryDecode( "%s", "base64" ) } )
+				provider.chatStream( chatRequest, ( chunk ) => {} )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION, body ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "promptTokens" ) ) ).isEqualTo( 31 );
+		assertThat( variables.getAsInteger( Key.of( "completionTokens" ) ) ).isEqualTo( 7 );
+	}
+
+	@Test
+	@DisplayName( "RF: an unparseable buffered tool-argument JSON surfaces its OWN error, not the drain's" )
+	public void testTruncatedToolArgumentsSurfaceFromContentBlockStop() {
+		// processBedrockEvent()'s catch swallowed the BedrockStreamError finalizeStreamToolCall()
+		// raises, so the far vaguer drain message ("no content_block_stop") replaced it downstream
+		// and named neither the cause nor the truncated JSON. Fed as a STRING body, which reaches
+		// processBedrockEvent() through parseBedrockEventStream()'s documented replay fallback.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				evt = ( data ) => '{"bytes":"' & binaryEncode( charsetDecode( jsonSerialize( data ), "utf-8" ), "base64" ) & '"}'
+				truncatedStream = evt( { "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "tu_1", "name": "probe" } } )
+					& evt( { "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": '{"city":' } } )
+					& evt( { "type": "content_block_stop", "index": 0 } )
+
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				toolRuns = 0
+				tool = aiTool( "probe", "Probe", ( string city = "NONE" ) => { toolRuns++; return city } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", max_tokens: 50, tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => truncatedStream } )
+
+				errType = ""
+				errMsg  = ""
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => {} )
+				} catch ( any e ) {
+					errType = e.type
+					errMsg  = e.message
+				}
+				namesArguments = errMsg.findNoCase( "argument" ) > 0
+				// The drain's own throw (the message this used to be replaced by) says
+				// "no content_block_stop" — this error must be finalizeStreamToolCall()'s.
+				namesDrain = errMsg.findNoCase( "content_block_stop" ) > 0
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "BedrockStreamError" );
+		assertThat( variables.getAsBoolean( Key.of( "namesArguments" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "namesDrain" ) ) ).isFalse();
+		assertThat( variables.getAsInteger( Key.of( "toolRuns" ) ) ).isEqualTo( 0 );
+	}
+
+	@Test
+	@DisplayName( "RF: a cancelled STREAMED tool call still records a blocked tool_result after the tool_use" )
+	public void testStreamedCancelRecordsToolResult() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			STREAM_EVENT_HELPER + """
+				import bxModules.bxai.models.middleware.AiMiddlewareResult;
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				tool = aiTool( "getWeather", "Get weather", ( required string city ) => "sunny in " & city )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "weather in Paris?" ),
+					{ model: "anthropic.claude-3-sonnet-20240229-v1:0", tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				chatRequest.addMiddleware( {
+					"wrapLLMCall"   : ( ctx, handler ) => toolStream,
+					"beforeToolCall": ( ctx ) => AiMiddlewareResult::cancel( "policy" )
+				} )
+				provider.chatStream( chatRequest, ( chunk ) => {} )
+
+				// The assistant turn carrying the tool_use block, then the blocked tool_result: a
+				// tool_use with no matching tool_result is a conversation the next call rejects.
+				finalMessages = chatRequest.getMessages()
+				lastContent   = finalMessages.last().content
+				hasToolResult = isArray( lastContent ) && lastContent.some( ( part ) => isStruct( part ) && ( part.type ?: "" ) == "tool_result" )
+				blockedText   = jsonSerialize( lastContent ).findNoCase( "Tool call blocked" ) > 0
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasToolResult" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "blockedText" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "RF: streaming structured output on an OpenAI-shaped model is refused before the call" )
+	public void testStreamingStructuredOutputRefusedForOpenAIFamily() {
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				calls = 0
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "openai.gpt-oss-120b-1:0", max_tokens: 64 },
+					{ provider: "bedrock" }
+				)
+				chatRequest.setStructuredOutput( { city: "string" } )
+				chatRequest.addMiddleware( { "wrapLLMCall": ( ctx, handler ) => { calls++; return "" } } )
+
+				errType = ""
+				try {
+					provider.chatStream( chatRequest, ( chunk ) => {} )
+				} catch ( any e ) {
+					errType = e.type
+				}
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "UnsupportedProviderCapability" );
+		assertThat( variables.getAsInteger( Key.of( "calls" ) ) ).isEqualTo( 0 );
+	}
+
+	@Test
+	@DisplayName( "RF: two index-less OpenAI-shaped tool fragments with distinct ids become TWO tool calls" )
+	public void testIndexLessToolFragmentsDoNotCollapse() {
+		// Every fragment keyed to "0" when `index` was absent, so N parallel calls collapsed into
+		// one whose arguments were the concatenation of all of them.
+		// @formatter:off
+		executeWithTimeoutHandling(
+			"""
+				evt = ( data ) => '{"bytes":"' & binaryEncode( charsetDecode( jsonSerialize( data ), "utf-8" ), "base64" ) & '"}'
+				indexLessStream = evt( { "choices": [ { "delta": { "tool_calls": [ { "id": "a1", "function": { "name": "probe", "arguments": '{"city":"Rome"}' } } ] } } ] } )
+					& evt( { "choices": [ { "delta": { "tool_calls": [ { "id": "a2", "function": { "name": "probe", "arguments": '{"city":"Oslo"}' } } ] } } ] } )
+					& evt( { "choices": [ { "delta": {}, "finish_reason": "tool_calls" } ] } )
+				doneStream = evt( { "choices": [ { "delta": { "content": "done" }, "finish_reason": "stop" } ] } )
+
+				provider = aiService(
+					"bedrock",
+					{ awsAccessKeyId: "%s", awsSecretAccessKey: "%s", region: "%s" }
+				)
+				seenCities = []
+				tool = aiTool( "probe", "Probe", ( string city = "NONE" ) => { seenCities.append( city ); return city } )
+				chatRequest = aiChatRequest(
+					aiMessage().user( "hi" ),
+					{ model: "openai.gpt-oss-120b-1:0", max_tokens: 64, tools: [ tool ] },
+					{ provider: "bedrock" }
+				)
+				turns = 0
+				chatRequest.addMiddleware( {
+					"wrapLLMCall": ( ctx, handler ) => {
+						turns++
+						return turns == 1 ? indexLessStream : doneStream
+					}
+				} )
+				provider.chatStream( chatRequest, ( chunk ) => {} )
+				cityList = seenCities.toList( "," )
+			""".formatted( DUMMY_AWS_ACCESS_KEY_ID, DUMMY_AWS_SECRET_ACCESS_KEY, DUMMY_AWS_REGION ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "cityList" ) ) ).isEqualTo( "Rome,Oslo" );
 	}
 }
