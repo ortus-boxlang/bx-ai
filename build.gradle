@@ -247,6 +247,8 @@ test {
 	}
 	classpath = classpath.filter { !it.path.contains( "build${File.separator}resources" ) }
 	exclude '**/CohereTest.class', '**/HuggingFaceTest.class'
+	// Paid live Bedrock matrix: see testBedrockLive
+	exclude '**/BedrockConverseLiveTest.class'
 }
 
 // Cohere/HuggingFace tests hit live external APIs and are currently unstable;
@@ -265,6 +267,28 @@ task testOptionalProviders( type: Test ) {
         showCauses true
 	}
 	ignoreFailures = true
+}
+
+/**
+ * The live Bedrock Converse/ConverseStream matrix (~10 paid calls across Claude, gpt-oss, Nova,
+ * Mistral). Needs AWS credentials in the environment or .env; unlike testOptionalProviders a
+ * failure here is real and fails the task.
+ *
+ *   eval "$(aws configure export-credentials --profile <p> --format env)" && ./gradlew testBedrockLive
+ */
+task testBedrockLive( type: Test ) {
+	description = "Runs the paid live Bedrock Converse matrix (BedrockConverseLiveTest)"
+    useJUnitPlatform()
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath.filter { !it.path.contains( "build${File.separator}resources" ) }
+	include '**/BedrockConverseLiveTest.class'
+    testLogging {
+		showStandardStreams = true
+        events "passed", "skipped", "failed"
+        exceptionFormat "full"
+        showExceptions true
+        showCauses true
+	}
 }
 
 /**

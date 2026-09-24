@@ -379,4 +379,45 @@ public class OutputGuardMiddlewareTest extends BaseIntegrationTest {
 		// @formatter:on
 		assertThat( variables.getAsBoolean( Key.of( "masked" ) ) ).isTrue();
 	}
+
+	@DisplayName( "redact: a secret in a Bedrock CONVERSE body is masked, the reasoning block left unmodified" )
+	@Test
+	public void testRedactConverseResponseBody() {
+		// afterLLMCall fires with the RAW Converse body, which the resolvers did not understand —
+		// the guard read "" and no-op'd on the now-default Bedrock path.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.security.OutputGuardMiddleware;
+		        guard   = new OutputGuardMiddleware( action: "redact" );
+		        rawBody = {
+		            "output": { "message": { "role": "assistant", "content": [
+		                { "reasoningContent": { "reasoningText": { "text": "no secret here", "signature": "sig-abc" } } },
+		                { "text": "The user email is jane@example.com" }
+		            ] } },
+		            "stopReason": "end_turn",
+		            "usage": { "inputTokens": 5, "outputTokens": 8, "totalTokens": 13 }
+		        };
+		        result = aiChat( "give me the record", {}, {
+		            provider          : "bedrock",
+		            model             : "anthropic.claude-3-5-sonnet-20241022-v2:0",
+		            awsAccessKeyId    : "AKIAIOSFODNN7EXAMPLE",
+		            awsSecretAccessKey: "dummy-secret-not-used",
+		            region            : "us-east-1",
+		            middleware        : [ guard, { "wrapLLMCall": ( ctx, handler ) => rawBody } ]
+		        } );
+		        rawText   = rawBody.output.message.content[ 2 ].text;
+		        masked    = rawText.contains( "[REDACTED]" ) && !rawText.contains( "jane@example.com" );
+		        returned  = !result.contains( "jane@example.com" );
+		        blockKept = rawBody.output.message.content.len() == 2
+		                    && rawBody.output.message.content[ 1 ].reasoningContent.reasoningText.text == "no secret here"
+		                    && rawBody.output.message.content[ 1 ].reasoningContent.reasoningText.signature == "sig-abc";
+		    """,
+		    context
+		);
+		// @formatter:on
+		assertThat( variables.getAsBoolean( Key.of( "masked" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "returned" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "blockKept" ) ) ).isTrue();
+	}
 }
