@@ -227,6 +227,108 @@ public class FlightRecorderMiddlewareTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "replayedId" ) ) ).isTrue();
 	}
 
+	// ---- Streaming ----
+
+	@DisplayName( "replay mode: a STREAMING wrapLLMCall is refused with a clear error, not replayed as a body" )
+	@Test
+	public void testReplayRefusesStreamingCall( @TempDir Path tempDir ) throws IOException {
+		String	fixturePath	= tempDir.resolve( "recorded-stream.json" ).toString();
+		String	fixture		= """
+		                      {
+		                        "version": "1",
+		                        "recordedAt": "2026-01-01T00:00:00",
+		                        "agentName": "test-agent",
+		                        "interactions": [
+		                          { "seq": 1, "type": "llm", "request": { "model": "gpt-4" }, "response": { "id": "replay-resp" } }
+		                        ]
+		                      }
+		                      """;
+		Files.writeString( Path.of( fixturePath ), fixture );
+
+		// CohereService/BedrockService route their SSE transport through wrapLLMCall with
+		// `stream: true` on the context. Handing a recorded BLOCKING response back there produces a
+		// stream the caller never receives (nothing is emitted) or a mangled body — so refuse.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        mw = new FlightRecorderMiddleware(
+		            mode       : "replay",
+		            fixturePath: "%s"
+		        );
+		        mw.beforeAgentRun( context: {} );
+
+		        errType = "";
+		        errMsg  = "";
+		        try {
+		            mw.wrapLLMCall( context: { stream: true }, handler: function() { return {}; } );
+		        } catch( e ) {
+		            errType = e.type;
+		            errMsg  = e.message;
+		        }
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+
+		// The recorded interaction is left untouched: the refusal happens before the tape cursor
+		// moves, so a non-streaming replay of the same fixture still works.
+		runtime.executeSource(
+		    """
+		        blocking        = mw.wrapLLMCall( context: {}, handler: function() { return {}; } );
+		        tapeStillIntact = blocking.id == "replay-resp";
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "errType" ) ).toString() ).isEqualTo( "FlightRecorderStreamingReplayUnsupported" );
+		assertThat( variables.get( Key.of( "errMsg" ) ).toString() ).contains( "STREAMING" );
+		assertThat( variables.getAsBoolean( Key.of( "tapeStillIntact" ) ) ).isTrue();
+	}
+
+	@DisplayName( "record mode: a STREAMING wrapLLMCall passes through and tapes a stream marker" )
+	@Test
+	public void testRecordStreamingCallIsPassthroughWithMarker( @TempDir Path tempDir ) {
+		String fixturePath = tempDir.resolve( "record-stream.json" ).toString();
+
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.FlightRecorderMiddleware;
+
+		        mw = new FlightRecorderMiddleware(
+		            mode       : "record",
+		            fixturePath: "%s"
+		        );
+		        mw.beforeAgentRun( context: {} );
+
+		        handlerCalled = false;
+		        result = mw.wrapLLMCall(
+		            context: { dataPacket: { model: "gpt-4" }, stream: true },
+		            handler: function() {
+		                handlerCalled = true;
+		                // What a streaming transport returns: the chunks already went to the caller
+		                return { statusCode: 200 };
+		            }
+		        );
+
+		        handlerWasCalled = handlerCalled;
+		        transportReturn  = result.statusCode == 200;
+		        tape             = mw.getTape();
+		        markerRecorded   = tape.interactions.len() == 1
+		            && tape.interactions[1].type == "llm"
+		            && ( tape.interactions[1].response.stream ?: false );
+		    """.formatted( fixturePath.replace( "\\", "\\\\" ) ),
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "handlerWasCalled" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "transportReturn" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "markerRecorded" ) ) ).isTrue();
+	}
+
 	// ---- Replay: Tool ----
 
 	@DisplayName( "replay mode: wrapToolCall returns recorded result and does NOT invoke tool" )
