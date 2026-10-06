@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Gemini** text-to-speech returned headerless PCM labelled as wav. It is now wrapped in a RIFF header so the file plays.
 
 - **Cloudflare Workers AI provider** (`cloudflare`): chat, streaming, tool calling and embeddings through the Workers AI OpenAI compatible endpoints. Requires an account ID via the `accountId` option or the `CLOUDFLARE_ACCOUNT_ID` environment variable, plus `CLOUDFLARE_API_KEY`. Defaults to `@cf/openai/gpt-oss-20b` for chat and `@cf/baai/bge-base-en-v1.5` for embeddings.
+- **Mistral** text-to-speech failed with `Voice 'Charlotte' not found` because `Charlotte` is not a valid Mistral voice, and OpenAI's default voice (`ash`) also leaked into Mistral requests. With no voice requested, Mistral now uses the first preset voice from `GET /v1/audio/voices` (looked up once and cached). If that lookup fails the request is still sent and Mistral's own error is shown. The `male()` and `female()` shortcuts for Mistral now use that provider default.
+- **Gemini** text-to-speech defaulted to `gemini-2.5-flash-preview-tts`, which is no longer listed in the Gemini docs, and failed with an empty error message. The default is now `gemini-3.8-flash-tts`, and errors include the HTTP status, the model and the response body.
 
 ## [3.5.0] - 2026-09-11
 

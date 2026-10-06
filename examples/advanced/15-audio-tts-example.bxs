@@ -25,7 +25,7 @@ println( "" )
 //   openai   :  male  → "onyx"      female → "nova"
 //   grok     :  male  → "onyx"      female → "nova"
 //   gemini   :  male  → "Fenrir"    female → "Aoede"
-//   mistral  :  male  → (default)   female → "Charlotte"
+//   mistral  :  male  → (default)   female → (default)   (first preset voice)
 //   elevenlabs: male  → (default)   female → Rachel voice ID
 //
 // You can override any mapping in your module settings:
