@@ -1,0 +1,40 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Capability interface for AI providers that can stream synthesized speech back as it is generated.
+ * Use it to restream audio to a client (voice agents, telephony, browsers) without waiting for the full file.
+ *
+ * The callback receives a struct per event, discriminated by `type`:
+ *
+ * - `{ type: "audio", data: binary, format: string, sampleRate: numeric, sequence: numeric }`
+ * - `{ type: "timestamps", words: array, start: array, end: array }` (providers that support it)
+ * - `{ type: "done", chunks: numeric, bytes: numeric }` (always the last event)
+ *
+ * Returning an explicit `false` from the callback stops the stream early (e.g. caller barge-in).
+ */
+import bxModules.bxai.models.providers.IAiService;
+
+interface extends="IAiService" {
+
+	/**
+	 * Convert text to speech and stream the audio to a callback as it is generated.
+	 *
+	 * @speechRequest The speech request containing the input text and audio parameters
+	 * @callback      Function invoked with each stream event struct
+	 *
+	 * @return Summary struct: { provider, model, audioFormat, sampleRate, chunks, bytes, completed }
+	 */
+	struct function speakStream( required AiSpeechRequest speechRequest, required function callback )
+
+}

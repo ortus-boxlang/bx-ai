@@ -37,8 +37,9 @@ class extends="OpenAIService" implements="IAiChatService, IAiImageService, IAiSp
 			"response_format" : "url"
 		}
 		DEFAULT_SPEECH_PARAMS = {
-			// https://docs.x.ai/docs/tts — available voices: alloy, echo, fable, onyx, nova, shimmer, eve
-			"voice_id" : "alloy"
+			// https://docs.x.ai/developers/model-capabilities/audio/text-to-speech
+			// Available voices: eve (default), ara, rex
+			"voice_id" : "eve"
 		}
 	}
 
@@ -78,37 +79,49 @@ class extends="OpenAIService" implements="IAiChatService, IAiImageService, IAiSp
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
 
+	/**
+	 * Convert text to speech using the xAI /v1/tts endpoint.
+	 * Body: { text, voice_id, language, output_format: { codec, sample_rate, bit_rate? }, speed? }
+	 * Supported formats: mp3, wav, pcm, mulaw, alaw. flac and opus throw InvalidArgument.
+	 * Override `language` (default "auto"), `sample_rate` and `bit_rate` through params.
+	 */
 	@override
 	public AiSpeechResponse function speak( required AiSpeechRequest speechRequest ){
+		// Capture the caller's voice BEFORE merging defaults, otherwise the default voice_id shadows it
+		var explicitVoice = arguments.speechRequest.getParams().voice_id ?: ""
+
 		arguments.speechRequest
 			.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceHeaders( variables.headers )
 
-		// xAI TTS body: { input, voice, response_format? }
-		// Uses "voice" key (OpenAI-style) mapped from voice_id default
-		var voiceId = arguments.speechRequest.getParams().voice_id ?: arguments.speechRequest.getVoice() ?: static.DEFAULT_SPEECH_PARAMS.voice_id;
+		var params  = arguments.speechRequest.getParams()
+		var voiceId = len( explicitVoice ) ? explicitVoice : ( arguments.speechRequest.hasVoice() ? arguments.speechRequest.getVoice() : static.DEFAULT_SPEECH_PARAMS.voice_id )
+		var format  = resolveOutputFormat( arguments.speechRequest.getOutputFormat(), params )
 
 		var dataPacket = {
-			"input" : arguments.speechRequest.getText(),
-			"voice" : voiceId
+			"text"          : arguments.speechRequest.getText(),
+			"voice_id"      : voiceId,
+			// xAI requires a language. "auto" lets the service detect it.
+			"language"      : params.language ?: "auto",
+			"output_format" : format.output_format
+		}
+		if ( arguments.speechRequest.getSpeed() != 1.0 ) {
+			dataPacket[ "speed" ] = arguments.speechRequest.getSpeed()
 		}
 
-		// Optional response_format
-		if ( arguments.speechRequest.getOutputFormat().len() && arguments.speechRequest.getOutputFormat() != "mp3" ) {
-			dataPacket.response_format = arguments.speechRequest.getOutputFormat();
-		}
+		var speechURL = len( arguments.speechRequest.getBaseURL() ) ? reReplace( arguments.speechRequest.getBaseURL(), "/+$", "" ) & "/tts" : variables.speechURL
 
 		// Logging
 		if ( arguments.speechRequest.getLogRequest() ) {
-			writeLog( text: "Grok aiSpeak request to #variables.speechURL#: #jsonSerialize( dataPacket )#", type: "info", log: "ai" )
+			writeLog( text: "Grok aiSpeak request to #speechURL#: #jsonSerialize( dataPacket )#", type: "info", log: "ai" )
 		}
 		if ( arguments.speechRequest.getLogRequestToConsole() ) {
-			println( "Grok aiSpeak request to #variables.speechURL#: #jsonSerialize( dataPacket )#" )
+			println( "Grok aiSpeak request to #speechURL#: #jsonSerialize( dataPacket )#" )
 		}
 
 		bx: http
-			url     = variables.speechURL
+			url     = speechURL
 			method  = "post"
 			result  = "speechResult"
 			charset = "utf-8"
@@ -128,7 +141,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiImageService, IAiSp
 			var errorMessage = speechResult.fileContent;
 			try {
 				var errorData = jsonDeserialize( speechResult.fileContent );
-				errorMessage  = errorData.error?.message ?: errorData.toString();
+				errorMessage  = errorData.error?.message ?: errorData.error ?: errorData.message ?: errorData.toString();
 			} catch ( any parseEx ) {}
 
 			BoxAnnounce( "onAIError", {
@@ -145,10 +158,47 @@ class extends="OpenAIService" implements="IAiChatService, IAiImageService, IAiSp
 
 		return new AiSpeechResponse(
 			audioData   : speechResult.fileContent,
-			audioFormat : arguments.speechRequest.getOutputFormat(),
+			audioFormat : format.label,
 			model       : "",
 			provider    : variables.name
 		);
+	}
+
+	/**
+	 * xAI only streams speech over a WebSocket (wss://api.x.ai/v1/tts), which is not implemented yet.
+	 * The REST endpoint returns the complete file.
+	 */
+	@override
+	public struct function speakStream( required AiSpeechRequest speechRequest, required function callback ){
+		throw(
+			type   : "UnsupportedCapability",
+			message: "Unsupported capability: provider [Grok] does not support streaming text-to-speech over HTTP. xAI streams speech over a WebSocket, which is not implemented. Use aiSpeak() for the complete file."
+		)
+	}
+
+	/**
+	 * Map the module's outputFormat keyword onto xAI's output_format object.
+	 * Sample rate and bit rate can be overridden with params.sample_rate and params.bit_rate.
+	 */
+	private struct function resolveOutputFormat( required string outputFormat, required struct params ){
+		var requested  = lCase( arguments.outputFormat.len() ? arguments.outputFormat : "mp3" )
+		var sampleRate = val( arguments.params.sample_rate ?: 0 )
+
+		if ( !listFindNoCase( "mp3,wav,pcm,mulaw,alaw", requested ) ) {
+			throw(
+				type   : "InvalidArgument",
+				message: "Grok does not support the [#requested#] output format. Supported formats: mp3, wav, pcm, mulaw, alaw."
+			)
+		}
+
+		var output = {
+			"codec"       : requested,
+			"sample_rate" : sampleRate > 0 ? sampleRate : ( listFindNoCase( "mulaw,alaw", requested ) ? 8000 : 24000 )
+		}
+		if ( requested == "mp3" ) {
+			output[ "bit_rate" ] = arguments.params.bit_rate ?: 128000
+		}
+		return { label : requested, output_format : output }
 	}
 
 	/**

@@ -18,17 +18,19 @@
 import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 import bxModules.bxai.models.providers.capabilities.IAiSpeechService;
+import bxModules.bxai.models.providers.capabilities.IAiSpeechStreamService;
 import bxModules.bxai.models.providers.capabilities.IAiTranscriptionService;
 import bxModules.bxai.models.responses.AiSpeechResponse;
 import bxModules.bxai.models.responses.AiTranscriptionResponse;
+import bxModules.bxai.models.util.SpeechStreamHelper;
 
-class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, IAiSpeechService, IAiTranscriptionService" {
+class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, IAiSpeechService, IAiSpeechStreamService, IAiTranscriptionService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		CAPABILITIES = [ "chat", "stream", "embeddings", "speech", "transcription" ]
+		CAPABILITIES = [ "chat", "stream", "embeddings", "speech", "speechStream", "transcription" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://docs.mistral.ai/getting-started/models/models_overview/
 			// mistral-small-latest is the default model for cost-effective tasks
@@ -98,6 +100,104 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 	public AiSpeechResponse function speak( required AiSpeechRequest speechRequest ){
 		arguments.speechRequest.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
 		return super.speak( arguments.speechRequest )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiSpeechStreamService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Stream synthesized speech to a callback. Mistral streams base64 audio inside Server-Sent Events
+	 * when the request carries `stream: true`.
+	 *
+	 * @see https://docs.mistral.ai/api/endpoint/audio/speech
+	 */
+	@override
+	public struct function speakStream( required AiSpeechRequest speechRequest, required function callback ){
+		arguments.speechRequest.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
+
+		var dataPacket = buildSpeechPacket( arguments.speechRequest )
+		dataPacket.stream = true
+		// Make the audio format explicit so the chunk label always matches the bytes
+		dataPacket.response_format = dataPacket.response_format ?: "mp3"
+
+		var url = resolveSpeechURL( arguments.speechRequest )
+
+		BoxAnnounce( "onAISpeakRequest", {
+			provider   : this,
+			operation  : "speech",
+			aiRequest  : arguments.speechRequest,
+			dataPacket : dataPacket
+		} )
+		if ( arguments.speechRequest.getLogRequest() ) {
+			writeLog( text: "aiSpeak stream request to #url#: #jsonSerialize( dataPacket )#", type: "info", log: "ai" )
+		}
+
+		var headers = {
+			"content-type" : "application/json",
+			"Authorization": "Bearer #arguments.speechRequest.getApiKey()#"
+		}
+		headers.append( arguments.speechRequest.getHeaders(), true )
+
+		return SpeechStreamHelper::streamSSE(
+			providerName: variables.name,
+			url         : url,
+			headers     : headers,
+			body        : jsonSerialize( dataPacket ),
+			format      : dataPacket.response_format,
+			sampleRate  : 0,
+			timeout     : arguments.speechRequest.getTimeout(),
+			callback    : arguments.callback,
+			parser      : ( event ) => parseSpeechEvent( event ),
+			model       : dataPacket.model ?: ""
+		)
+	}
+
+	/**
+	 * Normalize one Mistral speech SSE event into stream events.
+	 * Audio arrives as base64 in `audio_data`. Events whose type mentions "done" end the stream.
+	 * Events with no audio payload (usage, metadata) are ignored.
+	 */
+	private array function parseSpeechEvent( required struct event ){
+		var payload = jsonDeserialize( arguments.event.data )
+		var type    = lCase( payload.type ?: arguments.event.event ?: "" )
+
+		if ( type.contains( "error" ) ) {
+			return [ { type: "error", message: payload.message ?: payload.error?.message ?: arguments.event.data } ]
+		}
+		if ( type.contains( "done" ) || type.contains( "completed" ) ) {
+			return [ { type: "done" } ]
+		}
+		for ( var field in [ "audio_data", "audio", "data", "delta" ] ) {
+			var value = payload[ field ] ?: ""
+			if ( isSimpleValue( value ) && len( value ) ) {
+				return [ { type: "audio", data: binaryDecode( value, "base64" ) } ]
+			}
+		}
+		return []
+	}
+
+	/**
+	 * Mistral references voices by `voice_id` (a UUID for saved and cloned voices). A UUID passed as the
+	 * generic `voice` is mapped onto `voice_id`. Any other value is left untouched.
+	 */
+	@override
+	private struct function preRequest(
+		required AiBaseRequest aiRequest,
+		required struct dataPacket,
+		required string operation
+	){
+		if (
+			arguments.operation == "speech" &&
+			isSimpleValue( arguments.dataPacket.voice ?: "" ) &&
+			reFindNoCase( "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", arguments.dataPacket.voice ?: "" )
+		) {
+			arguments.dataPacket.voice_id = arguments.dataPacket.voice
+			structDelete( arguments.dataPacket, "voice" )
+		}
+		return arguments.dataPacket
 	}
 
 	/**

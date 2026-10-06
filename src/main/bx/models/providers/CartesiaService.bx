@@ -1,0 +1,490 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Cartesia Service - Low-latency TTS (Sonic) and STT (Ink-Whisper) provider
+ * Authentication uses a Bearer token plus a required `Cartesia-Version` header.
+ *
+ * Text-to-speech:
+ * - speak()       : whole-file synthesis via POST /tts/bytes (mp3, wav, pcm, mulaw, alaw)
+ * - speakStream() : progressive audio. mp3/wav stream over /tts/bytes (raw bytes);
+ *                   pcm/mulaw/alaw stream over /tts/sse (base64 chunks plus word timestamps).
+ *                   Cartesia's SSE endpoint only accepts raw containers, so mp3/wav always use bytes.
+ *
+ * Speech-to-text:
+ * - transcribe()  : POST /stt (ink-whisper)
+ * - translate()   : not supported by Cartesia, throws UnsupportedCapability
+ *
+ * @see https://docs.cartesia.ai/api-reference
+ */
+import bxModules.bxai.models.providers.capabilities.IAiSpeechService;
+import bxModules.bxai.models.providers.capabilities.IAiSpeechStreamService;
+import bxModules.bxai.models.providers.capabilities.IAiTranscriptionService;
+import bxModules.bxai.models.requests.AiSpeechRequest;
+import bxModules.bxai.models.requests.AiTranscriptionRequest;
+import bxModules.bxai.models.responses.AiSpeechResponse;
+import bxModules.bxai.models.responses.AiTranscriptionResponse;
+import bxModules.bxai.models.util.SpeechStreamHelper;
+
+class extends="BaseService" implements="IAiSpeechService, IAiSpeechStreamService, IAiTranscriptionService" {
+
+	/**
+	 * Static defaults
+	 */
+	static {
+		CAPABILITIES = [ "speech", "speechStream", "transcription" ]
+		API_VERSION  = "2026-08-14"
+		DEFAULT_SPEECH_PARAMS = {
+			// Sonic 3.6: latest stable Sonic TTS model
+			"model" : "sonic-3.6",
+			// Skylar: friendly American female voice
+			"voice_id" : "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
+		}
+		DEFAULT_TRANSCRIPTION_PARAMS = {
+			"model" : "ink-whisper"
+		}
+		// Provider-native body fields a caller may pass straight through in params
+		PASSTHROUGH_PARAMS = [
+			"language",
+			"locale",
+			"accent",
+			"normalization",
+			"pronunciation_dict_id",
+			"add_timestamps",
+			"add_phoneme_timestamps",
+			"context_id"
+		]
+		// Convenience params folded into generation_config
+		GENERATION_PARAMS = [ "speed", "volume", "emotion" ]
+		DEFAULT_PCM_SAMPLE_RATE = 24000
+		DEFAULT_MP3_SAMPLE_RATE = 44100
+		DEFAULT_TELEPHONY_SAMPLE_RATE = 8000
+	}
+
+	/**
+	 * Constructor
+	 */
+	function init(){
+		variables.baseURL = "https://api.cartesia.ai"
+		variables.name    = "Cartesia"
+	}
+
+	@override
+	public array function getDeclaredCapabilities(){
+		return static.CAPABILITIES;
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiSpeechService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Convert text to speech using Cartesia's /tts/bytes endpoint.
+	 * Supported output formats: mp3, wav, pcm, mulaw, alaw. flac and opus throw InvalidArgument.
+	 * @see https://docs.cartesia.ai/api-reference/tts/bytes
+	 */
+	@override
+	public AiSpeechResponse function speak( required AiSpeechRequest speechRequest ){
+		var ctx = prepareSpeech( arguments.speechRequest )
+
+		var speechResult = sendBytesRequest( arguments.speechRequest, ctx )
+
+		if ( speechResult.statusCode != "200" ) {
+			throwProviderError( "TTS", speechResult.fileContent )
+		}
+
+		return new AiSpeechResponse(
+			audioData  : speechResult.fileContent,
+			audioFormat: ctx.format.label,
+			model      : ctx.dataPacket.model_id,
+			provider   : variables.name
+		);
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiSpeechStreamService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Stream synthesized speech to a callback as it is generated.
+	 *
+	 * Transport selection:
+	 * - mp3 / wav           : /tts/bytes (raw progressive bytes, no timestamps)
+	 * - pcm / mulaw / alaw  : /tts/sse (base64 chunks plus optional word timestamps)
+	 * - `params.transport`  : "bytes" or "sse" forces one. mp3/wav cannot use SSE.
+	 *
+	 * @see https://docs.cartesia.ai/api-reference/tts/sse
+	 */
+	@override
+	public struct function speakStream( required AiSpeechRequest speechRequest, required function callback ){
+		var ctx       = prepareSpeech( arguments.speechRequest )
+		var transport = lCase( arguments.speechRequest.getParams().transport ?: ( ctx.format.container == "raw" ? "sse" : "bytes" ) )
+
+		if ( !listFindNoCase( "bytes,sse", transport ) ) {
+			throw( type: "InvalidArgument", message: "Cartesia transport must be 'bytes' or 'sse', received [#transport#]." )
+		}
+		if ( transport == "sse" && ctx.format.container != "raw" ) {
+			throw(
+				type   : "InvalidArgument",
+				message: "Cartesia SSE streaming only supports raw formats (pcm, mulaw, alaw). Use transport 'bytes' for #ctx.format.label#."
+			)
+		}
+
+		logSpeechRequest( arguments.speechRequest, ctx )
+
+		var headers = buildHeaders( arguments.speechRequest )
+		var body    = jsonSerialize( ctx.dataPacket )
+
+		if ( transport == "bytes" ) {
+			return SpeechStreamHelper::streamBinary(
+				providerName: variables.name,
+				url         : resolveURL( arguments.speechRequest, "/tts/bytes" ),
+				headers     : headers,
+				body        : body,
+				format      : ctx.format.label,
+				sampleRate  : ctx.format.sampleRate,
+				timeout     : arguments.speechRequest.getTimeout(),
+				callback    : arguments.callback,
+				model       : ctx.dataPacket.model_id
+			)
+		}
+
+		return SpeechStreamHelper::streamSSE(
+			providerName: variables.name,
+			url         : resolveURL( arguments.speechRequest, "/tts/sse" ),
+			headers     : headers,
+			body        : body,
+			format      : ctx.format.label,
+			sampleRate  : ctx.format.sampleRate,
+			timeout     : arguments.speechRequest.getTimeout(),
+			callback    : arguments.callback,
+			parser      : ( event ) => parseSSEEvent( event ),
+			model       : ctx.dataPacket.model_id
+		)
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiTranscriptionService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Transcribe audio to text using Cartesia Ink-Whisper.
+	 * @see https://docs.cartesia.ai/api-reference/stt/transcribe
+	 */
+	@override
+	public AiTranscriptionResponse function transcribe( required AiTranscriptionRequest transcriptionRequest ){
+		arguments.transcriptionRequest
+			.mergeServiceParams( static.DEFAULT_TRANSCRIPTION_PARAMS )
+			.setApiKeyIfEmpty( getAPIKey() );
+
+		var modelId   = arguments.transcriptionRequest.getModel() ?: static.DEFAULT_TRANSCRIPTION_PARAMS.model
+		var language  = arguments.transcriptionRequest.getLanguage()
+		var tempFile  = ""
+		var audioPath = arguments.transcriptionRequest.getAudioFile()
+
+		// Multipart upload needs a file path, so persist raw audio data to a temp file
+		if ( !len( audioPath ) && !isSimpleValue( arguments.transcriptionRequest.getAudioData() ) ) {
+			tempFile  = getTempDirectory() & createUUID() & ".audio"
+			audioPath = tempFile
+			fileWrite( tempFile, arguments.transcriptionRequest.getAudioData() )
+		}
+
+		if ( !len( audioPath ) ) {
+			throw( type: "InvalidArgument", message: "Cartesia transcribe() requires an audio file path or binary audio data." )
+		}
+
+		var sttResult = ""
+		try {
+			bx:http
+				url     = resolveURL( arguments.transcriptionRequest, "/stt" )
+				method  = "post"
+				result  = "sttResult"
+				timeout = arguments.transcriptionRequest.getTimeout()
+			{
+				bx:httpParam type="header"    name="Authorization"    value="Bearer #arguments.transcriptionRequest.getApiKey()#";
+				bx:httpParam type="header"    name="Cartesia-Version" value=static.API_VERSION;
+				bx:httpParam type="formfield" name="model"            value=modelId;
+				if ( len( language ) ) {
+					bx:httpParam type="formfield" name="language" value=language;
+				}
+				bx:httpParam type="formfield" name="timestamp_granularities[]" value="word";
+				bx:httpParam type="file"      name="file"             file=audioPath;
+			}
+		} finally {
+			if ( len( tempFile ) && fileExists( tempFile ) ) {
+				fileDelete( tempFile )
+			}
+		}
+
+		if ( sttResult.statusCode != "200" ) {
+			throwProviderError( "STT", sttResult.fileContent )
+		}
+
+		var parsed = jsonDeserialize( sttResult.fileContent )
+
+		return new AiTranscriptionResponse(
+			text    : parsed.text ?: "",
+			language: parsed.language ?: language,
+			words   : parsed.words ?: [],
+			duration: parsed.duration ?: 0,
+			model   : modelId,
+			provider: variables.name
+		)
+	}
+
+	/**
+	 * Cartesia has no translation endpoint. Throws instead of silently returning an untranslated transcript.
+	 */
+	@override
+	public AiTranscriptionResponse function translate( required AiTranscriptionRequest transcriptionRequest ){
+		throw(
+			type   : "UnsupportedCapability",
+			message: "Unsupported capability: provider [Cartesia] does not support audio translation. Use transcribe() or a provider such as OpenAI or Groq."
+		)
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Private Helpers
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Merge defaults, resolve the key, validate the format and build the request body.
+	 *
+	 * @return { dataPacket, format } where format is { label, container, sampleRate, output_format }
+	 */
+	private struct function prepareSpeech( required AiSpeechRequest speechRequest ){
+		arguments.speechRequest
+			.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
+			.setApiKeyIfEmpty( getAPIKey() )
+
+		var params = arguments.speechRequest.getParams()
+		var format = resolveOutputFormat( arguments.speechRequest.getOutputFormat(), params )
+		var voice  = arguments.speechRequest.hasVoice() ? arguments.speechRequest.getVoice() : ( params.voice_id ?: static.DEFAULT_SPEECH_PARAMS.voice_id )
+
+		var dataPacket = {
+			"model_id"      : arguments.speechRequest.getModel(),
+			"transcript"    : arguments.speechRequest.getText(),
+			"voice"         : voice,
+			"output_format" : format.output_format
+		}
+
+		// Provider-native fields pass straight through
+		for ( var key in static.PASSTHROUGH_PARAMS ) {
+			if ( params.keyExists( key ) ) {
+				dataPacket[ key ] = params[ key ]
+			}
+		}
+
+		// generation_config: explicit struct wins, convenience params fill gaps
+		var generationConfig = params.generation_config ?: {}
+		if ( arguments.speechRequest.getSpeed() != 1.0 && !generationConfig.keyExists( "speed" ) ) {
+			generationConfig.speed = arguments.speechRequest.getSpeed()
+		}
+		for ( var key in static.GENERATION_PARAMS ) {
+			if ( params.keyExists( key ) && !generationConfig.keyExists( key ) ) {
+				generationConfig[ key ] = params[ key ]
+			}
+		}
+		if ( !generationConfig.isEmpty() ) {
+			dataPacket[ "generation_config" ] = generationConfig
+		}
+
+		return { dataPacket : dataPacket, format : format }
+	}
+
+	/**
+	 * Map the module's outputFormat keyword onto Cartesia's output_format object.
+	 * Sample rate and bit rate can be overridden with params.sample_rate and params.bit_rate.
+	 */
+	private struct function resolveOutputFormat( required string outputFormat, required struct params ){
+		var requested  = lCase( arguments.outputFormat.len() ? arguments.outputFormat : "mp3" )
+		var sampleRate = val( arguments.params.sample_rate ?: arguments.params.sampleRate ?: 0 )
+
+		switch ( requested ) {
+			case "mp3":
+				sampleRate = sampleRate > 0 ? sampleRate : static.DEFAULT_MP3_SAMPLE_RATE
+				return {
+					label         : "mp3",
+					container     : "mp3",
+					sampleRate    : sampleRate,
+					output_format : {
+						"container"   : "mp3",
+						"sample_rate" : sampleRate,
+						"bit_rate"    : arguments.params.bit_rate ?: 128000
+					}
+				}
+			case "wav":
+				sampleRate = sampleRate > 0 ? sampleRate : static.DEFAULT_MP3_SAMPLE_RATE
+				return {
+					label         : "wav",
+					container     : "wav",
+					sampleRate    : sampleRate,
+					output_format : {
+						"container"   : "wav",
+						"encoding"    : "pcm_s16le",
+						"sample_rate" : sampleRate
+					}
+				}
+			case "pcm":
+				sampleRate = sampleRate > 0 ? sampleRate : static.DEFAULT_PCM_SAMPLE_RATE
+				return {
+					label         : "pcm",
+					container     : "raw",
+					sampleRate    : sampleRate,
+					output_format : {
+						"container"   : "raw",
+						"encoding"    : "pcm_s16le",
+						"sample_rate" : sampleRate
+					}
+				}
+			case "mulaw":
+			case "alaw":
+				sampleRate = sampleRate > 0 ? sampleRate : static.DEFAULT_TELEPHONY_SAMPLE_RATE
+				return {
+					label         : requested,
+					container     : "raw",
+					sampleRate    : sampleRate,
+					output_format : {
+						"container"   : "raw",
+						"encoding"    : "pcm_" & requested,
+						"sample_rate" : sampleRate
+					}
+				}
+		}
+
+		throw(
+			type   : "InvalidArgument",
+			message: "Cartesia does not support the [#requested#] output format. Supported formats: mp3, wav, pcm, mulaw, alaw."
+		)
+	}
+
+	/**
+	 * Execute the whole-file synthesis call
+	 */
+	private function sendBytesRequest( required AiSpeechRequest speechRequest, required struct ctx ){
+		logSpeechRequest( arguments.speechRequest, arguments.ctx )
+
+		var speechResult = ""
+		bx:http
+			url     = resolveURL( arguments.speechRequest, "/tts/bytes" )
+			method  = "post"
+			result  = "speechResult"
+			timeout = arguments.speechRequest.getTimeout()
+		{
+			var headers = buildHeaders( arguments.speechRequest )
+			for ( var headerName in headers ) {
+				bx:httpParam type="header" name=headerName value=headers[ headerName ];
+			}
+			bx:httpParam type="body" value=jsonSerialize( arguments.ctx.dataPacket );
+		}
+		return speechResult
+	}
+
+	/**
+	 * Request headers: bearer auth, the required API version, plus any custom request headers
+	 */
+	private struct function buildHeaders( required AiSpeechRequest speechRequest ){
+		var headers = {
+			"Authorization"    : "Bearer #arguments.speechRequest.getApiKey()#",
+			"Cartesia-Version" : static.API_VERSION,
+			"Content-Type"     : "application/json"
+		}
+		headers.append( arguments.speechRequest.getHeaders(), true )
+		return headers
+	}
+
+	/**
+	 * Build an endpoint URL, honoring a per-request baseURL override (proxies, gateways, tests)
+	 */
+	private string function resolveURL( required aiRequest, required string path ){
+		var base = len( arguments.aiRequest.getBaseURL() ) ? arguments.aiRequest.getBaseURL() : variables.baseURL
+		return reReplace( base, "/+$", "" ) & arguments.path
+	}
+
+	/**
+	 * Convert one raw SSE event into normalized stream events
+	 *
+	 * @event The SSE event struct: { data, event, id }
+	 *
+	 * @return Array of { type: "audio"|"timestamps"|"error"|"done", ... }
+	 */
+	private array function parseSSEEvent( required struct event ){
+		var payload = jsonDeserialize( arguments.event.data )
+
+		switch ( payload.type ?: arguments.event.event ?: "" ) {
+			case "chunk":
+				return [ { type: "audio", data: binaryDecode( payload.data, "base64" ) } ]
+			case "timestamps":
+				var stamps = payload.word_timestamps ?: {}
+				return [ {
+					type  : "timestamps",
+					words : stamps.words ?: [],
+					start : stamps.start ?: [],
+					end   : stamps.end ?: []
+				} ]
+			case "done":
+				return [ { type: "done" } ]
+			case "error":
+				return [ { type: "error", message: payload.error ?: payload.message ?: "Cartesia stream error" } ]
+		}
+		// phoneme_timestamps and unknown event types are ignored
+		return []
+	}
+
+	/**
+	 * Throw a ProviderError from a Cartesia error body ({ title, message, error_code, request_id })
+	 *
+	 * @operation TTS or STT, used in the message prefix
+	 * @body      The raw error response body
+	 */
+	private function throwProviderError( required string operation, required any body ){
+		var errMsg = isSimpleValue( arguments.body ) ? arguments.body : "Unknown error"
+		try {
+			var parsed = jsonDeserialize( arguments.body )
+			errMsg     = parsed.message ?: errMsg
+			if ( len( parsed.error_code ?: "" ) ) {
+				errMsg &= " (#parsed.error_code#)"
+			}
+		} catch ( any e ) {
+			// Non-JSON body: keep the raw text
+		}
+		throw( type: "ProviderError", message: "Cartesia #arguments.operation# error: #errMsg#" )
+	}
+
+	/**
+	 * Request logging, mirroring the other speech providers (never logs the API key)
+	 */
+	private function logSpeechRequest( required AiSpeechRequest speechRequest, required struct ctx ){
+		BoxAnnounce( "onAISpeakRequest", {
+			provider  : this,
+			operation : "speech",
+			aiRequest : arguments.speechRequest,
+			dataPacket: arguments.ctx.dataPacket
+		} )
+		if ( arguments.speechRequest.getLogRequest() ) {
+			writeLog( text: "Cartesia aiSpeak request: #jsonSerialize( arguments.ctx.dataPacket )#", type: "info", log: "ai" )
+		}
+		if ( arguments.speechRequest.getLogRequestToConsole() ) {
+			println( "Cartesia aiSpeak request: #jsonSerialize( arguments.ctx.dataPacket )#" )
+		}
+	}
+
+}

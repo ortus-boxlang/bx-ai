@@ -1,0 +1,90 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Stream text-to-speech audio from an AI provider as it is generated.
+ * Use it to restream audio to a client (voice agents, telephony, browsers) without waiting for the whole file.
+ *
+ * The callback receives one struct per event, discriminated by `type`:
+ *
+ * - `{ type: "audio", data: binary, format: string, sampleRate: numeric, sequence: numeric }`
+ * - `{ type: "timestamps", words: array, start: array, end: array }` (providers that support it)
+ * - `{ type: "done", chunks: numeric, bytes: numeric }` (always the last event)
+ *
+ * Return an explicit `false` from the callback to stop the stream early (e.g. the caller interrupted).
+ *
+ * @example
+ * ```
+ * // Restream raw PCM to a connected client
+ * aiSpeakStream(
+ *     text     : "Thanks for calling BoxLang support.",
+ *     callback : ( event ) => {
+ *         if ( event.type == "audio" ) {
+ *             socket.send( event.data )
+ *         }
+ *     },
+ *     params   : { voice: "female" },
+ *     options  : { provider: "cartesia", outputFormat: "pcm" }
+ * )
+ *
+ * // Fluent
+ * aiSpeak().text( "Hello" ).provider( "cartesia" ).asPCM().stream( ( event ) => doSomething( event ) )
+ * ```
+ */
+@BoxBIF
+class {
+
+	/**
+	 * Stream synthesized speech to a callback.
+	 *
+	 * @text     The text to convert to speech
+	 * @callback Function invoked with each stream event struct. Return false to stop early.
+	 * @params   Provider API parameters (model, voice, sample_rate, language, etc.)
+	 * @options  High-level options (provider, apiKey, outputFormat, timeout, logging)
+	 *
+	 * @throws UnsupportedCapability if the provider does not support streaming speech
+	 *
+	 * @return Summary struct: { provider, model, audioFormat, sampleRate, chunks, bytes, completed }
+	 */
+	function invoke(
+		required string text,
+		required function callback,
+		struct params = {},
+		struct options = {}
+	){
+		if ( !len( trim( arguments.text ) ) ) {
+			throw( type: "InvalidArgument", message: "aiSpeakStream() requires non-empty text." )
+		}
+
+		// Reuse aiSpeak() with no text to seed all audio defaults (provider, voice, format, gender resolution)
+		var speechRequest = aiSpeak( "", arguments.params, arguments.options ).text( arguments.text )
+
+		var service = aiService( arguments.options?.provider, arguments.options )
+		// Subclasses of OpenAIService inherit its interfaces, so also require the declared capability
+		if ( !isInstanceOf( service, "IAiSpeechStreamService" ) || !service.hasCapability( "speechStream" ) ) {
+			throw(
+				type    : "UnsupportedCapability",
+				message : "Unsupported capability: provider [#service.getName()#] does not support streaming text-to-speech. Use a provider that implements IAiSpeechStreamService."
+			)
+		}
+
+		BoxAnnounce( "beforeAISpeech", { speechRequest: speechRequest, service: service, stream: true } )
+
+		var summary = service.speakStream( speechRequest, arguments.callback )
+
+		BoxAnnounce( "afterAISpeech", { speechRequest: speechRequest, service: service, result: summary, stream: true } )
+
+		return summary
+	}
+
+}

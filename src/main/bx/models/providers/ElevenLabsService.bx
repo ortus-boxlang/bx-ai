@@ -15,27 +15,36 @@
  * ElevenLabs Service - Premium TTS and STT provider
  * ElevenLabs specializes in high-quality, lifelike text-to-speech and speech-to-text.
  * Authentication uses the `xi-api-key` header rather than a Bearer token.
+ *
+ * - speak()       : whole-file synthesis (mp3, wav, pcm, mulaw, alaw, opus)
+ * - speakStream() : progressive audio over the `/stream` endpoint (mp3, pcm, mulaw, alaw, opus)
+ * - transcribe()  : Scribe speech-to-text
+ *
  * @see https://elevenlabs.io/docs/api-reference
  */
 import bxModules.bxai.models.providers.capabilities.IAiSpeechService;
+import bxModules.bxai.models.providers.capabilities.IAiSpeechStreamService;
 import bxModules.bxai.models.providers.capabilities.IAiTranscriptionService;
 import bxModules.bxai.models.requests.AiSpeechRequest;
 import bxModules.bxai.models.requests.AiTranscriptionRequest;
 import bxModules.bxai.models.responses.AiSpeechResponse;
 import bxModules.bxai.models.responses.AiTranscriptionResponse;
+import bxModules.bxai.models.util.SpeechStreamHelper;
+import java:ortus.boxlang.ai.util.AudioUtil@bxai;
 
-class extends="BaseService" implements="IAiSpeechService, IAiTranscriptionService" {
+class extends="BaseService" implements="IAiSpeechService, IAiSpeechStreamService, IAiTranscriptionService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		CAPABILITIES = [ "speech", "transcription" ]
+		CAPABILITIES = [ "speech", "speechStream", "transcription" ]
 		DEFAULT_SPEECH_PARAMS = {
 			// Multilingual v2 supports 29+ languages with high quality
 			"model_id" : "eleven_multilingual_v2",
-			// Rachel: warm, conversational female voice
-			"voice_id" : "21m00Tcm4TlvDq8ikWAM"
+			// Sarah: mature, reassuring female voice. A premade voice, so it works on every plan
+			// (library voices such as Rachel are rejected for free-plan API keys)
+			"voice_id" : "EXAVITQu4vr4xnSDxMaL"
 		};
 		DEFAULT_SPEECH_SETTINGS = {
 			"stability"        : 0.5,
@@ -47,6 +56,7 @@ class extends="BaseService" implements="IAiSpeechService, IAiTranscriptionServic
 			// Scribe v1: ElevenLabs' dedicated STT model
 			"model_id" : "scribe_v1"
 		};
+		DEFAULT_PCM_SAMPLE_RATE = 24000
 	}
 
 	/**
@@ -72,48 +82,201 @@ class extends="BaseService" implements="IAiSpeechService, IAiTranscriptionServic
 	/**
 	 * Convert text to speech using ElevenLabs TTS API.
 	 * Returns audio binary data in the requested format (default: mp3).
+	 * Supported formats: mp3, wav, pcm, mulaw, alaw, opus. flac and aac throw InvalidArgument.
 	 * @see https://elevenlabs.io/docs/api-reference/text-to-speech
 	 */
 	@override
 	public AiSpeechResponse function speak( required AiSpeechRequest speechRequest ){
+		var ctx = prepareSpeech( arguments.speechRequest, false )
+
+		var speechResult = sendSpeechRequest( arguments.speechRequest, ctx, ctx.url )
+
+		if ( speechResult.statusCode != "200" ) {
+			throwProviderError( "TTS", speechResult.fileContent )
+		}
+
+		var audio = speechResult.fileContent
+		// ElevenLabs has no wav output: wrap the raw PCM so the file is playable
+		if ( ctx.format.wrapWav ) {
+			audio = AudioUtil.pcmToWav( audio, javacast( "int", ctx.format.sampleRate ), javacast( "int", 1 ), javacast( "int", 16 ) )
+		}
+
+		return new AiSpeechResponse(
+			audioData  : audio,
+			audioFormat: ctx.format.label,
+			model      : ctx.dataPacket.model_id,
+			provider   : variables.name
+		);
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiSpeechStreamService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Stream synthesized speech to a callback as it is generated, using the `/stream` endpoint.
+	 * Supported formats: mp3, pcm, mulaw, alaw, opus. wav cannot be streamed (use pcm).
+	 * @see https://elevenlabs.io/docs/api-reference/text-to-speech/stream
+	 */
+	@override
+	public struct function speakStream( required AiSpeechRequest speechRequest, required function callback ){
+		var ctx = prepareSpeech( arguments.speechRequest, true )
+
+		return SpeechStreamHelper::streamBinary(
+			providerName: variables.name,
+			url         : ctx.url,
+			headers     : buildHeaders( arguments.speechRequest ),
+			body        : jsonSerialize( ctx.dataPacket ),
+			format      : ctx.format.label,
+			sampleRate  : ctx.format.sampleRate,
+			timeout     : arguments.speechRequest.getTimeout(),
+			callback    : arguments.callback,
+			model       : ctx.dataPacket.model_id
+		)
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Private Speech Helpers
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Resolve voice, model, format and body for a speech call
+	 *
+	 * @streaming True when targeting the /stream endpoint (rejects wav)
+	 *
+	 * @return { url, dataPacket, format }
+	 */
+	private struct function prepareSpeech( required AiSpeechRequest speechRequest, required boolean streaming ){
+		// Capture caller-supplied values BEFORE merging defaults, otherwise the defaults shadow them
+		var explicitVoice = arguments.speechRequest.getParams().voice_id ?: ""
+		var explicitModel = arguments.speechRequest.getParams().model_id ?: ""
+
 		arguments.speechRequest
 			.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
 			.setApiKeyIfEmpty( getAPIKey() );
 
-		var params  = arguments.speechRequest.getParams();
-		var voiceId = params.voice_id ?: arguments.speechRequest.getVoice() ?: static.DEFAULT_SPEECH_PARAMS.voice_id;
-		var modelId = params.model_id ?: static.DEFAULT_SPEECH_PARAMS.model_id;
-		var format  = arguments.speechRequest.getOutputFormat() ?: "mp3";
-		var ttsURL  = variables.speechURL.replace( '%VOICE_ID%', voiceId )
-			& "?output_format=mp3_44100_128";
+		var params  = arguments.speechRequest.getParams()
+		var voiceId = len( explicitVoice ) ? explicitVoice : ( arguments.speechRequest.hasVoice() ? arguments.speechRequest.getVoice() : static.DEFAULT_SPEECH_PARAMS.voice_id )
+		var modelId = len( explicitModel ) ? explicitModel : ( len( arguments.speechRequest.getModel() ) ? arguments.speechRequest.getModel() : static.DEFAULT_SPEECH_PARAMS.model_id )
+		var format  = resolveOutputFormat( arguments.speechRequest.getOutputFormat(), params, arguments.streaming )
 
-		var voiceSettings = params.voice_settings ?: static.DEFAULT_SPEECH_SETTINGS;
+		var base = len( arguments.speechRequest.getBaseURL() ) ? reReplace( arguments.speechRequest.getBaseURL(), "/+$", "" ) & "/v1/text-to-speech/%VOICE_ID%" : variables.speechURL
+		var url  = base.replace( "%VOICE_ID%", voiceId ) & ( arguments.streaming ? "/stream" : "" ) & "?output_format=#format.wire#"
+
+		var voiceSettings = duplicate( params.voice_settings ?: static.DEFAULT_SPEECH_SETTINGS )
+		if ( arguments.speechRequest.getSpeed() != 1.0 && !voiceSettings.keyExists( "speed" ) ) {
+			voiceSettings.speed = arguments.speechRequest.getSpeed()
+		}
 
 		var dataPacket = {
 			"text"          : arguments.speechRequest.getText(),
 			"model_id"      : modelId,
 			"voice_settings": voiceSettings
-		};
-
-		bx:http url=ttsURL method="post" result="speechResult" timeout=arguments.speechRequest.getTimeout(){
-			bx:httpParam type="header" name="xi-api-key"    value=arguments.speechRequest.getApiKey();
-			bx:httpParam type="header" name="content-type"  value="application/json";
-			bx:httpParam type="header" name="accept"        value="audio/mpeg";
-			bx:httpParam type="body"   value=jsonSerialize( dataPacket );
+		}
+		if ( params.keyExists( "language_code" ) ) {
+			dataPacket[ "language_code" ] = params.language_code
 		}
 
-		if ( speechResult.statusCode != "200" ) {
-			var errMsg = speechResult.fileContent;
-			try { errMsg = jsonDeserialize( speechResult.fileContent ).detail?.message ?: errMsg; } catch( any e ){}
-			throw( type: "ProviderError", message: "ElevenLabs TTS error: #errMsg#" );
+		return { url : url, dataPacket : dataPacket, format : format }
+	}
+
+	/**
+	 * Map the module's outputFormat keyword onto an ElevenLabs `output_format` query value.
+	 * `params.output_format` is an explicit native override. `params.sample_rate` tunes pcm.
+	 */
+	private struct function resolveOutputFormat( required string outputFormat, required struct params, required boolean streaming ){
+		var requested  = lCase( arguments.outputFormat.len() ? arguments.outputFormat : "mp3" )
+		var sampleRate = val( arguments.params.sample_rate ?: 0 )
+		var native     = arguments.params.output_format ?: ""
+
+		if ( len( native ) ) {
+			// Caller knows the exact ElevenLabs format string, e.g. mp3_22050_32 or pcm_44100
+			var parts = native.listToArray( "_" )
+			return {
+				label      : requested,
+				wire       : native,
+				sampleRate : parts.len() > 1 && isNumeric( parts[ 2 ] ) ? val( parts[ 2 ] ) : 0,
+				wrapWav    : false
+			}
 		}
 
-		return new AiSpeechResponse(
-			audioData  : speechResult.fileContent,
-			audioFormat: format,
-			model      : modelId,
-			provider   : variables.name
-		);
+		switch ( requested ) {
+			case "mp3":
+				return { label: "mp3", wire: "mp3_44100_128", sampleRate: 44100, wrapWav: false }
+			case "pcm":
+				sampleRate = sampleRate > 0 ? sampleRate : static.DEFAULT_PCM_SAMPLE_RATE
+				return { label: "pcm", wire: "pcm_#sampleRate#", sampleRate: sampleRate, wrapWav: false }
+			case "wav":
+				if ( arguments.streaming ) {
+					throw( type: "InvalidArgument", message: "ElevenLabs cannot stream wav. Stream pcm instead and wrap it if you need a container." )
+				}
+				sampleRate = sampleRate > 0 ? sampleRate : static.DEFAULT_PCM_SAMPLE_RATE
+				return { label: "wav", wire: "pcm_#sampleRate#", sampleRate: sampleRate, wrapWav: true }
+			case "mulaw":
+				return { label: "mulaw", wire: "ulaw_8000", sampleRate: 8000, wrapWav: false }
+			case "alaw":
+				return { label: "alaw", wire: "alaw_8000", sampleRate: 8000, wrapWav: false }
+			case "opus":
+				return { label: "opus", wire: "opus_48000_128", sampleRate: 48000, wrapWav: false }
+		}
+
+		throw(
+			type   : "InvalidArgument",
+			message: "ElevenLabs does not support the [#requested#] output format. Supported formats: mp3, wav, pcm, mulaw, alaw, opus."
+		)
+	}
+
+	/**
+	 * Execute the whole-file synthesis call
+	 */
+	private function sendSpeechRequest( required AiSpeechRequest speechRequest, required struct ctx, required string url ){
+		if ( arguments.speechRequest.getLogRequest() ) {
+			writeLog( text: "ElevenLabs aiSpeak request to #arguments.url#: #jsonSerialize( arguments.ctx.dataPacket )#", type: "info", log: "ai" )
+		}
+
+		var speechResult = ""
+		bx:http url=arguments.url method="post" result="speechResult" timeout=arguments.speechRequest.getTimeout(){
+			var headers = buildHeaders( arguments.speechRequest )
+			for ( var headerName in headers ) {
+				bx:httpParam type="header" name=headerName value=headers[ headerName ];
+			}
+			bx:httpParam type="body" value=jsonSerialize( arguments.ctx.dataPacket );
+		}
+		return speechResult
+	}
+
+	/**
+	 * Request headers: the xi-api-key plus any custom request headers
+	 */
+	private struct function buildHeaders( required AiSpeechRequest speechRequest ){
+		var headers = {
+			"xi-api-key"   : arguments.speechRequest.getApiKey(),
+			"content-type" : "application/json"
+		}
+		headers.append( arguments.speechRequest.getHeaders(), true )
+		return headers
+	}
+
+	/**
+	 * Throw a ProviderError from an ElevenLabs error body ({ detail: { message } } or { detail: "text" })
+	 */
+	private function throwProviderError( required string operation, required any body ){
+		var errMsg = isSimpleValue( arguments.body ) ? arguments.body : "Unknown error"
+		try {
+			var detail = jsonDeserialize( arguments.body ).detail ?: ""
+			if ( isStruct( detail ) ) {
+				errMsg = detail.message ?: errMsg
+			} else if ( isSimpleValue( detail ) && len( detail ) ) {
+				errMsg = detail
+			}
+		} catch ( any e ) {
+			// Non-JSON body: keep the raw text
+		}
+		throw( type: "ProviderError", message: "ElevenLabs #arguments.operation# error: #errMsg#" )
 	}
 
 	/**
@@ -148,16 +311,15 @@ class extends="BaseService" implements="IAiSpeechService, IAiTranscriptionServic
 			throw( type: "InvalidArgument", message: "ElevenLabs transcribe() requires an audio file path or binary audio data." );
 		}
 
-		bx:http url=variables.transcribeURL method="post" result="sttResult" timeout=arguments.transcriptionRequest.getTimeout(){
+		var sttURL = len( arguments.transcriptionRequest.getBaseURL() ) ? reReplace( arguments.transcriptionRequest.getBaseURL(), "/+$", "" ) & "/v1/speech-to-text" : variables.transcribeURL
+		bx:http url=sttURL method="post" result="sttResult" timeout=arguments.transcriptionRequest.getTimeout(){
 			bx:httpParam type="header"  name="xi-api-key" value=arguments.transcriptionRequest.getApiKey();
 			bx:httpParam type="formfield" name="model_id" value=modelId;
-			bx:httpParam type="file"    name="audio"      file=audioFilePath;
+			bx:httpParam type="file"    name="file"       file=audioFilePath;
 		}
 
 		if ( sttResult.statusCode != "200" ) {
-			var errMsg = sttResult.fileContent;
-			try { errMsg = jsonDeserialize( sttResult.fileContent ).detail?.message ?: errMsg; } catch( any e ){}
-			throw( type: "ProviderError", message: "ElevenLabs STT error: #errMsg#" );
+			throwProviderError( "STT", sttResult.fileContent )
 		}
 
 		var parsed   = jsonDeserialize( sttResult.fileContent );

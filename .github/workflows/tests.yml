@@ -17,11 +17,13 @@ jobs:
     env:
       DB_USER: root
       DB_PASSWORD: root
+      CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
       CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
       COHERE_API_KEY: ${{ secrets.COHERE_API_KEY }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GROK_API_KEY: ${{ secrets.GROK_API_KEY }}
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}

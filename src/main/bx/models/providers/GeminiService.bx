@@ -18,18 +18,21 @@ import bxModules.bxai.models.providers.capabilities.IAiChatService;
 import bxModules.bxai.models.providers.capabilities.IAiEmbeddingsService;
 import bxModules.bxai.models.providers.capabilities.IAiImageService;
 import bxModules.bxai.models.providers.capabilities.IAiSpeechService;
+import bxModules.bxai.models.providers.capabilities.IAiSpeechStreamService;
 import bxModules.bxai.models.providers.capabilities.IAiTranscriptionService;
 import bxModules.bxai.models.responses.AiImageResponse;
 import bxModules.bxai.models.responses.AiSpeechResponse;
 import bxModules.bxai.models.responses.AiTranscriptionResponse;
+import bxModules.bxai.models.util.SpeechStreamHelper;
+import java:ortus.boxlang.ai.util.AudioUtil@bxai;
 
-class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, IAiImageService, IAiSpeechService, IAiTranscriptionService" {
+class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, IAiImageService, IAiSpeechService, IAiSpeechStreamService, IAiTranscriptionService" {
 
 	/**
 	 * Static defaults
 	 */
 	static {
-		CAPABILITIES = [ "chat", "stream", "embeddings", "image", "speech", "transcription" ]
+		CAPABILITIES = [ "chat", "stream", "embeddings", "image", "speech", "speechStream", "transcription" ]
 		DEFAULT_CHAT_PARAMS = {
 			// https://ai.google.dev/gemini-api/docs/quickstart
 			// according to the docs, this is the default model
@@ -411,7 +414,8 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 
 		var model     = arguments.speechRequest.getModel();
 		var voiceName = arguments.speechRequest.getParams().voice ?: arguments.speechRequest.getVoice() ?: "Kore";
-		var ttsURL    = variables.ttsURL.replace( '%MODEL%', model ) & "?key=#arguments.speechRequest.getApiKey()#";
+		var ttsBase   = len( arguments.speechRequest.getBaseURL() ) ? reReplace( arguments.speechRequest.getBaseURL(), "/+$", "" ) & "/models/%MODEL%:generateContent" : variables.ttsURL
+		var ttsURL    = ttsBase.replace( '%MODEL%', model ) & "?key=#arguments.speechRequest.getApiKey()#";
 
 		var dataPacket = {
 			"contents"       : [ { "parts": [ { "text": arguments.speechRequest.getText() } ] } ],
@@ -442,7 +446,96 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		var mimeType   = inlineData.mimeType ?: "audio/wav";
 		var format     = mimeType.contains( "mp3" ) ? "mp3" : "wav";
 
+		// Gemini returns headerless linear PCM (audio/L16;codec=pcm;rate=24000). Wrap it in a RIFF
+		// header so the saved file is a playable wav instead of raw samples labelled as wav.
+		if ( mimeType.reFindNoCase( "L16|pcm" ) ) {
+			var sampleRate = AudioUtil.sampleRateFromMime( mimeType, javacast( "int", 24000 ) )
+			audioBytes     = AudioUtil.pcmToWav( audioBytes, sampleRate, javacast( "int", 1 ), javacast( "int", 16 ) )
+			format         = "wav"
+		}
+
 		return new AiSpeechResponse( audioData: audioBytes, audioFormat: format, model: model, provider: variables.name );
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * IAiSpeechStreamService Implementation
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Stream synthesized speech to a callback using the Gemini Interactions API with `stream: true`.
+	 * Streaming returns headerless raw 16-bit signed little-endian PCM at 24kHz mono, delivered
+	 * as `pcm` chunks. Wrap them yourself if you need a container.
+	 *
+	 * @see https://ai.google.dev/gemini-api/docs/speech-generation
+	 */
+	@override
+	public struct function speakStream( required AiSpeechRequest speechRequest, required function callback ){
+		arguments.speechRequest
+			.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
+			.setApiKeyIfEmpty( getAPIKey() )
+
+		var model     = arguments.speechRequest.getModel()
+		var voiceName = arguments.speechRequest.getParams().voice ?: arguments.speechRequest.getVoice() ?: "Kore"
+		var base      = len( arguments.speechRequest.getBaseURL() ) ? reReplace( arguments.speechRequest.getBaseURL(), "/+$", "" ) : "https://generativelanguage.googleapis.com/v1beta"
+		var url       = base & "/interactions"
+
+		var dataPacket = {
+			"model"  : model,
+			"input"  : [ {
+				"type"   : "user_input",
+				"content": [ { "type": "text", "text": arguments.speechRequest.getText() } ]
+			} ],
+			"response_format"  : { "type": "audio" },
+			"generation_config": { "speech_config": [ { "voice": voiceName } ] },
+			"stream"           : true
+		}
+
+		BoxAnnounce( "onAISpeakRequest", {
+			provider   : this,
+			operation  : "speech",
+			aiRequest  : arguments.speechRequest,
+			dataPacket : dataPacket
+		} )
+		if ( arguments.speechRequest.getLogRequest() ) {
+			writeLog( text: "Gemini aiSpeak stream request: #jsonSerialize( dataPacket )#", type: "info", log: "ai" )
+		}
+
+		var headers = {
+			"content-type"   : "application/json",
+			"x-goog-api-key" : arguments.speechRequest.getApiKey()
+		}
+		headers.append( arguments.speechRequest.getHeaders(), true )
+
+		return SpeechStreamHelper::streamSSE(
+			providerName: variables.name,
+			url         : url,
+			headers     : headers,
+			body        : jsonSerialize( dataPacket ),
+			format      : "pcm",
+			sampleRate  : 24000,
+			timeout     : arguments.speechRequest.getTimeout(),
+			callback    : arguments.callback,
+			parser      : ( event ) => parseInteractionEvent( event ),
+			model       : model
+		)
+	}
+
+	/**
+	 * Normalize one Interactions SSE event. Audio chunks are `step.delta` events whose
+	 * `delta.type` is "audio" and `delta.data` is base64 PCM. Everything else is ignored.
+	 */
+	private array function parseInteractionEvent( required struct event ){
+		var payload = jsonDeserialize( arguments.event.data )
+
+		if ( payload.keyExists( "error" ) ) {
+			return [ { type: "error", message: isStruct( payload.error ) ? ( payload.error.message ?: serializeJSON( payload.error ) ) : payload.error } ]
+		}
+		if ( isStruct( payload.delta ?: "" ) && ( payload.delta.type ?: "" ) == "audio" && len( payload.delta.data ?: "" ) ) {
+			return [ { type: "audio", data: binaryDecode( payload.delta.data, "base64" ) } ]
+		}
+		return []
 	}
 
 	/**

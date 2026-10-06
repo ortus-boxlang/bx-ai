@@ -27,6 +27,7 @@ class {
 		 */
 		final CORE_PROVIDERS = [
 			"bedrock",
+			"cartesia",
 			"claude",
 			"cloudflare",
 			"cohere",
@@ -86,6 +87,9 @@ class {
 		switch( arguments.provider ) {
 			case "bedrock":
 				targetClass = "bxModules.bxai.models.providers.BedrockService"
+				break
+			case "cartesia":
+				targetClass = "bxModules.bxai.models.providers.CartesiaService"
 				break
 			case "claude":
 				targetClass = "bxModules.bxai.models.providers.ClaudeService"
