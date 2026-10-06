@@ -94,6 +94,10 @@ class {
 
 		// Get the service
 		var service = aiService( arguments.options?.provider, arguments.options )
+		// The request was seeded with the module-global apiKey before the provider was resolved, and providers only
+		// fill an empty key. Replace it with the key aiService() resolved (explicit option, then <PROVIDER>_API_KEY),
+		// so a global key for one provider never leaks into a request for another.
+		speechRequest.apiKey( arguments.options.apiKey ?: "" )
 		// Validate the service supports speech synthesis
 		if ( !isInstanceOf( service, "IAiSpeechService" ) ) {
 			throw(

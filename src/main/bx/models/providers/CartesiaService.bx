@@ -294,7 +294,7 @@ class extends="BaseService" implements="IAiSpeechService, IAiSpeechStreamService
 		}
 
 		// generation_config: explicit struct wins, convenience params fill gaps
-		var generationConfig = params.generation_config ?: {}
+		var generationConfig = duplicate( params.generation_config ?: {} )
 		if ( arguments.speechRequest.getSpeed() != 1.0 && !generationConfig.keyExists( "speed" ) ) {
 			generationConfig.speed = arguments.speechRequest.getSpeed()
 		}

@@ -195,9 +195,12 @@ class extends="BaseService" implements="IAiSpeechService, IAiSpeechStreamService
 
 		if ( len( native ) ) {
 			// Caller knows the exact ElevenLabs format string, e.g. mp3_22050_32 or pcm_44100
-			var parts = native.listToArray( "_" )
+			var parts  = native.listToArray( "_" )
+			// The native string decides the bytes, so it also decides the label (ulaw is called mulaw here)
+			var family = lCase( parts[ 1 ] )
+			var label  = family == "ulaw" ? "mulaw" : family
 			return {
-				label      : requested,
+				label      : label,
 				wire       : native,
 				sampleRate : parts.len() > 1 && isNumeric( parts[ 2 ] ) ? val( parts[ 2 ] ) : 0,
 				wrapWav    : false

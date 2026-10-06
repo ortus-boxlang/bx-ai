@@ -23,6 +23,9 @@
  *
  * - `streamBinary()` for providers that stream raw audio bytes over chunked HTTP (OpenAI, ElevenLabs, Cartesia bytes)
  * - `streamSSE()`    for providers that stream base64 audio inside Server-Sent Events (Cartesia, Mistral, Gemini)
+ *
+ * Both run on `BinaryStreamClient` (Java). The `timeout` is an idle timeout: the longest wait for response headers
+ * or between received bytes. Stopping early (callback returns false) closes the connection.
  */
 import java:ortus.boxlang.ai.util.BinaryStreamClient@bxai;
 
@@ -37,7 +40,7 @@ class {
 	 * @body         The serialized request body
 	 * @format       Audio format label placed on each chunk (mp3, wav, pcm, mulaw...)
 	 * @sampleRate   Sample rate placed on each chunk (0 when unknown/not applicable)
-	 * @timeout      Request timeout in seconds
+	 * @timeout      Idle timeout in seconds (longest wait for headers or between received bytes)
 	 * @callback     The user callback
 	 * @model        Model name for the summary
 	 *
@@ -103,7 +106,7 @@ class {
 	 * @body         The serialized request body
 	 * @format       Audio format label placed on each chunk
 	 * @sampleRate   Sample rate placed on each chunk
-	 * @timeout      Request timeout in seconds
+	 * @timeout      Idle timeout in seconds (longest wait for headers or between received bytes)
 	 * @callback     The user callback
 	 * @parser       function( event ) returning an array of normalized events
 	 * @model        Model name for the summary
@@ -127,61 +130,53 @@ class {
 		var eventParser  = arguments.parser
 		var fmt          = arguments.format
 		var rate         = arguments.sampleRate
-		var name         = arguments.providerName
 
-		var httpRequest = http( arguments.url )
-			.method( "POST" )
-			.charset( "utf-8" )
-			.timeout( arguments.timeout )
-			.sse( true )
-			.body( arguments.body )
-
-		for ( var headerName in arguments.headers ) {
-			httpRequest.header( headerName, arguments.headers[ headerName ] )
+		try {
+			// Returning false from the event handler closes the connection, so an early stop
+			// (or a provider error event) ends generation immediately instead of draining the stream
+			BinaryStreamClient.streamSsePost(
+				arguments.url,
+				arguments.headers,
+				arguments.body,
+				javacast( "int", arguments.timeout ),
+				( event ) => {
+					if ( event.data.trim().isEmpty() ) {
+						return true
+					}
+					var events = []
+					try {
+						events = eventParser( event )
+					} catch ( any e ) {
+						state.error = "Unable to parse stream event: #e.message#"
+						return false
+					}
+					for ( var evt in events ) {
+						if ( evt.type == "error" ) {
+							state.error = evt.message ?: "Unknown stream error"
+							return false
+						}
+						if ( evt.type == "done" ) {
+							// The helper always emits the final done event itself
+							continue
+						}
+						if ( evt.type == "audio" ) {
+							state.sequence++
+							state.bytes += evt.data.len()
+							evt.format     = fmt
+							evt.sampleRate = rate
+							evt.sequence   = state.sequence
+						}
+						if ( static.isStop( userCallback( evt ) ) ) {
+							state.stopped = true
+							return false
+						}
+					}
+					return true
+				}
+			)
+		} catch ( any e ) {
+			throw( type: "ProviderError", message: "#arguments.providerName# TTS stream error: #e.message#" )
 		}
-
-		httpRequest
-			.onChunk( ( chunk, lastEventId, httpResult, httpClient, response ) => {
-				// Once the caller asked to stop (or an error was recorded) drain and ignore the rest
-				if ( state.stopped || len( state.error ) ) {
-					return
-				}
-				if ( chunk?.data?.trim()?.isEmpty() ?: true ) {
-					return
-				}
-				var events = []
-				try {
-					events = eventParser( chunk )
-				} catch ( any e ) {
-					state.error = "Unable to parse stream event: #e.message#"
-					return
-				}
-				for ( var evt in events ) {
-					if ( evt.type == "audio" ) {
-						state.sequence++
-						state.bytes += evt.data.len()
-						evt.format     = fmt
-						evt.sampleRate = rate
-						evt.sequence   = state.sequence
-					}
-					if ( evt.type == "error" ) {
-						state.error = evt.message ?: "Unknown stream error"
-						return
-					}
-					if ( evt.type == "done" ) {
-						// The helper always emits the final done event itself
-						continue
-					}
-					if ( static.isStop( userCallback( evt ) ) ) {
-						state.stopped = true
-						return
-					}
-				}
-			} )
-			.onError( ( error, httpResult ) => {
-				throw( type: "ProviderError", message: "#name# TTS stream error: #error.message#" )
-			} )
-			.send()
 
 		if ( len( state.error ) ) {
 			throw( type: "ProviderError", message: "#arguments.providerName# TTS stream error: #state.error#" )

@@ -1222,6 +1222,12 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		// Merge remaining provider params
 		dataPacket.append( arguments.speechRequest.getParams() )
 
+		// The merged params carry the default voice, which would overwrite a voice the caller asked for through
+		// options.voice or the male()/female() shortcuts. The request's resolved voice always wins.
+		if ( arguments.speechRequest.hasVoice() ) {
+			dataPacket.voice = arguments.speechRequest.getVoice()
+		}
+
 		// -------------------------------------------------------------------------------------------
 		// --- Fire Localized Pre Callback ---
 		// -------------------------------------------------------------------------------------------

@@ -245,6 +245,34 @@ public class ElevenLabsTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "types" ) ).toString() ).isEqualTo( "[InvalidArgument, InvalidArgument]" );
 	}
 
+	@DisplayName( "A native params.output_format decides the label as well as the bytes" )
+	@Test
+	public void testNativeFormatLabel() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			pcm = aiSpeak( "Hi", { output_format: "pcm_44100" }, { provider: "elevenlabs", apiKey: "k", outputFormat: "mp3", baseURL: "%s" } )
+			pcmLabel = pcm.getAudioFormat()
+			ulaw = aiSpeak( "Hi", { output_format: "ulaw_8000" }, { provider: "elevenlabs", apiKey: "k", outputFormat: "wav", baseURL: "%s" } )
+			ulawLabel = ulaw.getAudioFormat()
+			ulawIsRiff = charsetEncode( ulaw.getAudioData().slice( 1, 4 ), "utf-8" ) == "RIFF"
+			events = []
+			aiSpeakStream( "Hi", ( e ) => { events.append( e ) }, { output_format: "pcm_16000" }, { provider: "elevenlabs", apiKey: "k", outputFormat: "mp3", baseURL: "%s" } )
+			streamFormat = events.filter( ( e ) => e.type == "audio" ).first().format
+			streamRate = events.filter( ( e ) => e.type == "audio" ).first().sampleRate
+			""".formatted( stubURL, stubURL, stubURL ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "pcmLabel" ) ) ).isEqualTo( "pcm" );
+		assertThat( variables.getAsString( Key.of( "ulawLabel" ) ) ).isEqualTo( "mulaw" );
+		// A native format is never RIFF-wrapped, whatever the generic outputFormat says
+		assertThat( variables.getAsBoolean( Key.of( "ulawIsRiff" ) ) ).isFalse();
+		assertThat( variables.getAsString( Key.of( "streamFormat" ) ) ).isEqualTo( "pcm" );
+		assertThat( variables.get( Key.of( "streamRate" ) ) ).isEqualTo( 16000 );
+	}
+
 	@DisplayName( "Streaming hits /stream and delivers progressive audio chunks then done" )
 	@Test
 	public void testStream() {

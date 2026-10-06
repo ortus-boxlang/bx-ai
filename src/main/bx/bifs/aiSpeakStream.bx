@@ -70,6 +70,10 @@ class {
 		var speechRequest = aiSpeak( "", arguments.params, arguments.options ).text( arguments.text )
 
 		var service = aiService( arguments.options?.provider, arguments.options )
+		// The request was seeded with the module-global apiKey before the provider was resolved, and providers only
+		// fill an empty key. Replace it with the key aiService() resolved (explicit option, then <PROVIDER>_API_KEY),
+		// so a global key for one provider never leaks into a request for another.
+		speechRequest.apiKey( arguments.options.apiKey ?: "" )
 		// Subclasses of OpenAIService inherit its interfaces, so also require the declared capability
 		if ( !isInstanceOf( service, "IAiSpeechStreamService" ) || !service.hasCapability( "speechStream" ) ) {
 			throw(

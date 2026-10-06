@@ -413,7 +413,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 			.setApiKeyIfEmpty( getAPIKey() );
 
 		var model     = arguments.speechRequest.getModel();
-		var voiceName = arguments.speechRequest.getParams().voice ?: arguments.speechRequest.getVoice() ?: "Kore";
+		var voiceName = arguments.speechRequest.hasVoice() ? arguments.speechRequest.getVoice() : ( arguments.speechRequest.getParams().voice ?: "Kore" );
 		var ttsBase   = len( arguments.speechRequest.getBaseURL() ) ? reReplace( arguments.speechRequest.getBaseURL(), "/+$", "" ) & "/models/%MODEL%:generateContent" : variables.ttsURL
 		var ttsURL    = ttsBase.replace( '%MODEL%', model ) & "?key=#arguments.speechRequest.getApiKey()#";
 
@@ -477,7 +477,7 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 			.setApiKeyIfEmpty( getAPIKey() )
 
 		var model     = arguments.speechRequest.getModel()
-		var voiceName = arguments.speechRequest.getParams().voice ?: arguments.speechRequest.getVoice() ?: "Kore"
+		var voiceName = arguments.speechRequest.hasVoice() ? arguments.speechRequest.getVoice() : ( arguments.speechRequest.getParams().voice ?: "Kore" )
 		var base      = len( arguments.speechRequest.getBaseURL() ) ? reReplace( arguments.speechRequest.getBaseURL(), "/+$", "" ) : "https://generativelanguage.googleapis.com/v1beta"
 		var url       = base & "/interactions"
 

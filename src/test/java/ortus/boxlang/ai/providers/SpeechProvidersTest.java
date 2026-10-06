@@ -386,6 +386,70 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 		assertThat( body ).contains( "\"type\":\"audio\"" );
 	}
 
+	@DisplayName( "OpenAI honors a voice passed through options instead of the default voice" )
+	@Test
+	public void testOpenAIOptionsVoice() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			aiSpeakStream( "Hi", ( e ) => {}, {}, { provider: "openai", apiKey: "k", voice: "nova", baseURL: "%s/openai" } )
+			""".formatted( stubURL ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( seenBody.get( "openai" ) ).contains( "\"voice\":\"nova\"" );
+		assertThat( seenBody.get( "openai" ) ).doesNotContain( "\"voice\":\"ash\"" );
+	}
+
+	@DisplayName( "Gemini honors options.voice and the female()/male() shortcuts instead of the default Kore" )
+	@Test
+	public void testGeminiVoicePrecedence() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			aiSpeakStream( "Hi", ( e ) => {}, {}, { provider: "gemini", apiKey: "gk", voice: "Puck", baseURL: "%s/gemini" } )
+			""".formatted( stubURL ),
+			context
+		);
+		// @formatter:on
+		assertThat( seenBody.get( "geminiStream" ) ).contains( "\"voice\":\"Puck\"" );
+
+		// The gender keyword in params resolves to the mapped voice, never the literal word
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			aiSpeakStream( "Hi", ( e ) => {}, { voice: "female" }, { provider: "gemini", apiKey: "gk", baseURL: "%s/gemini" } )
+			""".formatted( stubURL ),
+			context
+		);
+		// @formatter:on
+		assertThat( seenBody.get( "geminiStream" ) ).contains( "\"voice\":\"Aoede\"" );
+		assertThat( seenBody.get( "geminiStream" ) ).doesNotContain( "\"voice\":\"female\"" );
+
+		// Whole-file speech follows the same rules
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			aiSpeak( "Hi", {}, { provider: "gemini", apiKey: "gk", voice: "Puck", baseURL: "%s/gemini" } )
+			""".formatted( stubURL ),
+			context
+		);
+		// @formatter:on
+		assertThat( seenBody.get( "gemini" ) ).contains( "\"voice_name\":\"Puck\"" );
+
+		// Default still applies when no voice is requested
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			aiSpeak( "Hi", {}, { provider: "gemini", apiKey: "gk", baseURL: "%s/gemini" } )
+			""".formatted( stubURL ),
+			context
+		);
+		// @formatter:on
+		assertThat( seenBody.get( "gemini" ) ).contains( "\"voice_name\":\"Kore\"" );
+	}
+
 	// ---------------------------------------------------------------------------------------------
 	// Offline: Grok
 	// ---------------------------------------------------------------------------------------------
@@ -491,6 +555,8 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 	@Test
 	public void testLiveOpenAI() {
 		assumeTrue( !OPENAI_KEY.isEmpty(), "OPENAI_API_KEY not set" );
+		// beforeEach seeds the OpenAI key as the module-global key. Use this provider's own key.
+		moduleRecord.settings.put( "apiKey", OPENAI_KEY );
 
 		// @formatter:off
 		executeWithTimeoutHandling(
@@ -522,6 +588,8 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 	@Test
 	public void testLiveMistral() {
 		assumeTrue( !MISTRAL_KEY.isEmpty(), "MISTRAL_API_KEY not set" );
+		// beforeEach seeds the OpenAI key as the module-global key. Use this provider's own key.
+		moduleRecord.settings.put( "apiKey", MISTRAL_KEY );
 
 		// @formatter:off
 		executeWithTimeoutHandling(
@@ -553,6 +621,8 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 	@Test
 	public void testLiveGemini() {
 		assumeTrue( !GEMINI_KEY.isEmpty(), "GEMINI_API_KEY not set" );
+		// beforeEach seeds the OpenAI key as the module-global key. Use this provider's own key.
+		moduleRecord.settings.put( "apiKey", GEMINI_KEY );
 
 		// @formatter:off
 		executeWithTimeoutHandling(
@@ -584,6 +654,8 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 	@Test
 	public void testLiveGrok() {
 		assumeTrue( !GROK_KEY.isEmpty(), "GROK_API_KEY not set" );
+		// beforeEach seeds the OpenAI key as the module-global key. Use this provider's own key.
+		moduleRecord.settings.put( "apiKey", GROK_KEY );
 
 		// @formatter:off
 		executeWithTimeoutHandling(
