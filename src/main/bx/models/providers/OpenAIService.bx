@@ -1174,6 +1174,14 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 	}
 
 	/**
+	 * The default speech params (model, voice) for this provider. Subclasses override it so they never inherit
+	 * OpenAI's defaults, since `static` inside this class always refers to OpenAI's own.
+	 */
+	private struct function speechDefaults(){
+		return static.DEFAULT_SPEECH_PARAMS
+	}
+
+	/**
 	 * Resolve the speech endpoint, honoring a per-request baseURL override (proxies, gateways, tests).
 	 * The override is the API root, e.g. https://api.openai.com/v1
 	 */
@@ -1196,15 +1204,21 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		// Seed defaults — use only speech-specific defaults; do NOT merge variables.params
 		// (those are chat-tier params and must not bleed across modalities).
 		arguments.speechRequest
-			.mergeServiceParams( static.DEFAULT_SPEECH_PARAMS )
+			.mergeServiceParams( speechDefaults() )
 			.setApiKeyIfEmpty( getAPIKey() )
 			.mergeServiceHeaders( variables.headers )
 
 		// Build data packet
 		var dataPacket = {
 			"model" : arguments.speechRequest.getModel(),
-			"input" : arguments.speechRequest.getText(),
-			"voice" : arguments.speechRequest.hasVoice() ? arguments.speechRequest.getVoice() : static.DEFAULT_SPEECH_PARAMS.voice
+			"input" : arguments.speechRequest.getText()
+		}
+		// A provider with no default voice (for example Mistral) sends none and lets the service choose
+		var defaultVoice = speechDefaults().voice ?: ""
+		if ( arguments.speechRequest.hasVoice() ) {
+			dataPacket.voice = arguments.speechRequest.getVoice()
+		} else if ( len( defaultVoice ) ) {
+			dataPacket.voice = defaultVoice
 		}
 
 		// Optional params

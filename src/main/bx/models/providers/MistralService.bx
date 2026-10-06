@@ -42,9 +42,12 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		}
 		DEFAULT_SPEECH_PARAMS = {
 			// https://docs.mistral.ai/capabilities/audio/text_to_speech/speech/
-			"model" : "voxtral-mini-tts-2603",
-			"voice" : "Charlotte"
+			// No default voice: "Charlotte" is not a valid Mistral voice (404 invalid_voice). When the caller
+			// does not choose one, the first preset voice is looked up from GET /v1/audio/voices.
+			"model" : "voxtral-mini-tts-2603"
 		}
+		// Preset voice id per endpoint, so the lookup happens once per process
+		PRESET_VOICE_CACHE = {}
 		DEFAULT_TRANSCRIPTION_PARAMS = {
 			// https://docs.mistral.ai/capabilities/audio/offline_transcription/
 			"model" : "voxtral-mini-latest"
@@ -180,8 +183,19 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 	}
 
 	/**
-	 * Mistral references voices by `voice_id` (a UUID for saved and cloned voices). A UUID passed as the
-	 * generic `voice` is mapped onto `voice_id`. Any other value is left untouched.
+	 * Mistral's own speech defaults, so OpenAI's default voice never reaches a Mistral request.
+	 */
+	@override
+	private struct function speechDefaults(){
+		return static.DEFAULT_SPEECH_PARAMS
+	}
+
+	/**
+	 * Mistral references voices by `voice_id`.
+	 * - A UUID passed as the generic `voice` is mapped onto `voice_id`. Any other value is left untouched.
+	 * - When no voice (and no reference audio) was requested, the first preset voice is used, looked up from
+	 *   GET /v1/audio/voices. If that lookup fails the request is sent without a voice and Mistral's own
+	 *   error explains what it needs.
 	 */
 	@override
 	private struct function preRequest(
@@ -197,7 +211,48 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 			arguments.dataPacket.voice_id = arguments.dataPacket.voice
 			structDelete( arguments.dataPacket, "voice" )
 		}
+
+		if (
+			arguments.operation == "speech" &&
+			!len( arguments.dataPacket.voice_id ?: "" ) &&
+			!len( arguments.dataPacket.voice ?: "" ) &&
+			!len( arguments.dataPacket.ref_audio ?: "" )
+		) {
+			var presetId = resolveDefaultVoiceId( arguments.aiRequest )
+			if ( len( presetId ) ) {
+				arguments.dataPacket.voice_id = presetId
+			}
+		}
 		return arguments.dataPacket
+	}
+
+	/**
+	 * Look up the first preset voice id from Mistral and cache it per endpoint.
+	 * Returns an empty string when the lookup fails, so speech is still attempted.
+	 *
+	 * @see https://docs.mistral.ai/api/endpoint/audio/voices
+	 */
+	private string function resolveDefaultVoiceId( required aiRequest ){
+		var voicesURL = resolveSpeechURL( arguments.aiRequest ).replace( "/audio/speech", "/audio/voices" )
+		if ( static.PRESET_VOICE_CACHE.keyExists( voicesURL ) ) {
+			return static.PRESET_VOICE_CACHE[ voicesURL ]
+		}
+		try {
+			var voiceResult = ""
+			bx:http url="#voicesURL#?type=preset&limit=1" method="get" result="voiceResult" timeout=arguments.aiRequest.getTimeout(){
+				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.aiRequest.getApiKey()#";
+			}
+			if ( voiceResult.statusCode == "200" ) {
+				var items = jsonDeserialize( voiceResult.fileContent ).items ?: []
+				if ( items.len() && len( items[ 1 ].id ?: "" ) ) {
+					static.PRESET_VOICE_CACHE[ voicesURL ] = items[ 1 ].id
+					return items[ 1 ].id
+				}
+			}
+		} catch ( any e ) {
+			writeLog( text: "Mistral preset voice lookup failed: #e.message#", type: "warning", log: "ai" )
+		}
+		return ""
 	}
 
 	/**

@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -46,15 +47,17 @@ import ortus.boxlang.runtime.scopes.Key;
  */
 public class SpeechProvidersTest extends BaseIntegrationTest {
 
-	private static final String			OPENAI_KEY	= dotenv.get( "OPENAI_API_KEY", "" );
-	private static final String			MISTRAL_KEY	= dotenv.get( "MISTRAL_API_KEY", "" );
-	private static final String			GEMINI_KEY	= dotenv.get( "GEMINI_API_KEY", "" );
-	private static final String			GROK_KEY	= dotenv.get( "GROK_API_KEY", "" );
+	private static final String					OPENAI_KEY	= dotenv.get( "OPENAI_API_KEY", "" );
+	private static final String					MISTRAL_KEY	= dotenv.get( "MISTRAL_API_KEY", "" );
+	private static final String					GEMINI_KEY	= dotenv.get( "GEMINI_API_KEY", "" );
+	private static final String					GROK_KEY	= dotenv.get( "GROK_API_KEY", "" );
 
-	private static HttpServer			stub;
-	private static String				stubURL;
-	private static Map<String, String>	seenBody	= new ConcurrentHashMap<>();
-	private static Map<String, String>	seenHeader	= new ConcurrentHashMap<>();
+	private static HttpServer					stub;
+	private static String						stubURL;
+	private static Map<String, String>			seenBody	= new ConcurrentHashMap<>();
+	private static Map<String, String>			seenHeader	= new ConcurrentHashMap<>();
+	/** How many times each stub endpoint was called, keyed by context path */
+	private static Map<String, AtomicInteger>	hits		= new ConcurrentHashMap<>();
 
 	private static String b64( String text ) {
 		return Base64.getEncoder().encodeToString( text.getBytes( StandardCharsets.UTF_8 ) );
@@ -72,6 +75,15 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 		exchange.sendResponseHeaders( 200, body.length );
 		try ( OutputStream out = exchange.getResponseBody() ) {
 			out.write( body );
+		}
+	}
+
+	private static void respondStatus( HttpExchange exchange, int status, String contentType, String body ) throws IOException {
+		byte[] bytes = body.getBytes( StandardCharsets.UTF_8 );
+		exchange.getResponseHeaders().add( "Content-Type", contentType );
+		exchange.sendResponseHeaders( status, bytes.length );
+		try ( OutputStream out = exchange.getResponseBody() ) {
+			out.write( bytes );
 		}
 	}
 
@@ -128,6 +140,45 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 			try ( OutputStream out = exchange.getResponseBody() ) {
 				out.write( events.getBytes( StandardCharsets.UTF_8 ) );
 			}
+		} );
+
+		// Mistral preset voice lookup. Each base path has its own cache entry in the service.
+		for ( String base : new String[] { "/mistral", "/mistralvoices", "/mistralexplicit" } ) {
+			stub.createContext( base + "/audio/voices", exchange -> {
+				hits.computeIfAbsent( base + "/audio/voices", k -> new AtomicInteger() ).incrementAndGet();
+				exchange.getRequestBody().readAllBytes();
+				seenHeader.put( base + ".voices.uri", exchange.getRequestURI().toString() );
+				seenHeader.put( base + ".voices.auth", String.valueOf( exchange.getRequestHeaders().getFirst( "Authorization" ) ) );
+				respond( exchange, "application/json",
+				    "{\"items\":[{\"id\":\"33333333-3333-3333-3333-333333333333\",\"name\":\"first-preset\",\"type\":\"preset\"}],\"total\":1}"
+				        .getBytes( StandardCharsets.UTF_8 ) );
+			} );
+		}
+		// Whole-file speech for the extra bases
+		for ( String base : new String[] { "/mistralvoices", "/mistralexplicit", "/mistralbad" } ) {
+			stub.createContext( base + "/audio/speech", exchange -> {
+				record( exchange, base.substring( 1 ) );
+				respond( exchange, "application/json", ( "{\"audio_data\":\"" + b64( "MP3DATA" ) + "\"}" ).getBytes( StandardCharsets.UTF_8 ) );
+			} );
+		}
+		// Voice lookup that fails: speech must still be attempted
+		stub.createContext( "/mistralbad/audio/voices", exchange -> {
+			hits.computeIfAbsent( "/mistralbad/audio/voices", k -> new AtomicInteger() ).incrementAndGet();
+			exchange.getRequestBody().readAllBytes();
+			exchange.sendResponseHeaders( 500, -1 );
+			exchange.close();
+		} );
+
+		// Gemini errors: a JSON error body, and a bare 500 with no body at all
+		stub.createContext( "/geminierr/models", exchange -> {
+			exchange.getRequestBody().readAllBytes();
+			respondStatus( exchange, 404, "application/json",
+			    "{\"error\":{\"code\":404,\"message\":\"models/old-tts is not found\",\"status\":\"NOT_FOUND\"}}" );
+		} );
+		stub.createContext( "/geminiempty/models", exchange -> {
+			exchange.getRequestBody().readAllBytes();
+			exchange.sendResponseHeaders( 500, -1 );
+			exchange.close();
 		} );
 
 		// Grok: raw audio bytes
@@ -267,6 +318,22 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( Key.of( "audioCount" ) ) ).isEqualTo( 1 );
 		assertThat( variables.getAsBoolean( Key.of( "completed" ) ) ).isFalse();
+	}
+
+	@DisplayName( "OpenAI still defaults to its own voice when none is requested" )
+	@Test
+	public void testOpenAIDefaultVoiceUnchanged() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			aiSpeakStream( "Hi", ( e ) => {}, {}, { provider: "openai", apiKey: "k", baseURL: "%s/openai" } )
+			""".formatted( stubURL ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( seenBody.get( "openai" ) ).contains( "\"voice\":\"ash\"" );
+		assertThat( seenBody.get( "openai" ) ).contains( "\"model\":\"tts-1\"" );
 	}
 
 	// ---------------------------------------------------------------------------------------------
@@ -448,6 +515,96 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 		assertThat( seenBody.get( "gemini" ) ).contains( "\"voice_name\":\"Kore\"" );
+	}
+
+	@DisplayName( "Mistral falls back to the first preset voice when none is requested, and caches the lookup" )
+	@Test
+	public void testMistralDefaultPresetVoice() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			aiSpeak( "One", {}, { provider: "mistral", apiKey: "mk", baseURL: "%s/mistralvoices" } )
+			aiSpeak( "Two", {}, { provider: "mistral", apiKey: "mk", baseURL: "%s/mistralvoices" } )
+			""".formatted( stubURL, stubURL ),
+			context
+		);
+		// @formatter:on
+
+		String body = seenBody.get( "mistralvoices" );
+		assertThat( body ).contains( "\"voice_id\":\"33333333-3333-3333-3333-333333333333\"" );
+		assertThat( body ).doesNotContain( "Charlotte" );
+		assertThat( seenHeader.get( "/mistralvoices.voices.uri" ) ).contains( "type=preset" );
+		assertThat( seenHeader.get( "/mistralvoices.voices.auth" ) ).isEqualTo( "Bearer mk" );
+		// Two speech calls, one lookup
+		assertThat( hits.get( "/mistralvoices/audio/voices" ).get() ).isEqualTo( 1 );
+	}
+
+	@DisplayName( "An explicit Mistral voice skips the preset lookup" )
+	@Test
+	public void testMistralExplicitVoiceSkipsLookup() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			aiSpeak( "Hi", { voice: "44444444-4444-4444-4444-444444444444" }, { provider: "mistral", apiKey: "mk", baseURL: "%s/mistralexplicit" } )
+			""".formatted( stubURL ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( seenBody.get( "mistralexplicit" ) ).contains( "\"voice_id\":\"44444444-4444-4444-4444-444444444444\"" );
+		assertThat( hits.get( "/mistralexplicit/audio/voices" ) ).isNull();
+	}
+
+	@DisplayName( "A failed Mistral preset lookup does not block the speech request" )
+	@Test
+	public void testMistralPresetLookupFailure() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			response = aiSpeak( "Hi", {}, { provider: "mistral", apiKey: "mk", baseURL: "%s/mistralbad" } )
+			size = response.getSize()
+			""".formatted( stubURL ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "size" ) ) ).isEqualTo( 7 );
+		assertThat( seenBody.get( "mistralbad" ) ).doesNotContain( "voice_id" );
+		assertThat( seenBody.get( "mistralbad" ) ).doesNotContain( "Charlotte" );
+	}
+
+	@DisplayName( "Gemini speech errors say what came back, including the HTTP status and model" )
+	@Test
+	public void testGeminiErrorsAreDiagnostic() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			jsonError = ""
+			emptyError = ""
+			try {
+				aiSpeak( "Hi", {}, { provider: "gemini", apiKey: "gk", baseURL: "%s/geminierr" } )
+			} catch( any e ) {
+				jsonError = e.message
+			}
+			try {
+				aiSpeak( "Hi", {}, { provider: "gemini", apiKey: "gk", baseURL: "%s/geminiempty" } )
+			} catch( any e ) {
+				emptyError = e.message
+			}
+			""".formatted( stubURL, stubURL ),
+			context
+		);
+		// @formatter:on
+
+		String jsonError = variables.getAsString( Key.of( "jsonError" ) );
+		assertThat( jsonError ).contains( "HTTP 404" );
+		assertThat( jsonError ).contains( "models/old-tts is not found" );
+		assertThat( jsonError ).contains( "gemini-3.8-flash-tts" );
+
+		// A bare 500 with no body must not produce an empty message
+		String emptyError = variables.getAsString( Key.of( "emptyError" ) );
+		assertThat( emptyError ).contains( "HTTP 500" );
+		assertThat( emptyError.trim() ).doesNotMatch( ".*error \\(HTTP 500, model [^)]*\\):\\s*$" );
 	}
 
 	// ---------------------------------------------------------------------------------------------

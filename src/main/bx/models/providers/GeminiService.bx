@@ -42,7 +42,9 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 			"model" : "gemini-embedding-001"
 		};
 		DEFAULT_SPEECH_PARAMS = {
-			"model" : "gemini-2.5-flash-preview-tts",
+			// gemini-2.5-flash-preview-tts is no longer listed in the Gemini docs. gemini-3.8-flash-tts is
+			// the documented model. https://ai.google.dev/gemini-api/docs/speech-generation
+			"model" : "gemini-3.8-flash-tts",
 			"voice" : "Kore"
 		};
 		DEFAULT_IMAGE_PARAMS = {
@@ -435,9 +437,13 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		}
 
 		if ( ttsResult.statusCode != "200" ) {
-			var errMsg = ttsResult.fileContent;
+			var errMsg = isSimpleValue( ttsResult.fileContent ) ? trim( ttsResult.fileContent ) : ""
 			try { errMsg = jsonDeserialize( ttsResult.fileContent ).error?.message ?: errMsg; } catch( any e ){}
-			throw( type: "ProviderError", message: "Gemini TTS error: #errMsg#" );
+			// Always say what came back: an empty body used to produce an empty, undiagnosable message
+			if ( !len( errMsg ) ) {
+				errMsg = len( ttsResult.errorDetail ?: "" ) ? ttsResult.errorDetail : "no response body"
+			}
+			throw( type: "ProviderError", message: "Gemini TTS error (HTTP #ttsResult.statusCode#, model #model#): #errMsg#" );
 		}
 
 		var parsed     = jsonDeserialize( ttsResult.fileContent );
