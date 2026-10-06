@@ -12,6 +12,12 @@ on:
       - "releases/v*"
       - development
 
+# Pushing to a PR branch fires both the push and pull_request triggers.
+# Group them by branch so only one run is active, and cancel stale runs on new pushes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     permissions:
