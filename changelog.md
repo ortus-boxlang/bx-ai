@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 Added
 
+- **HTTP streaming speech demo** (`examples/http-streaming-speech`): a runnable MiniServer demo that streams `aiSpeakStream()` audio to a browser, either as raw mp3 for an `<audio>` tag or as PCM events with word timestamps for a Web Audio player with barge-in.
 - **Cartesia provider** (`cartesia`): text-to-speech with Sonic (mp3, wav, pcm, mulaw, alaw) and speech-to-text with Ink-Whisper. Use `aiService( "cartesia", apiKey )` or set `CARTESIA_API_KEY`. `translate()` throws `UnsupportedCapability`. `flac` and `opus` throw `InvalidArgument`.
 - **Streaming text-to-speech**: new `aiSpeakStream( text, callback, params, options )` BIF and fluent `aiSpeak().text( "..." ).stream( callback )`, backed by the new `IAiSpeechStreamService` interface and the `speechStream` capability. The callback receives `{ type: "audio", data, format, sampleRate, sequence }`, `{ type: "timestamps", ... }` and a final `{ type: "done", chunks, bytes }`, so audio can be restreamed to a client as it is generated. Return `false` from the callback to stop early. Supported by Cartesia (bytes for mp3 and wav, SSE with word timestamps for pcm, mulaw and alaw), ElevenLabs, OpenAI, Mistral and Gemini. Grok only streams over a WebSocket, which is not implemented.
 

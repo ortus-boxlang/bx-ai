@@ -1,0 +1,81 @@
+<bx:script>
+	/**
+	 * Mode 2: stream the aiSpeakStream() events as newline-delimited JSON, one event per line.
+	 *
+	 *   {"type":"audio","data":"<base64 pcm>","format":"pcm","sampleRate":24000,"sequence":1}
+	 *   {"type":"timestamps","words":["Hello"],"start":[0.04],"end":[0.28]}
+	 *   {"type":"done","chunks":12,"bytes":96000}
+	 *
+	 * This is what a voice-agent client wants: raw low-latency PCM plus word timings, with the
+	 * same event contract the callback receives. The browser decodes each line as it arrives.
+	 *
+	 * DEMO ONLY: this endpoint spends your provider credits for anyone who can reach it.
+	 */
+	param name="url.text"     default="Hello! This is the voice agent view. Each word lights up as it is spoken.";
+	param name="url.provider" default="cartesia";
+	param name="url.voice"    default="female";
+
+	allowedProviders = [ "cartesia", "elevenlabs", "openai", "mistral", "gemini" ];
+
+	if ( !allowedProviders.findNoCase( url.provider ) || !len( trim( url.text ) ) || len( url.text ) > 500 ) {
+		getPageContext().setStatus( 400 );
+		writeOutput( "Bad request: provider must be one of #allowedProviders.toList()#, text 1 to 500 characters." );
+		return;
+	}
+
+	ByteBuffer  = createObject( "java", "java.nio.ByteBuffer" );
+	newline     = createObject( "java", "java.lang.Character" ).toString( 10 );
+	pageContext = getPageContext();
+	state       = { channel : "", started : false };
+
+	/** Write one text line to the response and flush it. Returns false when the client has gone away. */
+	function sendLine( required string line ){
+		try {
+			if ( !state.started ) {
+				pageContext.setContentType( "application/x-ndjson" );
+				pageContext.setHeader( "Cache-Control", "no-store" );
+				pageContext.setHeader( "X-Accel-Buffering", "no" );
+				state.channel = pageContext.getExchange().getResponseChannel();
+				state.started = true;
+			}
+			var buffer = ByteBuffer.wrap( charsetDecode( line & newline, "utf-8" ) );
+			while ( buffer.hasRemaining() ) {
+				state.channel.write( buffer );
+				if ( buffer.hasRemaining() ) {
+					state.channel.awaitWritable();
+				}
+			}
+			state.channel.flush();
+			return true;
+		} catch ( any e ) {
+			return false;
+		}
+	}
+
+	try {
+		// pcm streams over SSE for Cartesia, which also gives us word timestamps
+		aiSpeakStream(
+			url.text,
+			( event ) => {
+				if ( event.type == "audio" ) {
+					return sendLine( jsonSerialize( {
+						type       : "audio",
+						data       : toBase64( event.data ),
+						format     : event.format,
+						sampleRate : event.sampleRate,
+						sequence   : event.sequence
+					} ) );
+				}
+				return sendLine( jsonSerialize( event ) );
+			},
+			{ voice : url.voice, add_timestamps : true },
+			{ provider : url.provider, outputFormat : "pcm" }
+		);
+	} catch ( any e ) {
+		if ( !state.started ) {
+			pageContext.setStatus( 502 );
+			pageContext.setContentType( "text/plain" );
+			writeOutput( "Speech provider error: #e.message#" );
+		}
+	}
+</bx:script>

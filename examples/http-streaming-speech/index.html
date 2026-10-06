@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BoxLang AI: Streaming Speech over HTTP</title>
+<link rel="icon" href="data:,">
+<style>
+	:root {
+		--bg: rgb(247, 248, 250);
+		--card: rgb(255, 255, 255);
+		--text: rgb(26, 32, 44);
+		--muted: rgb(100, 110, 125);
+		--line: rgb(223, 227, 233);
+		--accent: rgb(0, 130, 120);
+		--accent-text: rgb(255, 255, 255);
+		--hl: rgb(255, 224, 130);
+		--err: rgb(190, 40, 40);
+	}
+	@media (prefers-color-scheme: dark) {
+		:root {
+			--bg: rgb(18, 21, 26);
+			--card: rgb(27, 31, 38);
+			--text: rgb(231, 235, 241);
+			--muted: rgb(150, 160, 175);
+			--line: rgb(48, 54, 64);
+			--accent: rgb(60, 190, 175);
+			--accent-text: rgb(10, 20, 20);
+			--hl: rgb(120, 95, 20);
+			--err: rgb(255, 120, 120);
+		}
+	}
+	* { box-sizing: border-box; }
+	body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+	main { max-width: 760px; margin: 0 auto; padding: 24px 16px 48px; }
+	h1 { font-size: 1.5rem; margin: 0 0 4px; }
+	.sub { color: var(--muted); margin: 0 0 20px; }
+	.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+	label { display: block; font-size: .85rem; color: var(--muted); margin-bottom: 4px; }
+	textarea, select { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+	textarea { min-height: 84px; resize: vertical; }
+	.row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+	.tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+	.tab { flex: 1; font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+	.tab[aria-selected="true"] { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+	.actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+	button.act { font: inherit; padding: 9px 18px; border-radius: 8px; border: 0; background: var(--accent); color: var(--accent-text); cursor: pointer; }
+	button.act.secondary { background: transparent; color: var(--text); border: 1px solid var(--line); }
+	button.act:disabled { opacity: .5; cursor: not-allowed; }
+	.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 14px; }
+	.stat { border: 1px solid var(--line); border-radius: 8px; padding: 8px; text-align: center; }
+	.stat b { display: block; font-size: 1.15rem; }
+	.stat span { font-size: .75rem; color: var(--muted); }
+	.stats.three { grid-template-columns: repeat(3, 1fr); }
+	.words { margin-top: 14px; min-height: 2.6em; font-size: 1.15rem; line-height: 1.9; }
+	.word { padding: 2px 4px; border-radius: 4px; transition: background .08s; }
+	.word.on { background: var(--hl); }
+	.note { color: var(--muted); font-size: .85rem; margin-top: 12px; }
+	.error { color: var(--err); margin-top: 10px; white-space: pre-wrap; }
+	audio { width: 100%; margin-top: 14px; }
+	[hidden] { display: none !important; }
+	code { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; font-size: .85em; }
+	@media (max-width: 520px) { .row { grid-template-columns: 1fr; } .stats { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<main>
+	<h1>Streaming speech over HTTP</h1>
+	<p class="sub">BoxLang <code>aiSpeakStream()</code> sends audio to your browser while the provider is still generating it.</p>
+
+	<div class="card">
+		<label for="text">Text to speak</label>
+		<textarea id="text" maxlength="500">BoxLang makes it easy to stream speech to your customers. You start hearing this sentence long before the whole thing has been generated.</textarea>
+		<div class="row">
+			<div>
+				<label for="provider">Provider (needs its API key on the server)</label>
+				<select id="provider">
+					<option value="cartesia">Cartesia</option>
+					<option value="elevenlabs">ElevenLabs</option>
+					<option value="openai">OpenAI</option>
+					<option value="mistral">Mistral</option>
+					<option value="gemini">Gemini</option>
+				</select>
+			</div>
+			<div>
+				<label for="voice">Voice</label>
+				<select id="voice">
+					<option value="female">Female</option>
+					<option value="male">Male</option>
+				</select>
+			</div>
+		</div>
+	</div>
+
+	<div class="tabs" role="tablist">
+		<button class="tab" role="tab" id="tab-simple" aria-selected="true" aria-controls="panel-simple">Simple: mp3 in an audio tag</button>
+		<button class="tab" role="tab" id="tab-agent" aria-selected="false" aria-controls="panel-agent">Voice agent: PCM + Web Audio</button>
+	</div>
+
+	<section class="card" id="panel-simple" role="tabpanel" aria-labelledby="tab-simple">
+		<p style="margin-top:0">The server streams raw mp3 bytes. The browser's own <code>&lt;audio&gt;</code> element plays them as they arrive. No JavaScript player is needed.</p>
+		<div class="actions">
+			<button class="act" id="simple-play">Play</button>
+			<button class="act secondary" id="simple-stop">Stop</button>
+		</div>
+		<audio id="player" controls></audio>
+		<div class="stats three">
+			<div class="stat"><b id="s1-first">-</b><span>time to first sound</span></div>
+			<div class="stat"><b id="s1-state">idle</b><span>state</span></div>
+			<div class="stat"><b id="s1-pos">-</b><span>played so far</span></div>
+		</div>
+		<p class="note">A streamed response has no known length, so the player cannot show a total duration. That is normal for live audio.</p>
+		<div class="error" id="s1-error" hidden></div>
+	</section>
+
+	<section class="card" id="panel-agent" role="tabpanel" aria-labelledby="tab-agent" hidden>
+		<p style="margin-top:0">The server streams the <code>aiSpeakStream()</code> events as newline-delimited JSON: base64 PCM chunks plus word timestamps. This page schedules each chunk with the Web Audio API and lights up the words as they are spoken. <b>Stop</b> aborts the request, which closes the provider connection (barge-in).</p>
+		<div class="actions">
+			<button class="act" id="agent-play">Speak</button>
+			<button class="act secondary" id="agent-stop" disabled>Stop (barge in)</button>
+		</div>
+		<div class="words" id="words" aria-live="polite"></div>
+		<div class="stats">
+			<div class="stat"><b id="s2-first">-</b><span>time to first audio</span></div>
+			<div class="stat"><b id="s2-chunks">0</b><span>audio chunks</span></div>
+			<div class="stat"><b id="s2-kb">0</b><span>KB received</span></div>
+			<div class="stat"><b id="s2-state">idle</b><span>state</span></div>
+		</div>
+		<div class="error" id="s2-error" hidden></div>
+		<p class="note">Cartesia sends word timestamps. Other providers stream audio only, so the words panel stays empty for them.</p>
+	</section>
+
+	<p class="note">Demo only: the endpoints spend your provider credits for anyone who can reach them. Add authentication and rate limits before exposing them.</p>
+</main>
+
+<script>
+(function () {
+	"use strict";
+	var $ = function (id) { return document.getElementById(id); };
+
+	function params() {
+		return "text=" + encodeURIComponent($("text").value.trim()) +
+			"&provider=" + encodeURIComponent($("provider").value) +
+			"&voice=" + encodeURIComponent($("voice").value);
+	}
+
+	// ---- Tabs ------------------------------------------------------------
+	function selectTab(which) {
+		["simple", "agent"].forEach(function (name) {
+			var on = name === which;
+			$("tab-" + name).setAttribute("aria-selected", on ? "true" : "false");
+			$("panel-" + name).hidden = !on;
+		});
+	}
+	$("tab-simple").onclick = function () { selectTab("simple"); };
+	$("tab-agent").onclick = function () { selectTab("agent"); };
+
+	// ---- Mode 1: simple <audio> ------------------------------------------
+	var player = $("player");
+	var clickedAt = 0;
+
+	function showError(id, message) {
+		var el = $(id);
+		el.textContent = message || "";
+		el.hidden = !message;
+	}
+
+	$("simple-play").onclick = function () {
+		showError("s1-error", "");
+		clickedAt = performance.now();
+		$("s1-first").textContent = "-";
+		$("s1-state").textContent = "loading";
+		// The src is just the streaming endpoint. The browser handles the rest.
+		player.src = "speak.bxm?format=mp3&" + params();
+		player.play().catch(function (e) { showError("s1-error", "Could not start playback: " + e.message); });
+	};
+	$("simple-stop").onclick = function () {
+		player.pause();
+		player.removeAttribute("src");
+		player.load(); // drops the connection, which stops the server-side generation
+		$("s1-state").textContent = "stopped";
+	};
+	player.addEventListener("playing", function () {
+		if (clickedAt) {
+			$("s1-first").textContent = Math.round(performance.now() - clickedAt) + " ms";
+			clickedAt = 0;
+		}
+		$("s1-state").textContent = "playing";
+	});
+	player.addEventListener("ended", function () { $("s1-state").textContent = "finished"; });
+	player.addEventListener("error", function () {
+		if (player.getAttribute("src")) { showError("s1-error", "The server could not stream audio. Check the provider and its API key."); $("s1-state").textContent = "error"; }
+	});
+	setInterval(function () {
+		if (!player.getAttribute("src")) { return; }
+		$("s1-pos").textContent = player.currentTime.toFixed(1) + " s";
+	}, 250);
+
+	// ---- Mode 2: NDJSON events + Web Audio -------------------------------
+	var ctx = null, nextTime = 0, audioStart = null, sources = [], controller = null;
+	var leftover = null, chunkCount = 0, byteCount = 0, wordTimes = [], rafId = 0;
+
+	function resetAgent() {
+		sources.forEach(function (s) { try { s.stop(); } catch (e) { /* already stopped */ } });
+		sources = []; nextTime = 0; audioStart = null; leftover = null;
+		chunkCount = 0; byteCount = 0; wordTimes = [];
+		$("words").innerHTML = "";
+		$("s2-first").textContent = "-"; $("s2-chunks").textContent = "0"; $("s2-kb").textContent = "0";
+		cancelAnimationFrame(rafId);
+	}
+
+	function base64ToBytes(b64) {
+		var bin = atob(b64), out = new Uint8Array(bin.length);
+		for (var i = 0; i < bin.length; i++) { out[i] = bin.charCodeAt(i); }
+		return out;
+	}
+
+	function playPcm(bytes, sampleRate) {
+		// A chunk can end mid-sample. Carry the odd byte into the next chunk.
+		if (leftover !== null) {
+			var merged = new Uint8Array(bytes.length + 1);
+			merged[0] = leftover; merged.set(bytes, 1); bytes = merged; leftover = null;
+		}
+		if (bytes.length % 2) { leftover = bytes[bytes.length - 1]; bytes = bytes.subarray(0, bytes.length - 1); }
+		if (!bytes.length) { return; }
+		var view = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+		var samples = new Float32Array(bytes.length / 2);
+		for (var i = 0; i < samples.length; i++) { samples[i] = view.getInt16(i * 2, true) / 32768; }
+		var buffer = ctx.createBuffer(1, samples.length, sampleRate);
+		buffer.copyToChannel(samples, 0);
+		var src = ctx.createBufferSource();
+		src.buffer = buffer; src.connect(ctx.destination);
+		// Chunks arrive faster than real time, so queue each one right after the previous
+		var startAt = Math.max(ctx.currentTime + 0.05, nextTime);
+		src.start(startAt);
+		nextTime = startAt + buffer.duration;
+		if (audioStart === null) { audioStart = startAt; }
+		sources.push(src);
+	}
+
+	function addWords(words, starts, ends) {
+		var box = $("words");
+		words.forEach(function (w, i) {
+			var span = document.createElement("span");
+			span.className = "word"; span.textContent = w + " ";
+			box.appendChild(span);
+			wordTimes.push({ el: span, start: starts[i], end: ends[i] });
+		});
+	}
+
+	function highlightLoop() {
+		if (audioStart !== null && ctx) {
+			var t = ctx.currentTime - audioStart;
+			wordTimes.forEach(function (w) { w.el.classList.toggle("on", t >= w.start && t < w.end); });
+		}
+		rafId = requestAnimationFrame(highlightLoop);
+	}
+
+	function handleEvent(evt, startedAt) {
+		if (evt.type === "audio") {
+			if (chunkCount === 0) { $("s2-first").textContent = Math.round(performance.now() - startedAt) + " ms"; }
+			var bytes = base64ToBytes(evt.data);
+			chunkCount++; byteCount += bytes.length;
+			$("s2-chunks").textContent = chunkCount;
+			$("s2-kb").textContent = (byteCount / 1024).toFixed(1);
+			playPcm(bytes, evt.sampleRate || 24000);
+		} else if (evt.type === "timestamps") {
+			addWords(evt.words || [], evt.start || [], evt.end || []);
+		} else if (evt.type === "done") {
+			$("s2-state").textContent = "streamed " + evt.chunks + " chunks";
+		}
+	}
+
+	function stopAgent(label) {
+		if (controller) { controller.abort(); controller = null; }
+		resetAgentAudioOnly();
+		$("s2-state").textContent = label || "stopped";
+		$("agent-play").disabled = false; $("agent-stop").disabled = true;
+	}
+	function resetAgentAudioOnly() {
+		sources.forEach(function (s) { try { s.stop(); } catch (e) { /* already stopped */ } });
+		sources = [];
+	}
+
+	$("agent-play").onclick = async function () {
+		showError("s2-error", "");
+		resetAgent();
+		if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); }
+		await ctx.resume();
+		controller = new AbortController();
+		$("agent-play").disabled = true; $("agent-stop").disabled = false;
+		$("s2-state").textContent = "streaming";
+		var startedAt = performance.now();
+		highlightLoop();
+		try {
+			var res = await fetch("speak-events.bxm?" + params(), { signal: controller.signal });
+			if (!res.ok) { throw new Error(await res.text()); }
+			var reader = res.body.getReader(), decoder = new TextDecoder(), pending = "";
+			for (;;) {
+				var step = await reader.read();
+				if (step.done) { break; }
+				pending += decoder.decode(step.value, { stream: true });
+				var lines = pending.split("\n");
+				pending = lines.pop();
+				lines.forEach(function (line) { if (line.trim()) { handleEvent(JSON.parse(line), startedAt); } });
+			}
+			$("agent-play").disabled = false; $("agent-stop").disabled = true;
+		} catch (e) {
+			if (e.name === "AbortError") { return; }
+			showError("s2-error", e.message);
+			$("s2-state").textContent = "error";
+			$("agent-play").disabled = false; $("agent-stop").disabled = true;
+		}
+	};
+	$("agent-stop").onclick = function () { stopAgent("stopped (barge-in)"); };
+})();
+</script>
+</body>
+</html>
