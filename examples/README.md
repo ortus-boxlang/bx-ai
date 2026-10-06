@@ -173,6 +173,10 @@ Autonomous agents with memory and tools:
 - **05-multi-memory-agent.bxs** - One agent using multiple memory types simultaneously
 - **06-sub-agents.bxs** - Agent orchestration with specialized sub-agents
 
+### `/http-streaming-speech` - Stream Speech to a Browser over HTTP
+
+A complete web demo of `aiSpeakStream()`. BoxLang streams audio to the browser as it is generated, either as raw mp3 for an `<audio>` tag or as PCM events with word timestamps for a voice-agent style player. See its [README](http-streaming-speech/README.md).
+
 ### `/advanced` - Advanced Features
 
 Advanced capabilities and memory systems:
