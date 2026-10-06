@@ -814,7 +814,8 @@ var agent = aiAgent(
 The module supports three audio operations through capability interfaces:
 
 1. **Text-to-Speech** (`aiSpeak()` BIF) - `IAiSpeechService`
-   - Providers: OpenAI, Grok, Gemini, Mistral, ElevenLabs
+   - Providers: OpenAI, Grok, Gemini, Mistral, ElevenLabs, Cartesia
+   - `aiSpeakStream( text, callback, params, options )` streams audio via `IAiSpeechStreamService` (Cartesia, ElevenLabs, OpenAI, Mistral, Gemini)
    - Configurable voice, output format, speed
    - Gender-to-voice mapping via `voiceGenderMap` settings
 

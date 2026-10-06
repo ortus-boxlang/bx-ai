@@ -11,6 +11,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 Added
 
+- **Cartesia provider** (`cartesia`): text-to-speech with Sonic (mp3, wav, pcm, mulaw, alaw) and speech-to-text with Ink-Whisper. Use `aiService( "cartesia", apiKey )` or set `CARTESIA_API_KEY`. `translate()` throws `UnsupportedCapability`. `flac` and `opus` throw `InvalidArgument`.
+- **Streaming text-to-speech**: new `aiSpeakStream( text, callback, params, options )` BIF and fluent `aiSpeak().text( "..." ).stream( callback )`, backed by the new `IAiSpeechStreamService` interface and the `speechStream` capability. The callback receives `{ type: "audio", data, format, sampleRate, sequence }`, `{ type: "timestamps", ... }` and a final `{ type: "done", chunks, bytes }`, so audio can be restreamed to a client as it is generated. Return `false` from the callback to stop early. Supported by Cartesia (bytes for mp3 and wav, SSE with word timestamps for pcm, mulaw and alaw), ElevenLabs, OpenAI, Mistral and Gemini. Grok only streams over a WebSocket, which is not implemented.
+
+### 🐛 Fixed
+
+- **ElevenLabs** ignored the requested voice, model, output format and speed, so `voice`, `.female()` and `outputFormat` had no effect. They are now honored, `wav` output is a real wav, and the STT upload uses the documented `file` field. The default voice is now the premade Sarah voice because Rachel is a library voice that free plan keys cannot use over the API.
+- **Grok** text-to-speech now sends the documented xAI body (`text`, `voice_id`, `language`, `output_format`) and the default voice is `eve`. The `male()` and `female()` keywords map to `rex` and `eve`.
+- **Mistral** text-to-speech now decodes the JSON `audio_data` response, and a UUID voice is sent as `voice_id`.
+- **Gemini** text-to-speech returned headerless PCM labelled as wav. It is now wrapped in a RIFF header so the file plays.
+
 - **Cloudflare Workers AI provider** (`cloudflare`): chat, streaming, tool calling and embeddings through the Workers AI OpenAI compatible endpoints. Requires an account ID via the `accountId` option or the `CLOUDFLARE_ACCOUNT_ID` environment variable, plus `CLOUDFLARE_API_KEY`. Defaults to `@cf/openai/gpt-oss-20b` for chat and `@cf/baai/bge-base-en-v1.5` for embeddings.
 
 ## [3.5.0] - 2026-09-11

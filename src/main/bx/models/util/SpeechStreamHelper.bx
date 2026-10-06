@@ -1,0 +1,221 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Shared transport helpers for providers implementing IAiSpeechStreamService.
+ * They normalize every provider's stream onto one callback contract:
+ *
+ * - `{ type: "audio", data, format, sampleRate, sequence }`
+ * - `{ type: "timestamps", ... }`
+ * - `{ type: "done", chunks, bytes }`
+ *
+ * Two transports are provided:
+ *
+ * - `streamBinary()` for providers that stream raw audio bytes over chunked HTTP (OpenAI, ElevenLabs, Cartesia bytes)
+ * - `streamSSE()`    for providers that stream base64 audio inside Server-Sent Events (Cartesia, Mistral, Gemini)
+ *
+ * Both run on `BinaryStreamClient` (Java). The `timeout` is an idle timeout: the longest wait for response headers
+ * or between received bytes. Stopping early (callback returns false) closes the connection.
+ */
+import java:ortus.boxlang.ai.util.BinaryStreamClient@bxai;
+
+class {
+
+	/**
+	 * Stream a binary (chunked) HTTP audio response to the callback as the bytes arrive.
+	 *
+	 * @providerName Provider name for error messages and the summary
+	 * @url          The endpoint to POST to
+	 * @headers      Request headers
+	 * @body         The serialized request body
+	 * @format       Audio format label placed on each chunk (mp3, wav, pcm, mulaw...)
+	 * @sampleRate   Sample rate placed on each chunk (0 when unknown/not applicable)
+	 * @timeout      Idle timeout in seconds (longest wait for headers or between received bytes)
+	 * @callback     The user callback
+	 * @model        Model name for the summary
+	 *
+	 * @return Summary struct
+	 */
+	static struct function streamBinary(
+		required string providerName,
+		required string url,
+		required struct headers,
+		required string body,
+		required string format,
+		numeric sampleRate = 0,
+		numeric timeout    = 30,
+		required function callback,
+		string model = ""
+	){
+		var state        = { sequence : 0, bytes : 0, stopped : false }
+		var userCallback = arguments.callback
+		var fmt          = arguments.format
+		var rate         = arguments.sampleRate
+
+		try {
+			BinaryStreamClient.streamPost(
+				arguments.url,
+				arguments.headers,
+				arguments.body,
+				javacast( "int", arguments.timeout ),
+				javacast( "int", 0 ),
+				( chunkBytes ) => {
+					state.sequence++
+					state.bytes += chunkBytes.len()
+					var result = userCallback( {
+						type       : "audio",
+						data       : chunkBytes,
+						format     : fmt,
+						sampleRate : rate,
+						sequence   : state.sequence
+					} )
+					if ( static.isStop( result ) ) {
+						state.stopped = true
+						return false
+					}
+					return true
+				}
+			)
+		} catch ( any e ) {
+			throw( type: "ProviderError", message: "#arguments.providerName# TTS stream error: #e.message#" )
+		}
+
+		return static.finish( arguments.providerName, arguments.model, fmt, rate, state, userCallback )
+	}
+
+	/**
+	 * Stream a Server-Sent Events audio response to the callback.
+	 *
+	 * The provider supplies a `parser` that converts one raw SSE event struct ({ data, event, id }) into an
+	 * array of normalized events: `{ type: "audio", data: binary }` or `{ type: "timestamps", ... }`.
+	 * The helper stamps format, sample rate, and sequence numbers and manages stop and done handling.
+	 *
+	 * @providerName Provider name for error messages and the summary
+	 * @url          The endpoint to POST to
+	 * @headers      Request headers
+	 * @body         The serialized request body
+	 * @format       Audio format label placed on each chunk
+	 * @sampleRate   Sample rate placed on each chunk
+	 * @timeout      Idle timeout in seconds (longest wait for headers or between received bytes)
+	 * @callback     The user callback
+	 * @parser       function( event ) returning an array of normalized events
+	 * @model        Model name for the summary
+	 *
+	 * @return Summary struct
+	 */
+	static struct function streamSSE(
+		required string providerName,
+		required string url,
+		required struct headers,
+		required string body,
+		required string format,
+		numeric sampleRate = 0,
+		numeric timeout    = 30,
+		required function callback,
+		required function parser,
+		string model = ""
+	){
+		var state        = { sequence : 0, bytes : 0, stopped : false, error : "" }
+		var userCallback = arguments.callback
+		var eventParser  = arguments.parser
+		var fmt          = arguments.format
+		var rate         = arguments.sampleRate
+
+		try {
+			// Returning false from the event handler closes the connection, so an early stop
+			// (or a provider error event) ends generation immediately instead of draining the stream
+			BinaryStreamClient.streamSsePost(
+				arguments.url,
+				arguments.headers,
+				arguments.body,
+				javacast( "int", arguments.timeout ),
+				( event ) => {
+					if ( event.data.trim().isEmpty() ) {
+						return true
+					}
+					var events = []
+					try {
+						events = eventParser( event )
+					} catch ( any e ) {
+						state.error = "Unable to parse stream event: #e.message#"
+						return false
+					}
+					for ( var evt in events ) {
+						if ( evt.type == "error" ) {
+							state.error = evt.message ?: "Unknown stream error"
+							return false
+						}
+						if ( evt.type == "done" ) {
+							// The helper always emits the final done event itself
+							continue
+						}
+						if ( evt.type == "audio" ) {
+							state.sequence++
+							state.bytes += evt.data.len()
+							evt.format     = fmt
+							evt.sampleRate = rate
+							evt.sequence   = state.sequence
+						}
+						if ( static.isStop( userCallback( evt ) ) ) {
+							state.stopped = true
+							return false
+						}
+					}
+					return true
+				}
+			)
+		} catch ( any e ) {
+			throw( type: "ProviderError", message: "#arguments.providerName# TTS stream error: #e.message#" )
+		}
+
+		if ( len( state.error ) ) {
+			throw( type: "ProviderError", message: "#arguments.providerName# TTS stream error: #state.error#" )
+		}
+
+		return static.finish( arguments.providerName, arguments.model, fmt, rate, state, userCallback )
+	}
+
+	/**
+	 * Emit the terminal done event and build the summary struct.
+	 */
+	private static struct function finish(
+		required string providerName,
+		required string model,
+		required string format,
+		required numeric sampleRate,
+		required struct state,
+		required function callback
+	){
+		var summary = {
+			provider   : arguments.providerName,
+			model      : arguments.model,
+			audioFormat: arguments.format,
+			sampleRate : arguments.sampleRate,
+			chunks     : arguments.state.sequence,
+			bytes      : arguments.state.bytes,
+			completed  : !arguments.state.stopped
+		}
+		// Always close the stream with a done event, even when the caller stopped early
+		arguments.callback( { type: "done", chunks: summary.chunks, bytes: summary.bytes } )
+		return summary
+	}
+
+	/**
+	 * True only for an explicit boolean false returned by the user callback.
+	 * Any other return value (null, numbers, strings) means "keep streaming".
+	 */
+	private static boolean function isStop( any result ){
+		return !isNull( arguments.result ) && isInstanceOf( arguments.result, "java.lang.Boolean" ) && !arguments.result
+	}
+
+}

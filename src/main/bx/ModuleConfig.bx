@@ -177,10 +177,11 @@ class {
 				 */
 				voiceGenderMap : {
 					openai     : { male : "ash",                     female : "nova"                   },
-					grok       : { male : "onyx",                    female : "nova"                   },
+					grok       : { male : "rex",                     female : "eve"                    },
 					gemini     : { male : "Fenrir",                  female : "Aoede"                  },
 					mistral    : { male : "",                        female : "Charlotte"               },
-					elevenlabs : { male : "",                        female : "21m00Tcm4TlvDq8ikWAM"   }
+					elevenlabs : { male : "CwhRBWXzGAHq8TQ4Fs17", female : "EXAVITQu4vr4xnSDxMaL" },
+					cartesia   : { male : "47c38ca4-5f35-497b-b1a3-415245fb35e1", female : "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4" }
 				}
 			},
 
