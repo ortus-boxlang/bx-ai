@@ -154,7 +154,6 @@ class extends="BaseService" implements="IAiChatService" {
 			"reasoning": "",
 			"toolCalls": [],
 			"toolInputBuffers": {},
-			"toolCallIndexMap": {},
 			"stopReason": "",
 			"emittedAnyText": false,
 			"usage": { "input_tokens": 0, "output_tokens": 0 }
@@ -212,8 +211,7 @@ class extends="BaseService" implements="IAiChatService" {
 						};
 
 						streamState.toolCalls.append( newToolCall );
-						streamState.toolCallIndexMap[ toString( contentBlockIndex ) ] = streamState.toolCalls.len();
-						streamState.toolInputBuffers[ toString( contentBlockIndex ) ] = "";
+								streamState.toolInputBuffers[ toString( contentBlockIndex ) ] = "";
 						return;
 					}
 
@@ -367,7 +365,13 @@ class extends="BaseService" implements="IAiChatService" {
 				if( inputBuffer.len() ){
 					try {
 						toolCall.input = jsonDeserialize( inputBuffer );
-					} catch( any e ){}
+					} catch( any e ){
+						writeLog(
+							text: "Claude stream: could not parse accumulated tool input for [#arguments.toolCall.name ?: ""#], the tool runs with the last complete input: #local.e.message#",
+							type: "warning",
+							log : "ai"
+						);
+					}
 				}
 			} );
 
@@ -441,6 +445,7 @@ class extends="BaseService" implements="IAiChatService" {
 					toolName   : toolCall.name ?: tool.getName(),
 					toolArgs   : toolCall.input ?: {}
 				}
+				var originalToolArgs = duplicate( toolCall.input ?: {} )
 				var toolBeforeResult = runtimeChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
 				// Cancel means abort the run outright — hard-stop immediately, exactly as before.
@@ -450,7 +455,7 @@ class extends="BaseService" implements="IAiChatService" {
 					break
 				}
 
-				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: resolveToolArgs( toolContext, originalToolArgs, () => toolCall.input ?: "" ), result: toolBeforeResult } )
 			}
 
 			if ( isObject( claudeStreamTerminalResult ) ) {
@@ -487,12 +492,14 @@ class extends="BaseService" implements="IAiChatService" {
 					}
 					var resumeLedger = batch.map( ( entry ) => {
 						if ( entry.result.isDeferred() || entry.result.isSuspended() ) {
-							return { toolName: entry.toolName, status: "pending" }
+							return { toolName: entry.toolName, status: "pending", toolArgs: entry.toolArgs }
 						}
 						if ( entry.result.isRejected() ) {
 							return { toolName: entry.toolName, status: "blocked", reason: entry.result.getReason() }
 						}
-						return { toolName: entry.toolName, status: "execute" }
+						// toolArgs: the beforeToolCall-resolved arguments, so a resumed batch runs what the
+						// non-suspended path would have (middleware rewrites were lost on resume without it).
+						return { toolName: entry.toolName, status: "execute", toolArgs: entry.toolArgs }
 					} )
 					var mergedData = duplicate( batchResult.getData() )
 					mergedData[ "assistantMessage" ] = assistantMessage
@@ -519,11 +526,14 @@ class extends="BaseService" implements="IAiChatService" {
 				}
 
 				var capturedTool     = entry.tool
-				var capturedToolCall = entry.toolCall
+				// entry.toolArgs, not toolCall.input: beforeToolCall middleware is allowed to
+				// rewrite ctx.toolArgs (validation, coercion, redaction) and pass 1 stored the
+				// result on the entry. Invoking with the raw toolCall.input discarded that edit.
+				var capturedToolArgs = entry.toolArgs ?: ( entry.toolCall.input ?: {} )
 				var toolResult = runtimeChatRequest.fireWrapMiddleware(
 					"wrapToolCall",
-					{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: runtimeChatRequest, toolName: entry.toolName, toolArgs: entry.toolCall.input ?: {} },
-					() => capturedTool.invoke( args: capturedToolCall.input, chatRequest: runtimeChatRequest )
+					{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: runtimeChatRequest, toolName: entry.toolName, toolArgs: capturedToolArgs },
+					() => capturedTool.invoke( args: capturedToolArgs, chatRequest: runtimeChatRequest )
 				);
 
 				runtimeChatRequest.fireMiddleware(
@@ -854,6 +864,7 @@ class extends="BaseService" implements="IAiChatService" {
 					toolName   : toolCall.name ?: tool.getName(),
 					toolArgs   : toolCall.input ?: {}
 				}
+				var originalToolArgs = duplicate( toolCall.input ?: {} )
 				var toolBeforeResult = thisChatRequest.fireMiddleware( "beforeToolCall", toolContext )
 
 				if ( toolBeforeResult.isCancelled() ) {
@@ -869,7 +880,7 @@ class extends="BaseService" implements="IAiChatService" {
 					break
 				}
 
-				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: toolContext.toolArgs, result: toolBeforeResult } )
+				batch.append( { tool: tool, toolCall: toolCall, toolName: toolContext.toolName, toolArgs: resolveToolArgs( toolContext, originalToolArgs, () => toolCall.input ?: "" ), result: toolBeforeResult } )
 			}
 
 			if ( isObject( terminalToolResult ) ) {
@@ -908,12 +919,14 @@ class extends="BaseService" implements="IAiChatService" {
 					}
 					var resumeLedger = batch.map( ( entry ) => {
 						if ( entry.result.isDeferred() || entry.result.isSuspended() ) {
-							return { toolName: entry.toolName, status: "pending" }
+							return { toolName: entry.toolName, status: "pending", toolArgs: entry.toolArgs }
 						}
 						if ( entry.result.isRejected() ) {
 							return { toolName: entry.toolName, status: "blocked", reason: entry.result.getReason() }
 						}
-						return { toolName: entry.toolName, status: "execute" }
+						// toolArgs: the beforeToolCall-resolved arguments, so a resumed batch runs what the
+						// non-suspended path would have (middleware rewrites were lost on resume without it).
+						return { toolName: entry.toolName, status: "execute", toolArgs: entry.toolArgs }
 					} )
 					var mergedData = duplicate( batchResult.getData() )
 					mergedData[ "assistantMessage" ] = assistantMessage
@@ -937,11 +950,14 @@ class extends="BaseService" implements="IAiChatService" {
 				}
 
 				var capturedTool     = entry.tool
-				var capturedToolCall = entry.toolCall
+				// entry.toolArgs, not toolCall.input: beforeToolCall middleware is allowed to
+				// rewrite ctx.toolArgs (validation, coercion, redaction) and pass 1 stored the
+				// result on the entry. Invoking with the raw toolCall.input discarded that edit.
+				var capturedToolArgs = entry.toolArgs ?: ( entry.toolCall.input ?: {} )
 				var toolResult = thisChatRequest.fireWrapMiddleware(
 					"wrapToolCall",
-					{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: entry.toolCall.input ?: {} },
-					() => capturedTool.invoke( args: capturedToolCall.input, chatRequest: thisChatRequest )
+					{ tool: entry.tool, toolCall: entry.toolCall, chatRequest: thisChatRequest, toolName: entry.toolName, toolArgs: capturedToolArgs },
+					() => capturedTool.invoke( args: capturedToolArgs, chatRequest: thisChatRequest )
 				);
 
 				thisChatRequest.fireMiddleware(
@@ -1128,7 +1144,8 @@ class extends="BaseService" implements="IAiChatService" {
 			}
 
 			var tool     = toolAttempt.get()
-			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs : ( toolCall.input ?: {} )
+			var toolArgs = isStruct( ledgerEntry.editedArgs ?: "" ) ? ledgerEntry.editedArgs
+				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : ( toolCall.input ?: {} ) )
 			var capturedTool = tool
 			var capturedArgs = toolArgs
 			var toolResult = thisChatRequest.fireWrapMiddleware(
@@ -1233,7 +1250,8 @@ class extends="BaseService" implements="IAiChatService" {
 			}
 
 			var tool     = toolAttempt.get()
-			var toolArgs = !isNull( ledgerEntry.editedArgs ) ? ledgerEntry.editedArgs : ( toolCall.input ?: {} )
+			var toolArgs = isStruct( ledgerEntry.editedArgs ?: "" ) ? ledgerEntry.editedArgs
+				: ( isStruct( ledgerEntry.toolArgs ?: "" ) ? ledgerEntry.toolArgs : ( toolCall.input ?: {} ) )
 			var capturedTool = tool
 			var capturedArgs = toolArgs
 			var toolResult = thisChatRequest.fireWrapMiddleware(
