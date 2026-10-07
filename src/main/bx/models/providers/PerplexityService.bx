@@ -54,7 +54,7 @@ class extends="OpenAIService" implements="IAiChatService" {
 	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
 		// Seed the chat request with defaults
 		arguments.chatRequest.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
-		return super.chatStream( arguments.chatRequest, arguments.callback )
+		return super.chatStream( arguments.chatRequest, arguments.callback, arguments.interactionCount )
 	}
 
 }
