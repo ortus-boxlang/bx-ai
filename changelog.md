@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Gemini** text-to-speech defaulted to `gemini-2.5-flash-preview-tts`, which is no longer listed in the Gemini docs, and failed with an empty error message. The default is now `gemini-3.8-flash-tts`, and errors include the HTTP status, the model and the response body.
 - **Gemini** streaming text-to-speech failed with `Unable to parse stream event: Failed to parse JSON [DONE]`. The Interactions stream ends with a non-JSON `[DONE]` sentinel. Speech streaming now ignores it, for every provider that uses SSE.
 
+### 🧠 Updated
+
+- The build and test suite now run against BoxLang 1.18.0 (previously 1.17.0). The minimum supported runtime is unchanged at 1.14.0.
+
 ## [3.5.0] - 2026-09-11
 
 ### ⚠️ Migration
