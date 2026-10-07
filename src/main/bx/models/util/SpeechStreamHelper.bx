@@ -140,7 +140,8 @@ class {
 				arguments.body,
 				javacast( "int", arguments.timeout ),
 				( event ) => {
-					if ( event.data.trim().isEmpty() ) {
+					// Empty keep-alives and the OpenAI style `[DONE]` sentinel (Gemini Interactions ends with one) carry no JSON
+					if ( event.data.trim().isEmpty() || event.data.trim() == "[DONE]" ) {
 						return true
 					}
 					var events = []
