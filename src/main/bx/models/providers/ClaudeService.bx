@@ -133,6 +133,16 @@ class extends="BaseService" implements="IAiChatService" {
 			dataPacket[ "tools" ] = formatToolsForClaude( arguments.chatRequest.getParams().tools );
 		}
 
+		// Structured output over SSE uses the same forced-tool trick as chat() — see
+		// injectStructuredOutputTool(). The block arrives as a normal tool_use content block whose
+		// input streams in as input_json_delta fragments, so it is accumulated separately from the
+		// real tool-call loop below and never executed as a tool.
+		var usingStructuredOutput = arguments.chatRequest.isStructuredOutput();
+		if( usingStructuredOutput ){
+			injectStructuredOutputTool( dataPacket, arguments.chatRequest );
+		}
+		var soStreamState = newStructuredOutputStreamState();
+
 		BoxAnnounce(
 			"onAIChatRequest",
 			{
@@ -198,6 +208,12 @@ class extends="BaseService" implements="IAiChatService" {
 						if( !isNull( parsedChunk.message?.usage ) ){
 							streamState.usage.input_tokens = parsedChunk.message.usage.input_tokens ?: 0;
 						}
+						return;
+					}
+
+					// Structured-output block: consumed here and NOT recorded as a real tool call,
+					// so beforeToolCall / execution / a follow-up turn never fire for it.
+					if( usingStructuredOutput && this.accumulateStructuredOutputChunk( parsedChunk, soStreamState ) ){
 						return;
 					}
 
@@ -356,6 +372,60 @@ class extends="BaseService" implements="IAiChatService" {
 				usage            : streamState.usage,
 				timestamp        : now()
 			} )
+		}
+
+		// -------------------------------------------------------------------------------------------
+		// --- Structured output (streaming) ---
+		// The forced tool's accumulated input IS the answer, so finish here: emit it to the caller
+		// on the normalized chunk envelope and also return it, skipping the tool loop and the
+		// no-text fallback (which would otherwise re-issue the whole call via chat()).
+		// -------------------------------------------------------------------------------------------
+		if( usingStructuredOutput ){
+			var structuredResult = finalizeStructuredOutputStream( soStreamState, arguments.chatRequest, streamState.stopReason );
+
+			// afterLLMCall runs BEFORE the result leaves this method. A named context struct is
+			// kept so an OutputGuard-style middleware that rewrites (or redacts) streamState
+			// .structuredOutput actually changes what the caller sees — firing it after the
+			// userCallback had already been handed the original meant the mutation reached the
+			// return value only, and never the stream.
+			var soContext = {
+				chatRequest: arguments.chatRequest,
+				streamState: {
+					"content"          : streamState.content,
+					"reasoning"        : streamState.reasoning ?: "",
+					"finishReason"     : streamState.stopReason,
+					"toolCalls"        : streamState.toolCalls,
+					"structuredOutput" : structuredResult,
+					"usage"            : streamState.usage
+				}
+			};
+
+			arguments.chatRequest.fireMiddleware(
+				hook   : "afterLLMCall",
+				context: soContext,
+				reverse: true
+			)
+
+			var finalStructuredResult = soContext.streamState.structuredOutput;
+
+			userCallback({
+				"id": streamState.messageId,
+				"provider": "Claude",
+				"model": streamState.model,
+				"object": "chat.completion.chunk",
+				"choices": [
+					{
+						"index": 0,
+						"finish_reason": "stop",
+						"delta": {
+							"role": "assistant",
+							"structured_output": finalStructuredResult
+						}
+					}
+				]
+			});
+
+			return finalStructuredResult;
 		}
 
 		if( streamState.stopReason == "tool_use" && streamState.toolCalls.len() ){
@@ -1022,6 +1092,159 @@ class extends="BaseService" implements="IAiChatService" {
 			"type" : "tool",
 			"name" : static.STRUCTURED_OUTPUT_TOOL
 		};
+	}
+
+	/**
+	 * Fresh accumulator for the forced structured-output tool block over a stream.
+	 *
+	 * Self-contained on purpose: the three structured-output stream helpers
+	 * (new/accumulate/finalize) hold no reference to the surrounding stream loop, so any other
+	 * SSE provider using the same forced-tool trick can adopt them as-is.
+	 *
+	 * @return The accumulator state struct
+	 */
+	public struct function newStructuredOutputStreamState(){
+		return {
+			"seen"   : false,   // the forced tool block was observed
+			"index"  : "",      // content block index it arrived on
+			"buffer" : "",      // concatenated input_json_delta fragments
+			"input"  : {}       // any input present on content_block_start (usually empty)
+		};
+	}
+
+	/**
+	 * Feed one parsed SSE event into the structured-output accumulator.
+	 *
+	 * @parsedChunk The deserialized SSE event
+	 * @soState The accumulator from newStructuredOutputStreamState()
+	 *
+	 * @return true if the event belonged to the structured-output block and was consumed — the
+	 *         caller must then NOT treat it as a real tool call
+	 */
+	public boolean function accumulateStructuredOutputChunk( required struct parsedChunk, required struct soState ){
+		var chunkType = arguments.parsedChunk.type ?: "";
+
+		if(
+			chunkType == "content_block_start"
+			&& ( arguments.parsedChunk.content_block?.type ?: "" ) == "tool_use"
+			&& ( arguments.parsedChunk.content_block?.name ?: "" ) == static.STRUCTURED_OUTPUT_TOOL
+		){
+			// A NEW structured_output block starts a NEW accumulation: reset the buffer (and the
+			// seed input) so fragments from a previous block are not concatenated onto this one,
+			// which produced unparseable "{...}{...}" JSON.
+			arguments.soState.seen   = true;
+			arguments.soState.index  = toString( arguments.parsedChunk.index ?: 0 );
+			arguments.soState.buffer = "";
+			arguments.soState.input  = arguments.parsedChunk.content_block.input ?: {};
+			return true;
+		}
+
+		if(
+			arguments.soState.seen
+			&& chunkType == "content_block_delta"
+			&& ( arguments.parsedChunk.delta?.type ?: "" ) == "input_json_delta"
+			&& toString( arguments.parsedChunk.index ?: 0 ) == arguments.soState.index
+		){
+			arguments.soState.buffer &= arguments.parsedChunk.delta.partial_json ?: "";
+			return true;
+		}
+
+		return false;
+	}
+
+	/**
+	 * Close out a structured-output stream and populate the caller's schema.
+	 * Fails loud when the forced block never arrived — the sync path in chat() does the same.
+	 *
+	 * @soState The accumulator from newStructuredOutputStreamState()
+	 * @chatRequest The request carrying the structured-output definition
+	 * @stopReason The stream's final stop_reason, used for the error message
+	 *
+	 * @throws StructuredOutputError if the forced tool block was never streamed
+	 *
+	 * @return The populated class instance, struct, or array
+	 */
+	public any function finalizeStructuredOutputStream(
+		required struct soState,
+		required AiChatRequest chatRequest,
+		string stopReason = ""
+	){
+		if( !arguments.soState.seen ){
+			var reason = arguments.stopReason.len() ? arguments.stopReason : "unknown";
+			writeLog(
+				text: "Structured output requested but no '#static.STRUCTURED_OUTPUT_TOOL#' tool_use block streamed (model=#arguments.chatRequest.getModel()#, stop_reason=#reason#)",
+				type: "error",
+				log : "ai"
+			)
+			throw(
+				type   : "StructuredOutputError",
+				message: "Model did not stream the forced structured_output tool (stop_reason=#reason#)."
+					& ( reason == "max_tokens" ? " Response was truncated — increase max_tokens." : "" )
+			);
+		}
+
+		// Anthropic sends the input entirely as input_json_delta fragments; content_block_start
+		// normally carries an empty {}. Three cases:
+		//   - deltas only            -> the buffer IS the payload
+		//   - seed only              -> serialize the seed
+		//   - BOTH seed and deltas   -> neither alone is the answer. If the buffer parses on its
+		//     own, its keys win over the seed (it is the later, more complete value); otherwise
+		//     the buffer is a continuation of a partially-populated seed, so concatenating the
+		//     serialized seed's opening with the buffer is the only reading that keeps both.
+		var soBuffer = arguments.soState.buffer;
+		var soSeed   = arguments.soState.input;
+		var hasSeed  = isStruct( soSeed ) && !soSeed.isEmpty();
+
+		if( !soBuffer.len() ){
+			return populateStructuredOutput( jsonSerialize( soSeed ), arguments.chatRequest );
+		}
+
+		if( !hasSeed ){
+			return populateStructuredOutput( soBuffer, arguments.chatRequest );
+		}
+
+		// isJSON() is not a reliable gate here (it accepts a leading JSON token followed by junk,
+		// e.g. `"age": 30}`), so parse-or-fail is the only trustworthy test.
+		var bufferParse = tryParseJSON( soBuffer );
+		if( bufferParse.ok && isStruct( bufferParse.value ) ){
+			var merged = duplicate( soSeed );
+			merged.append( bufferParse.value, true );
+			return populateStructuredOutput( jsonSerialize( merged ), arguments.chatRequest );
+		}
+		if( bufferParse.ok && isArray( bufferParse.value ) ){
+			// An array cannot be merged into a seed struct — the streamed value is authoritative.
+			return populateStructuredOutput( soBuffer, arguments.chatRequest );
+		}
+
+		// A scalar (or failed) parse means the buffer is not a document of its own — jsonDeserialize
+		// happily reads `"age": 30}` as the string "age" and drops the rest. Read it as a
+		// CONTINUATION of the seed's serialization instead.
+		var seedJSON = jsonSerialize( soSeed ).trim();
+		var seedHead = seedJSON.endsWith( "}" ) ? seedJSON.left( seedJSON.len() - 1 ) : seedJSON;
+		var bufTail  = soBuffer.trim();
+		bufTail      = bufTail.startsWith( "{" ) ? bufTail.right( bufTail.len() - 1 ) : bufTail;
+		var stitchParse = tryParseJSON( seedHead & "," & bufTail );
+		if( stitchParse.ok && isStruct( stitchParse.value ) ){
+			return populateStructuredOutput( seedHead & "," & bufTail, arguments.chatRequest );
+		}
+
+		return populateStructuredOutput( soBuffer, arguments.chatRequest );
+	}
+
+	/**
+	 * Parse-or-fail JSON probe. isJSON() accepts a valid leading token followed by trailing junk,
+	 * so it cannot answer "is this whole string JSON?" — only jsonDeserialize() can.
+	 *
+	 * @candidate The string to parse
+	 *
+	 * @return { ok: boolean, value: any } — value is meaningless when ok is false
+	 */
+	private struct function tryParseJSON( required string candidate ){
+		try {
+			return { "ok": true, "value": jsonDeserialize( arguments.candidate ) };
+		} catch( any e ){
+			return { "ok": false, "value": {} };
+		}
 	}
 
 	/**

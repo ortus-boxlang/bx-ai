@@ -532,4 +532,105 @@ public class ClosureToolTest extends BaseIntegrationTest {
 		assertThat( variables.get( result ) ).isEqualTo( "override" );
 	}
 
+	// -------------------------------------------------------------------------
+	// doInvoke() argument isolation (regression: the caller's args struct is the
+	// live tool_use.input held in message history — mutating it leaked
+	// `_chatRequest` into the next request body and closed a reference cycle)
+	// -------------------------------------------------------------------------
+
+	@DisplayName( "doInvoke() injects _chatRequest into the callable's args WITHOUT mutating the caller's struct" )
+	@Test
+	public void testDoInvokeDoesNotMutateCallerArgs() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+
+				gotChatRequest = false
+				tool = new ClosureTool( "ctxTool", "Needs conversation context", ( required string id, any _chatRequest ) => {
+					gotChatRequest = arguments.keyExists( "_chatRequest" ) && !isNull( arguments._chatRequest )
+					return "ok"
+				} )
+
+				chatRequest  = aiChatRequest( aiMessage().user( "hi" ), {}, {} )
+				originalArgs = { id: "5" }
+				tool.doInvoke( originalArgs, chatRequest )
+
+				callableSawChatRequest = gotChatRequest
+				originalUntouched      = !originalArgs.keyExists( "_chatRequest" )
+				originalKeyCount       = originalArgs.count()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "callableSawChatRequest" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "originalUntouched" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "originalKeyCount" ) ) ).isEqualTo( 1 );
+	}
+
+	@DisplayName( "doInvoke() injects _chatRequest ONLY into callables that declare the parameter" )
+	@Test
+	public void testDoInvokeInjectsChatRequestOnlyWhenDeclared() {
+		// Injecting it unconditionally handed every closure an argument it never asked for, which
+		// leaks straight through any callable that forwards its own argumentCollection.
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+
+				declaringKeys = []
+				declaringTool = new ClosureTool( "wantsCtx", "Declares the param", ( required string id, any _chatRequest ) => {
+					declaringKeys = arguments.keyArray()
+					return "ok"
+				} )
+
+				plainKeys = []
+				plainTool = new ClosureTool( "noCtx", "Does not declare the param", ( required string id ) => {
+					plainKeys = arguments.keyArray()
+					return "ok"
+				} )
+
+				chatRequest = aiChatRequest( aiMessage().user( "hi" ), {}, {} )
+
+				declaringTool.doInvoke( { id: "5" }, chatRequest )
+				plainTool.doInvoke( { id: "5" }, chatRequest )
+
+				declaringGotIt = declaringKeys.findNoCase( "_chatRequest" ) > 0
+				plainDidNot    = plainKeys.findNoCase( "_chatRequest" ) == 0
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "declaringGotIt" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "plainDidNot" ) ) ).isTrue();
+	}
+
+	@DisplayName( "doInvoke() JSON-coerces a struct arg for the callable only — the caller's struct keeps its native value" )
+	@Test
+	public void testDoInvokeCoercionDoesNotMutateCallerArgs() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.tools.ClosureTool;
+
+				tool = new ClosureTool( "jsonTool", "Accepts a JSON-encoded struct", ( required string source_context ) => arguments.source_context )
+
+				originalArgs = { source_context: { repo: "acme/app" } }
+				passedValue  = tool.doInvoke( originalArgs, aiChatRequest( aiMessage().user( "hi" ), {}, {} ) )
+
+				callableGotJsonString = isSimpleValue( passedValue )
+				originalStillStruct   = isStruct( originalArgs.source_context )
+				originalUntouched     = !originalArgs.keyExists( "_chatRequest" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "callableGotJsonString" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "originalStillStruct" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "originalUntouched" ) ) ).isTrue();
+	}
+
 }
