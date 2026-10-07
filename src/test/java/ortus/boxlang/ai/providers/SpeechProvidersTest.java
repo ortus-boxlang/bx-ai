@@ -134,7 +134,9 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 			String events = "event: step.start\ndata: {\"event_type\":\"step.start\"}\n\n"
 			    + "event: step.delta\ndata: {\"event_type\":\"step.delta\",\"delta\":{\"type\":\"audio\",\"data\":\"" + b64( "1234" ) + "\"}}\n\n"
 			    + "event: step.delta\ndata: {\"event_type\":\"step.delta\",\"delta\":{\"type\":\"audio\",\"data\":\"" + b64( "56" ) + "\"}}\n\n"
-			    + "event: step.stop\ndata: {\"event_type\":\"step.stop\"}\n\n";
+			    + "event: step.stop\ndata: {\"event_type\":\"step.stop\"}\n\n"
+			// The real Interactions stream ends with an OpenAI style sentinel that is not JSON
+			    + "event: done\ndata: [DONE]\n\n";
 			exchange.getResponseHeaders().add( "Content-Type", "text/event-stream" );
 			exchange.sendResponseHeaders( 200, 0 );
 			try ( OutputStream out = exchange.getResponseBody() ) {
