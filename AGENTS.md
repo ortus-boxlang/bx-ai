@@ -426,6 +426,7 @@ var memory = aiMemory( "hybrid", {
 8. **OpenSearchVectorMemory** - OpenSearch
 9. **PostgresVectorMemory** - PostgreSQL with pgvector extension
 10. **MysqlVectorMemory** - MySQL with vector support
+11. **MariaDBVectorMemory** - MariaDB 11.7+ with native VECTOR type, HNSW index and `VEC_DISTANCE_*` search
 
 **Distance Metrics**: `cosine` (default), `euclidean`, `dot_product`
 

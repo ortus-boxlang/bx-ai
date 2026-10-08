@@ -197,6 +197,7 @@ class extends="BaseVectorMemory" {
 		// Add filters for userId and conversationId if provided
 		if ( !arguments.filter.isEmpty() ) {
 			arguments.filter.each( ( key, value ) => {
+				assertSafeFilterKey( key );
 				// Use dedicated columns for userId and conversationId for better indexing
 				if ( key == "userId" || key == "conversationId" ) {
 					whereClause &= " AND " & key & " = :" & key;
@@ -366,6 +367,7 @@ class extends="BaseVectorMemory" {
 		// Add JSON metadata filters
 		if ( !arguments.filter.isEmpty() ) {
 			arguments.filter.each( ( key, value ) => {
+				assertSafeFilterKey( key )
 				whereClause &= " AND JSON_UNQUOTE(JSON_EXTRACT(metadata, '$." & key & "')) = :" & key
 				params[ key ] = value
 			} )
@@ -519,6 +521,21 @@ class extends="BaseVectorMemory" {
 		} catch ( any e ) {
 			// Index may already exist or MySQL version may not support VECTOR INDEX
 			// This is expected in some scenarios, log for debugging if needed
+		}
+	}
+
+	/**
+	 * Filter keys are placed in the SQL text (JSON paths and column names), so only simple names are allowed.
+	 * Values are always bound as parameters.
+	 *
+	 * @key The filter key to validate
+	 */
+	private void function assertSafeFilterKey( required string key ) {
+		if ( !reFind( "^[A-Za-z_][A-Za-z0-9_]*$", arguments.key ) ) {
+			throw(
+				type = "MysqlVectorMemory.InvalidFilterKey",
+				message = "Invalid filter key: [#arguments.key#]. Use letters, numbers and underscores only."
+			)
 		}
 	}
 

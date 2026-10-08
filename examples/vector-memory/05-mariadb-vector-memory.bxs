@@ -1,0 +1,49 @@
+/**
+ * MariaDB Vector Memory Example
+ *
+ * Semantic search using MariaDB's native VECTOR type, HNSW vector index and
+ * VEC_DISTANCE_* functions. Ranking runs inside the database.
+ *
+ * Prerequisites:
+ * - MariaDB 11.7+ (docker run -p 3308:3306 -e MARIADB_ROOT_PASSWORD=root -e MARIADB_DATABASE=demo mariadb:11.8)
+ * - The bx-mariadb module installed (install-bx-module bx-mariadb)
+ * - OPENAI_API_KEY environment variable set
+ */
+
+// The "mariaDemo" datasource is defined in boxlang.json:
+// "datasources": {
+//     "mariaDemo": {
+//         "driver": "mariadb",
+//         "connectionString": "jdbc:mariadb://localhost:3308/demo",
+//         "username": "root",
+//         "password": "root"
+//     }
+// }
+
+memory = aiMemory(
+	memory: "mariadb",
+	userId: "demo-user",
+	conversationId: "demo-chat",
+	config: {
+		datasource: "mariaDemo",
+		collection: "mariadb_demo",
+		distanceFunction: "COSINE", // COSINE or L2
+		dimensions: 1536,           // must match the embedding model
+		embeddingProvider: "openai",
+		embeddingModel: "text-embedding-3-small"
+	}
+)
+
+memory.seed( [
+	"BoxLang is a modern dynamic JVM language",
+	"MariaDB 11.7 added native vector search",
+	"HNSW indexes make nearest neighbor search fast",
+	"Invoices are due within 30 days"
+] )
+
+println( "Query: How do I search by meaning in MariaDB?\n" )
+memory.getRelevant( "How do I search by meaning in MariaDB?", 2 ).each( ( doc ) => {
+	println( "#numberFormat( doc.score, '0.000' )#  #doc.text#" )
+} )
+
+memory.clear()

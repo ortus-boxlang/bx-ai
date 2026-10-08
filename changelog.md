@@ -11,12 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 Added
 
+- **MariaDB vector memory** (`MariaDBVectorMemory`, `aiMemory( memory: "mariadb" )`): vector storage and semantic search on MariaDB 11.7+ using the native `VECTOR(n)` type, an HNSW `VECTOR INDEX` and the `VEC_DISTANCE_COSINE` / `VEC_DISTANCE_EUCLIDEAN` functions, so ranking runs in the database. Supports `COSINE` and `L2` (MariaDB has no native dot product), `autoCreate`, the HNSW `m` option, and `userId` / `conversationId` isolation. MariaDB allows one vector index per table, so collections sharing a table share its metric and dimensions. Works as a `HybridMemory` `vectorProvider`. Requires the `bx-mariadb` module.
 - **HTTP streaming speech demo** (`examples/http-streaming-speech`): a runnable MiniServer demo that streams `aiSpeakStream()` audio to a browser, either as raw mp3 for an `<audio>` tag or as PCM events with word timestamps for a Web Audio player with barge-in.
 - **Cartesia provider** (`cartesia`): text-to-speech with Sonic (mp3, wav, pcm, mulaw, alaw) and speech-to-text with Ink-Whisper. Use `aiService( "cartesia", apiKey )` or set `CARTESIA_API_KEY`. `translate()` throws `UnsupportedCapability`. `flac` and `opus` throw `InvalidArgument`.
 - **Streaming text-to-speech**: new `aiSpeakStream( text, callback, params, options )` BIF and fluent `aiSpeak().text( "..." ).stream( callback )`, backed by the new `IAiSpeechStreamService` interface and the `speechStream` capability. The callback receives `{ type: "audio", data, format, sampleRate, sequence }`, `{ type: "timestamps", ... }` and a final `{ type: "done", chunks, bytes }`, so audio can be restreamed to a client as it is generated. Return `false` from the callback to stop early. Supported by Cartesia (bytes for mp3 and wav, SSE with word timestamps for pcm, mulaw and alaw), ElevenLabs, OpenAI, Mistral and Gemini. Grok only streams over a WebSocket, which is not implemented.
 
 ### 🐛 Fixed
 
+- **MysqlVectorMemory** placed metadata filter keys directly into SQL. Filter keys are now validated (letters, numbers and underscores) and an invalid key throws `MysqlVectorMemory.InvalidFilterKey`.
 - **ElevenLabs** ignored the requested voice, model, output format and speed, so `voice`, `.female()` and `outputFormat` had no effect. They are now honored, `wav` output is a real wav, and the STT upload uses the documented `file` field. The default voice is now the premade Sarah voice because Rachel is a library voice that free plan keys cannot use over the API.
 - **Grok** text-to-speech now sends the documented xAI body (`text`, `voice_id`, `language`, `output_format`) and the default voice is `eve`. The `male()` and `female()` keywords map to `rex` and `eve`.
 - **Mistral** text-to-speech now decodes the JSON `audio_data` response, and a UUID voice is sent as `voice_id`.
