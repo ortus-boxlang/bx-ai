@@ -25,11 +25,11 @@ import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.IStruct;
 
 /**
- * Integration tests for MysqlVectorMemory
+ * Integration tests for MariaDBVectorMemory (requires MariaDB 11.7+ and the bx-mariadb module)
  */
-public class MysqlVectorMemoryTest extends BaseIntegrationTest {
+public class MariaDBVectorMemoryTest extends BaseIntegrationTest {
 
-	static String DATASOURCE_NAME = "mysql_vector_test";
+	static String DATASOURCE_NAME = "mariadb_vector_test";
 
 	@BeforeEach
 	public void beforeEach() {
@@ -39,15 +39,15 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "apiKey", dotenv.get( "OPENAI_API_KEY", "" ) );
 	}
 
-	@DisplayName( "Test MysqlVectorMemory basic configuration" )
+	@DisplayName( "Test MariaDBVectorMemory basic configuration" )
 	@Test
 	public void testBasicConfiguration() throws Exception {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
 
-			memory = new MysqlVectorMemory( "test_config", "test_collection" );
+			memory = new MariaDBVectorMemory( "test_config", "test_collection" );
 			memory.configure({
 				datasource: "%s",
 				table: "test_vectors",
@@ -81,9 +81,9 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
 
-			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_store" );
+			memory = new MariaDBVectorMemory( key: createUUID(), collection: "test_store" );
 			memory.configure({
 				datasource: "%s",
 				table: "test_vectors_store_%s",
@@ -93,7 +93,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 
 			// Store a document
 			memory.add( "BoxLang is a modern dynamic JVM language" );
-			memory.add( "MySQL 9 with native vector support enables semantic search" );
+			memory.add( "MariaDB with native vector support enables semantic search" );
 
 			// Get all documents
 			allDocs = memory.getAll();
@@ -117,9 +117,9 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
 
-			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_search" );
+			memory = new MariaDBVectorMemory( key: createUUID(), collection: "test_search" );
 			memory.configure({
 				datasource: "%s",
 				table: "test_vectors_search",
@@ -129,7 +129,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 
 			// Store test documents
 			memory.add( "BoxLang is a modern dynamic JVM language" );
-			memory.add( "MySQL is a powerful relational database" );
+			memory.add( "MariaDB is a powerful relational database" );
 			memory.add( "Vector databases enable semantic search capabilities" );
 
 			// Search for similar content
@@ -161,9 +161,9 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
 
-			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_byid" );
+			memory = new MariaDBVectorMemory( key: createUUID(), collection: "test_byid" );
 			memory.configure({
 				datasource: "%s",
 				table: "test_vectors_byid",
@@ -174,7 +174,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			// Add document with explicit ID
 			memory.addWithId(
 				id: "doc123",
-				text: "BoxLang vector memory with MySQL",
+				text: "BoxLang vector memory with MariaDB",
 				metadata: { category: "documentation", version: 1 }
 			);
 
@@ -207,9 +207,9 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
 
-			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_remove" );
+			memory = new MariaDBVectorMemory( key: createUUID(), collection: "test_remove" );
 			memory.configure({
 				datasource: "%s",
 				table: "test_vectors_remove",
@@ -253,9 +253,9 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
 
-			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_filter" );
+			memory = new MariaDBVectorMemory( key: createUUID(), collection: "test_filter" );
 			memory.configure({
 				datasource: "%s",
 				table: "test_vectors_filter",
@@ -271,7 +271,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			);
 			memory.addWithId(
 				id: "doc2",
-				text: "MySQL administration",
+				text: "MariaDB administration",
 				metadata: { category: "tutorial", language: "sql" }
 			);
 			memory.addWithId(
@@ -312,9 +312,9 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
 
-			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_seed" );
+			memory = new MariaDBVectorMemory( key: createUUID(), collection: "test_seed" );
 			memory.configure({
 				datasource: "%s",
 				table: "test_vectors_seed_batch",
@@ -325,7 +325,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			// Seed multiple documents at once
 			result = memory.seed([
 				"BoxLang is a modern dynamic JVM language",
-				"MySQL 9 with vector support enables semantic search",
+				"MariaDB with vector support enables semantic search",
 				{ text: "Vector databases store embeddings", metadata: { type: "concept" } }
 			]);
 
@@ -353,7 +353,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		assertThat( totalCount ).isEqualTo( 3 );
 	}
 
-	@DisplayName( "Test HybridMemory with MySQL" )
+	@DisplayName( "Test HybridMemory with MariaDB" )
 	@Test
 	public void testHybridMemory() throws Exception {
 		// @formatter:off
@@ -361,13 +361,13 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			"""
 			import bxModules.bxai.models.memory.HybridMemory;
 
-			// Create hybrid memory with MySQL vector backend
+			// Create hybrid memory with MariaDB vector backend
 			memory = new HybridMemory( createUUID() );
 			memory.configure({
 				recentLimit: 3,
 				semanticLimit: 3,
 				totalLimit: 5,
-				vectorProvider: "mysql",
+				vectorProvider: "mariadb",
 				vectorConfig: {
 					datasource: "%s",
 					table: "test_vectors_hybrid",
@@ -381,7 +381,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			memory.add( "My name is Alice" );
 			memory.add( "I work as a software engineer" );
 			memory.add( "I like BoxLang programming" );
-			memory.add( "MySQL is my favorite database" );
+			memory.add( "MariaDB is my favorite database" );
 			memory.add( "What is my name?" );
 
 			// Get relevant messages (should combine recent + semantic)
@@ -411,44 +411,44 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		assertThat( hasName ).isTrue();
 	}
 
-	@DisplayName( "Test aiMemory BIF with mysql type" )
+	@DisplayName( "Test aiMemory BIF with mariadb type" )
 	@Test
-	public void testAiMemoryBifWithMysqlType() throws Exception {
+	public void testAiMemoryBifWithMariadbType() throws Exception {
 		// @formatter:off
 		runtime.executeSource(
 			"""
 			memory = aiMemory(
-				memory: "mysql",
+				memory: "mariadb",
 				config: {
 					datasource: "%s",
-					table: "test_bif_mysql",
+					table: "test_bif_mariadb",
 					embeddingProvider: "openai",
 					embeddingModel: "text-embedding-3-small"
 				}
 			);
 
 			className = memory.getName();
-			isMysqlMemory = className.findNoCase( "MysqlVectorMemory" ) > 0;
+			isMariaDBMemory = className.findNoCase( "MariaDBVectorMemory" ) > 0;
 			"""
 			.formatted( DATASOURCE_NAME ),
 			context
 		);
 		// @formatter:on
 
-		var isMysqlMemory = variables.getAsBoolean( Key.of( "isMysqlMemory" ) );
-		assertThat( isMysqlMemory ).isTrue();
+		var isMariaDBMemory = variables.getAsBoolean( Key.of( "isMariaDBMemory" ) );
+		assertThat( isMariaDBMemory ).isTrue();
 	}
 
-	@DisplayName( "Test MysqlVectorMemory with userId and conversationId" )
+	@DisplayName( "Test MariaDBVectorMemory with userId and conversationId" )
 	@Test
 	public void testUserIdAndConversationId() throws Exception {
 		// @formatter:off
 		runtime.executeSource(
 			"""
 			memory = aiMemory(
-				memory: "mysql",
+				memory: "mariadb",
 				userId: "john",
-				conversationId: "mysql-test",
+				conversationId: "mariadb-test",
 				config: {
 					datasource: "%s",
 					table: "test_user_conv_%s",
@@ -457,7 +457,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 				}
 			);
 
-			memory.add( { text: "MySQL vector database" } );
+			memory.add( { text: "MariaDB vector database" } );
 
 			result = {
 				userId: memory.getUserId(),
@@ -472,17 +472,17 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		IStruct results = variables.getAsStruct( result );
 
 		assertThat( results.getAsString( Key.of( "userId" ) ) ).isEqualTo( "john" );
-		assertThat( results.getAsString( Key.of( "conversationId" ) ) ).isEqualTo( "mysql-test" );
+		assertThat( results.getAsString( Key.of( "conversationId" ) ) ).isEqualTo( "mariadb-test" );
 	}
 
-	@DisplayName( "Test MysqlVectorMemory export includes userId and conversationId" )
+	@DisplayName( "Test MariaDBVectorMemory export includes userId and conversationId" )
 	@Test
 	public void testExportIncludesIdentifiers() throws Exception {
 		// @formatter:off
 		runtime.executeSource(
 			"""
 			memory = aiMemory(
-				memory: "mysql",
+				memory: "mariadb",
 				userId: "jane",
 				conversationId: "export-test",
 				config: {
@@ -520,7 +520,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 
 			// Create memory for user alice, conversation chat1
 			memoryAliceChat1 = aiMemory(
-				memory: "mysql",
+				memory: "mariadb",
 				userId: "alice",
 				conversationId: "chat1",
 				config: {
@@ -533,7 +533,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 
 			// Create memory for user alice, conversation chat2
 			memoryAliceChat2 = aiMemory(
-				memory: "mysql",
+				memory: "mariadb",
 				userId: "alice",
 				conversationId: "chat2",
 				config: {
@@ -546,7 +546,7 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 
 			// Create memory for user bob, conversation chat1
 			memoryBobChat1 = aiMemory(
-				memory: "mysql",
+				memory: "mariadb",
 				userId: "bob",
 				conversationId: "chat1",
 				config: {
@@ -558,12 +558,12 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 			);
 
 			// Add documents to each memory
-			memoryAliceChat1.add( { text: "Alice chat1: MySQL is relational" } );
+			memoryAliceChat1.add( { text: "Alice chat1: MariaDB is relational" } );
 			memoryAliceChat2.add( { text: "Alice chat2: Vector search is fast" } );
 			memoryBobChat1.add( { text: "Bob chat1: Database indexing" } );
 
 			// Search in Alice's chat1 - should only return Alice's chat1 documents
-			resultsAliceChat1 = memoryAliceChat1.getRelevant( query: "MySQL", limit: 10 );
+			resultsAliceChat1 = memoryAliceChat1.getRelevant( query: "MariaDB", limit: 10 );
 
 			// Search in Alice's chat2 - should only return Alice's chat2 documents
 			resultsAliceChat2 = memoryAliceChat2.getRelevant( query: "Vector", limit: 10 );
@@ -638,26 +638,244 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		assertThat( bobChat1ConvId ).isEqualTo( "chat1" );
 	}
 
+	@DisplayName( "Test DOT distance is rejected since MariaDB has no native dot product" )
+	@Test
+	public void testDotDistanceRejected() throws Exception {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
+
+			errorType = "";
+			try {
+				memory = new MariaDBVectorMemory( key: createUUID(), collection: "test_dot" );
+				memory.configure({ datasource: "%s", distanceFunction: "DOT" });
+			} catch ( any e ) {
+				errorType = e.type;
+			}
+			"""
+			.formatted( DATASOURCE_NAME ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "errorType" ) ) ).isEqualTo( "MariaDBVectorMemory.InvalidDistanceFunction" );
+	}
+
+	@DisplayName( "Test missing datasource and invalid table name are rejected" )
+	@Test
+	public void testConfigValidation() throws Exception {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
+
+			missingDsType = "";
+			badTableType = "";
+			badMType = "";
+			try {
+				new MariaDBVectorMemory( key: createUUID(), collection: "c" ).configure({});
+			} catch ( any e ) {
+				missingDsType = e.type;
+			}
+			try {
+				new MariaDBVectorMemory( key: createUUID(), collection: "c" ).configure({ datasource: "%s", table: "bad; DROP TABLE x" });
+			} catch ( any e ) {
+				badTableType = e.type;
+			}
+			try {
+				new MariaDBVectorMemory( key: createUUID(), collection: "c" ).configure({ datasource: "%s", m: 500 });
+			} catch ( any e ) {
+				badMType = e.type;
+			}
+			"""
+			.formatted( DATASOURCE_NAME, DATASOURCE_NAME ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "missingDsType" ) ) ).isEqualTo( "MariaDBVectorMemory.MissingDatasource" );
+		assertThat( variables.getAsString( Key.of( "badTableType" ) ) ).isEqualTo( "MariaDBVectorMemory.InvalidTable" );
+		assertThat( variables.getAsString( Key.of( "badMType" ) ) ).isEqualTo( "MariaDBVectorMemory.InvalidM" );
+	}
+
+	@DisplayName( "Test autoCreate false fails when the table does not exist" )
+	@Test
+	public void testAutoCreateFalse() throws Exception {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
+
+			errorType = "";
+			try {
+				new MariaDBVectorMemory( key: createUUID(), collection: "c" ).configure({
+					datasource: "%s",
+					table: "table_that_does_not_exist_%s",
+					autoCreate: false
+				});
+			} catch ( any e ) {
+				errorType = e.type;
+			}
+			"""
+			.formatted( DATASOURCE_NAME, System.currentTimeMillis() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "errorType" ) ) ).isEqualTo( "MariaDBVectorMemory.TableNotFound" );
+	}
+
+	@DisplayName( "Test an existing table built for a different metric is rejected" )
+	@Test
+	public void testDistanceMismatch() throws Exception {
+		var uniqueTable = "test_mismatch_" + System.currentTimeMillis();
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
+
+			// Creates the table with a cosine index
+			first = new MariaDBVectorMemory( key: createUUID(), collection: "c" );
+			first.configure({ datasource: "%s", table: "%s", distanceFunction: "COSINE" });
+
+			second = new MariaDBVectorMemory( key: createUUID(), collection: "c" );
+			errorType = "";
+			try {
+				second.configure({ datasource: "%s", table: "%s", distanceFunction: "L2" });
+			} catch ( any e ) {
+				errorType = e.type;
+			}
+			"""
+			.formatted( DATASOURCE_NAME, uniqueTable, DATASOURCE_NAME, uniqueTable ),
+			context
+		);
+		// @formatter:on
+
+		// Clean up the table
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			queryExecute( "DROP TABLE %s", {}, { datasource: "%s" } );
+			"""
+			.formatted( uniqueTable, DATASOURCE_NAME ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "errorType" ) ) ).isEqualTo( "MariaDBVectorMemory.DistanceMismatch" );
+	}
+
+	@DisplayName( "Test embedding with the wrong dimensions gives a clear error" )
+	@Test
+	public void testDimensionMismatch() throws Exception {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
+
+			memory = new MariaDBVectorMemory( key: createUUID(), collection: "test_dims" );
+			memory.configure({ datasource: "%s", table: "test_vectors_dims", dimensions: 8 });
+
+			errorType = "";
+			try {
+				memory.findSimilar( [ 0.1, 0.2, 0.3 ], 5 );
+			} catch ( any e ) {
+				errorType = e.type;
+			}
+			"""
+			.formatted( DATASOURCE_NAME ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "errorType" ) ) ).isEqualTo( "MariaDBVectorMemory.DimensionMismatch" );
+	}
+
+	@DisplayName( "Test native L2 search ranks the closest vector first" )
+	@Test
+	public void testNativeL2Ranking() throws Exception {
+		var uniqueTable = "test_l2_" + System.currentTimeMillis();
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
+
+			memory = new MariaDBVectorMemory( key: createUUID(), collection: "test_l2" );
+			memory.configure({ datasource: "%s", table: "%s", dimensions: 3, distanceFunction: "L2" });
+
+			// Store pre-computed embeddings so no embedding provider is needed
+			memory.storeDocument( "near", "near", [ 1, 0, 0 ], {} );
+			memory.storeDocument( "mid", "mid", [ 0.5, 0.5, 0 ], {} );
+			memory.storeDocument( "far", "far", [ 0, 0, 1 ], {} );
+
+			results = memory.findSimilar( [ 1, 0, 0 ], 3 );
+			ids = results.map( r => r.id );
+			topScore = results[ 1 ].score;
+			lastScore = results[ 3 ].score;
+
+			queryExecute( "DROP TABLE %s", {}, { datasource: "%s" } );
+			"""
+			.formatted( DATASOURCE_NAME, uniqueTable, uniqueTable, DATASOURCE_NAME ),
+			context
+		);
+		// @formatter:on
+
+		var ids = variables.getAsArray( Key.of( "ids" ) );
+		assertThat( ids.get( 0 ) ).isEqualTo( "near" );
+		assertThat( ids.get( 1 ) ).isEqualTo( "mid" );
+		assertThat( ids.get( 2 ) ).isEqualTo( "far" );
+		assertThat( ( ( Number ) variables.get( Key.of( "topScore" ) ) ).doubleValue() ).isGreaterThan( ( ( Number ) variables.get( Key.of( "lastScore" ) ) ).doubleValue() );
+	}
+
+	@DisplayName( "Test native cosine search ranks by direction, not magnitude" )
+	@Test
+	public void testNativeCosineRanking() throws Exception {
+		var uniqueTable = "test_cosine_" + System.currentTimeMillis();
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
+
+			memory = new MariaDBVectorMemory( key: createUUID(), collection: "test_cosine" );
+			memory.configure({ datasource: "%s", table: "%s", dimensions: 3, distanceFunction: "COSINE" });
+
+			memory.storeDocument( "same-direction", "a", [ 10, 0, 0 ], {} );
+			memory.storeDocument( "orthogonal", "b", [ 0, 1, 0 ], {} );
+
+			results = memory.findSimilar( [ 1, 0, 0 ], 2 );
+			firstId = results[ 1 ].id;
+			firstScore = results[ 1 ].score;
+
+			queryExecute( "DROP TABLE %s", {}, { datasource: "%s" } );
+			"""
+			.formatted( DATASOURCE_NAME, uniqueTable, uniqueTable, DATASOURCE_NAME ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "firstId" ) ) ).isEqualTo( "same-direction" );
+		assertThat( ( ( Number ) variables.get( Key.of( "firstScore" ) ) ).doubleValue() ).isWithin( 0.001 ).of( 1.0 );
+	}
+
 	@DisplayName( "Test unsafe filter keys are rejected" )
 	@Test
 	public void testUnsafeFilterKeyRejected() throws Exception {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
 
-			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_unsafe" );
-			memory.configure({
-				datasource: "%s",
-				table: "test_vectors_unsafe",
-				embeddingProvider: "openai",
-				embeddingModel: "text-embedding-3-small"
-			});
+			memory = new MariaDBVectorMemory( key: createUUID(), collection: "test_unsafe" );
+			memory.configure({ datasource: "%s", table: "test_vectors_unsafe", dimensions: 3 });
 
 			searchError = "";
 			deleteError = "";
 			try {
-				memory.findSimilar( embedding: [ 1, 0, 0 ], limit: 5, filter: { "x') OR 1=1 -- ": "y" } );
+				memory.findSimilar( [ 1, 0, 0 ], 5, { "x') OR 1=1 -- ": "y" } );
 			} catch ( any e ) {
 				searchError = e.type;
 			}
@@ -672,8 +890,108 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		);
 		// @formatter:on
 
-		assertThat( variables.getAsString( Key.of( "searchError" ) ) ).isEqualTo( "MysqlVectorMemory.InvalidFilterKey" );
-		assertThat( variables.getAsString( Key.of( "deleteError" ) ) ).isEqualTo( "MysqlVectorMemory.InvalidFilterKey" );
+		assertThat( variables.getAsString( Key.of( "searchError" ) ) ).isEqualTo( "MariaDBVectorMemory.InvalidFilterKey" );
+		assertThat( variables.getAsString( Key.of( "deleteError" ) ) ).isEqualTo( "MariaDBVectorMemory.InvalidFilterKey" );
+	}
+
+	@DisplayName( "Test tenant isolation still returns results when many other-tenant rows are closer" )
+	@Test
+	public void testTenantIsolationWithCloserOtherTenantRows() throws Exception {
+		var uniqueTable = "test_tenant_closer_" + System.currentTimeMillis();
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
+
+			config = { datasource: "%s", table: "%s", dimensions: 3, distanceFunction: "COSINE" };
+
+			other = new MariaDBVectorMemory( key: createUUID(), collection: "shared", userId: "other-user" );
+			other.configure( config );
+			mine = new MariaDBVectorMemory( key: createUUID(), collection: "shared", userId: "me" );
+			mine.configure( config );
+
+			// 30 other-tenant rows are nearer to the query than my only row
+			for ( i = 1; i <= 30; i++ ) {
+				other.storeDocument( "o#i#", "other #i#", [ 1, 0.001 * i, 0 ], { userId: "other-user" } );
+			}
+			mine.storeDocument( "m1", "mine", [ 0, 1, 0 ], { userId: "me" } );
+
+			results = mine.findSimilar( [ 1, 0, 0 ], 5 );
+			resultCount = results.len();
+			firstId = resultCount ? results[ 1 ].id : "";
+
+			queryExecute( "DROP TABLE %s", {}, { datasource: "%s" } );
+			"""
+			.formatted( DATASOURCE_NAME, uniqueTable, uniqueTable, DATASOURCE_NAME ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "resultCount" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsString( Key.of( "firstId" ) ) ).isEqualTo( "m1" );
+	}
+
+	@DisplayName( "Test CRUD, upsert, JSON metadata filter and tenant scoping with precomputed embeddings" )
+	@Test
+	public void testCrudWithPrecomputedEmbeddings() throws Exception {
+		var uniqueTable = "test_crud_" + System.currentTimeMillis();
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.memory.vector.MariaDBVectorMemory;
+
+			memory = new MariaDBVectorMemory( key: createUUID(), collection: "crud", userId: "alice", conversationId: "c1" );
+			memory.configure({ datasource: "%s", table: "%s", dimensions: 3 });
+
+			memory.storeDocument( "d1", "first", [ 1, 0, 0 ], { category: "tutorial", userId: "alice", conversationId: "c1" } );
+			memory.storeDocument( "d2", "second", [ 0, 1, 0 ], { category: "reference", userId: "alice", conversationId: "c1" } );
+			memory.storeDocument( "d3", "other conversation", [ 0, 0, 1 ], { category: "tutorial", userId: "alice", conversationId: "c2" } );
+
+			// Upsert: same id replaces text and vector, no duplicate row
+			memory.storeDocument( "d1", "first updated", [ 0.9, 0.1, 0 ], { category: "tutorial", userId: "alice", conversationId: "c1" } );
+
+			byId = memory.getById( "d1" );
+			missing = memory.getById( "nope" );
+			allMine = memory.getAll();
+
+			// JSON metadata filter + tenant scoping
+			tutorials = memory.findSimilar( [ 1, 0, 0 ], 10, { category: "tutorial" } );
+
+			removed = memory.remove( "d2" );
+			removedAgain = memory.remove( "d2" );
+			removedWhere = memory.removeWhere( { category: "tutorial", conversationId: "c2" } );
+
+			result = {
+				text: byId.text,
+				embeddingLen: byId.embedding.len(),
+				missingEmpty: missing.isEmpty(),
+				allCount: allMine.len(),
+				tutorialIds: tutorials.map( r => r.id ),
+				removed: removed,
+				removedAgain: removedAgain,
+				removedWhere: removedWhere
+			};
+			"""
+			.formatted( DATASOURCE_NAME, uniqueTable ),
+			context
+		);
+		// @formatter:on
+
+		runtime.executeSource( "queryExecute( \"DROP TABLE " + uniqueTable + "\", {}, { datasource: \"" + DATASOURCE_NAME + "\" } );", context );
+
+		IStruct result = variables.getAsStruct( Key.of( "result" ) );
+		assertThat( result.getAsString( Key.of( "text" ) ) ).isEqualTo( "first updated" );
+		assertThat( result.getAsInteger( Key.of( "embeddingLen" ) ) ).isEqualTo( 3 );
+		assertThat( result.getAsBoolean( Key.of( "missingEmpty" ) ) ).isTrue();
+		// d1 and d2 belong to conversation c1, d3 to c2
+		assertThat( result.getAsInteger( Key.of( "allCount" ) ) ).isEqualTo( 2 );
+		// Only d1 is a tutorial in this conversation
+		assertThat( result.getAsArray( Key.of( "tutorialIds" ) ) ).containsExactly( "d1" );
+		assertThat( result.getAsBoolean( Key.of( "removed" ) ) ).isTrue();
+		assertThat( result.getAsBoolean( Key.of( "removedAgain" ) ) ).isFalse();
+		assertThat( result.getAsInteger( Key.of( "removedWhere" ) ) ).isEqualTo( 1 );
 	}
 
 }

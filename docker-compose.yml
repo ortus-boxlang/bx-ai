@@ -93,6 +93,23 @@ services:
       - mysql_data:/var/lib/mysql
     restart: unless-stopped
 
+  # MariaDB 11.8 LTS with native vector support
+  # VECTOR(n) type, VECTOR INDEX (HNSW) and VEC_DISTANCE_* functions
+  # Docs: https://mariadb.com/docs/server/reference/sql-structure/vectors
+  mariadb:
+    image: mariadb:11.8
+    container_name: mariadb-vector
+    ports:
+      - "3308:3306"
+    environment:
+      - MARIADB_DATABASE=vectordb
+      - MARIADB_USER=boxlang
+      - MARIADB_PASSWORD=boxlang
+      - MARIADB_ROOT_PASSWORD=boxlang
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    restart: unless-stopped
+
   # Pinecone Local Development Server
   # Official local development server for testing
   # Docs: https://docs.pinecone.io/guides/operations/local-development
@@ -247,6 +264,8 @@ volumes:
     name: postgres_data
   mysql_data:
     name: mysql_data
+  mariadb_data:
+    name: mariadb_data
   milvus_etcd_data:
     name: milvus_etcd_data
   milvus_minio_data:
