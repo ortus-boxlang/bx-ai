@@ -827,7 +827,8 @@ public class MariaDBVectorMemoryTest extends BaseIntegrationTest {
 		assertThat( ids.get( 0 ) ).isEqualTo( "near" );
 		assertThat( ids.get( 1 ) ).isEqualTo( "mid" );
 		assertThat( ids.get( 2 ) ).isEqualTo( "far" );
-		assertThat( ( ( Number ) variables.get( Key.of( "topScore" ) ) ).doubleValue() ).isGreaterThan( ( ( Number ) variables.get( Key.of( "lastScore" ) ) ).doubleValue() );
+		assertThat( ( ( Number ) variables.get( Key.of( "topScore" ) ) ).doubleValue() )
+		    .isGreaterThan( ( ( Number ) variables.get( Key.of( "lastScore" ) ) ).doubleValue() );
 	}
 
 	@DisplayName( "Test native cosine search ranks by direction, not magnitude" )
