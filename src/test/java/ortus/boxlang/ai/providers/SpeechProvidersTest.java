@@ -183,6 +183,20 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 			exchange.close();
 		} );
 
+		// Gemini flaky: 500 on the first call, then audio
+		AtomicInteger flakyCalls = new AtomicInteger();
+		stub.createContext( "/geminiflaky/models", exchange -> {
+			exchange.getRequestBody().readAllBytes();
+			hits.computeIfAbsent( "/geminiflaky", k -> new AtomicInteger() ).incrementAndGet();
+			if ( flakyCalls.incrementAndGet() == 1 ) {
+				respondStatus( exchange, 500, "application/json", "{\"error\":{\"code\":500,\"message\":\"java.lang.AssertionError: null\"}}" );
+				return;
+			}
+			String json = "{\"candidates\":[{\"content\":{\"parts\":[{\"inlineData\":{\"mimeType\":\"audio/L16;codec=pcm;rate=24000\",\"data\":\""
+			    + b64( "PCMPCM" ) + "\"}}]}}]}";
+			respond( exchange, "application/json", json.getBytes( StandardCharsets.UTF_8 ) );
+		} );
+
 		// Grok: raw audio bytes
 		stub.createContext( "/grok/tts", exchange -> {
 			record( exchange, "grok" );
@@ -575,6 +589,23 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 		assertThat( seenBody.get( "mistralbad" ) ).doesNotContain( "Charlotte" );
 	}
 
+	@DisplayName( "Gemini speech retries a transient 500 and then succeeds" )
+	@Test
+	public void testGeminiRetriesTransientError() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			response = aiSpeak( "Hi", {}, { provider: "gemini", apiKey: "gk", baseURL: "%s/geminiflaky" } )
+			size = response.getSize()
+			""".formatted( stubURL ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( ( ( Number ) variables.get( Key.of( "size" ) ) ).intValue() ).isGreaterThan( 0 );
+		assertThat( hits.get( "/geminiflaky" ).get() ).isEqualTo( 2 );
+	}
+
 	@DisplayName( "Gemini speech errors say what came back, including the HTTP status and model" )
 	@Test
 	public void testGeminiErrorsAreDiagnostic() {
@@ -751,9 +782,11 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "apiKey", MISTRAL_KEY );
 
 		// @formatter:off
-		executeWithTimeoutHandling(
+		executeLiveCall(
 			"""
 			whole = aiSpeak( "Hello from BoxLang.", {}, { provider: "mistral" } )
+			// Mistral rate limits aggressively, space the calls out
+			sleep( 3000 )
 			events = []
 			summary = aiSpeakStream(
 				"Hello from BoxLang.",
@@ -784,7 +817,7 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 		moduleRecord.settings.put( "apiKey", GEMINI_KEY );
 
 		// @formatter:off
-		executeWithTimeoutHandling(
+		executeLiveCall(
 			"""
 			whole = aiSpeak( "Hello from BoxLang.", {}, { provider: "gemini" } )
 			header = charsetEncode( whole.getAudioData().slice( 1, 4 ), "utf-8" )
