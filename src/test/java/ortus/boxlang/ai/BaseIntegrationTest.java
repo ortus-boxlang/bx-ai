@@ -212,8 +212,8 @@ public abstract class BaseIntegrationTest {
 	 * Markers for transient provider failures (rate limits, backend 5xx) that say nothing about our code.
 	 */
 	private static final String[] LIVE_CALL_TRANSIENT_MARKERS = {
-	    "rate limit", "rate_limit", "ratelimit", "too many requests", "http 429", "http 500", "http 502", "http 503", "http 504",
-	    "resource_exhausted", "service unavailable"
+	    "rate limit", "rate_limit", "ratelimit", "rate-limit", "too many requests", "capacity exceeded", "quota",
+	    "429", "http 500", "http 502", "http 503", "http 504", "resource_exhausted", "service unavailable"
 	};
 
 	/**

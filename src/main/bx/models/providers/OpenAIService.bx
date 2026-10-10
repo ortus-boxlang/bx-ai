@@ -1333,7 +1333,7 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 
 			throw(
 				type   : "ProviderError",
-				message: "HTTP Provider (#arguments.targetURL#) Error: #errorMessage#",
+				message: "HTTP Provider (#arguments.targetURL#) Error (HTTP #speechResult.statusCode#): #errorMessage#",
 				detail : CallStackGet().toString()
 			)
 		}
