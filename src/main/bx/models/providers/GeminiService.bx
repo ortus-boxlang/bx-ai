@@ -41,6 +41,9 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		DEFAULT_EMBED_PARAMS = {
 			"model" : "gemini-embedding-001"
 		};
+		// Transient statuses worth retrying for speech, and the wait before each retry
+		TTS_RETRYABLE_STATUS  = [ 429, 500, 502, 503, 504 ];
+		TTS_RETRY_DELAYS_MS   = [ 500, 1500 ];
 		DEFAULT_SPEECH_PARAMS = {
 			// gemini-2.5-flash-preview-tts is no longer listed in the Gemini docs. gemini-3.8-flash-tts is
 			// the documented model. https://ai.google.dev/gemini-api/docs/speech-generation
@@ -431,10 +434,23 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 			}
 		};
 
-		bx:http url=ttsURL method="post" result="ttsResult" timeout=arguments.speechRequest.getTimeout(){
-			bx:httpParam type="header" name="content-type" value="application/json";
-			bx:httpParam type="body" value=jsonSerialize( dataPacket );
-		}
+		// Gemini TTS intermittently answers 429/5xx (e.g. 500 "AssertionError: null" from the backend), retry with backoff
+		var ttsResult   = {};
+		var retryDelays = static.TTS_RETRY_DELAYS_MS;
+		var attempt     = 0;
+		do {
+			attempt++;
+			bx:http url=ttsURL method="post" result="ttsResult" timeout=arguments.speechRequest.getTimeout(){
+				bx:httpParam type="header" name="content-type" value="application/json";
+				bx:httpParam type="body" value=jsonSerialize( dataPacket );
+			}
+			var retryable = static.TTS_RETRYABLE_STATUS.contains( val( ttsResult.statusCode ) );
+			if ( retryable && attempt <= retryDelays.len() ) {
+				sleep( retryDelays[ attempt ] );
+			} else {
+				retryable = false;
+			}
+		} while ( retryable );
 
 		if ( ttsResult.statusCode != "200" ) {
 			var errMsg = isSimpleValue( ttsResult.fileContent ) ? trim( ttsResult.fileContent ) : ""
