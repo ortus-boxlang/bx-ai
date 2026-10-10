@@ -31,14 +31,21 @@ class extends="BaseTool"{
 	property name="inputSchema" type="struct" default={};
 
 	/**
+	 * The tool name on the MCP server, which can differ from the exposed name when a prefix is used
+	 */
+	property name="remoteName" type="string" default="";
+
+	/**
 	 * Constructor
 	 *
 	 * @mcpClient  The MCPClient connected to the MCP server that owns this tool
 	 * @toolDefinition  A single tool struct from MCPClient.listTools() data, containing name, description, inputSchema
+	 * @prefix  Optional prefix. The exposed name becomes prefix__name, the server still receives the original name
 	 */
-	function init( required any mcpClient, required struct toolDefinition ) {
+	function init( required any mcpClient, required struct toolDefinition, string prefix = "" ) {
 		variables.mcpClient   = arguments.mcpClient;
-		variables.name        = arguments.toolDefinition.name        ?: "";
+		variables.remoteName  = arguments.toolDefinition.name        ?: "";
+		variables.name        = len( arguments.prefix ) ? arguments.prefix & "__" & variables.remoteName : variables.remoteName;
 		variables.description = arguments.toolDefinition.description ?: "";
 		variables.inputSchema = arguments.toolDefinition.inputSchema ?: {};
 		return this;
@@ -80,7 +87,7 @@ class extends="BaseTool"{
 	public any function doInvoke( required struct args, AiChatRequest chatRequest ) {
 		// Strip internal agent key before forwarding to MCP server
 		var mcpArgs  = arguments.args.filter( ( k, v ) => k != "_chatRequest" );
-		var response = variables.mcpClient.send( variables.name, mcpArgs );
+		var response = variables.mcpClient.send( variables.remoteName, mcpArgs );
 
 		if ( response.isSuccess() ) {
 			var data = response.getData();
