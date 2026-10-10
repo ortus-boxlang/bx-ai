@@ -88,6 +88,16 @@ public class mcpClientProtocolTest extends BaseIntegrationTest {
 			exchange.getResponseBody().write( bytes );
 			exchange.close();
 		} );
+		// Records whether the request asked for the HTTP/2 upgrade
+		this.server.createContext( "/upgrade", exchange -> {
+			this.bodies.add( "upgrade=" + exchange.getRequestHeaders().getFirst( "Upgrade" ) );
+			exchange.getRequestBody().readAllBytes();
+			byte[] bytes = "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"tools\":[]}}".getBytes( StandardCharsets.UTF_8 );
+			exchange.getResponseHeaders().add( "Content-Type", "application/json" );
+			exchange.sendResponseHeaders( 200, bytes.length );
+			exchange.getResponseBody().write( bytes );
+			exchange.close();
+		} );
 		this.server.start();
 	}
 
@@ -135,6 +145,25 @@ public class mcpClientProtocolTest extends BaseIntegrationTest {
 
 		assertThat( variables.get( Key.of( "ok" ) ) ).isEqualTo( true );
 		assertThat( variables.get( Key.of( "names" ) ).toString() ).contains( "search" );
+	}
+
+	@Test
+	@DisplayName( "withHttpVersion( HTTP/1.1 ) sends no HTTP/2 upgrade request, and a wrong version is refused" )
+	public void testHttpVersion() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				MCP( "%s/upgrade" ).withHttpVersion( "HTTP/1.1" ).listTools()
+				MCP( "%s/upgrade" ).listTools()
+				refused = false
+				try { MCP( "%s/upgrade" ).withHttpVersion( "HTTP/3" ) } catch( any e ) { refused = true }
+			""".formatted( base(), base(), base() ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( this.bodies ).containsExactly( "upgrade=null", "upgrade=h2c" ).inOrder();
+		assertThat( variables.get( Key.of( "refused" ) ) ).isEqualTo( true );
 	}
 
 	@Test

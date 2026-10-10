@@ -82,6 +82,12 @@ class {
 	property name="handshake" type="boolean" default=false;
 
 	/**
+	 * The HTTP version of the requests: "HTTP/2" (the default, the same as bx:http) or "HTTP/1.1".
+	 * On a plain http address HTTP/2 starts with an upgrade request (h2c) that some servers do not handle well.
+	 */
+	property name="httpVersion" type="string" default="HTTP/2";
+
+	/**
 	 * Session id the server returned from the handshake, empty when none
 	 */
 	property name="sessionId" type="string" default="";
@@ -111,6 +117,7 @@ class {
 		variables.maxResponseBytes = 0
 		variables.handshake    = false
 		variables.sessionId    = ""
+		variables.httpVersion  = "HTTP/2"
 		variables.handshakeDone = false
 		variables.stats        = new MCPClientStats()
 
@@ -208,6 +215,21 @@ class {
 	 */
 	function withMaxResponseBytes( required numeric max ) {
 		variables.maxResponseBytes = arguments.max
+		return this
+	}
+
+	/**
+	 * Choose the HTTP version of the requests. The default is "HTTP/2", the same as bx:http.
+	 * Use "HTTP/1.1" for a server on a plain http address that does not handle the HTTP/2 upgrade (h2c).
+	 *
+	 * @version "HTTP/2" or "HTTP/1.1"
+	 * @return This client for chaining
+	 */
+	function withHttpVersion( required string version ) {
+		if ( !listFindNoCase( "HTTP/2,HTTP/1.1", arguments.version ) ) {
+			throw( type: "InvalidArgument", message: "The HTTP version must be HTTP/2 or HTTP/1.1, not [#arguments.version#]" )
+		}
+		variables.httpVersion = arguments.version
 		return this
 	}
 
@@ -523,6 +545,7 @@ class {
 				charset = "utf-8"
 				timeout = timeoutSeconds
 				redirect = variables.followRedirects
+				httpVersion = variables.httpVersion
 			{
 				bx:httpParam type="header" name="content-type" value="application/json";
 				bx:httpParam type="header" name="accept" value="application/json, text/event-stream";
