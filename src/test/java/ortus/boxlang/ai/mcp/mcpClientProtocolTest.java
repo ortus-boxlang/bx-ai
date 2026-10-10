@@ -79,10 +79,10 @@ public class mcpClientProtocolTest extends BaseIntegrationTest {
 		this.server.createContext( "/paged", exchange -> {
 			String body = new String( exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8 );
 			this.bodies.add( body );
-			String reply = body.contains( "\"cursor\":\"page2\"" )
+			String	reply	= body.contains( "\"cursor\":\"page2\"" )
 			    ? "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"tools\":[{\"name\":\"second\",\"inputSchema\":{}}]}}"
 			    : "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"tools\":[{\"name\":\"first\",\"inputSchema\":{}}],\"nextCursor\":\"page2\"}}";
-			byte[] bytes = reply.getBytes( StandardCharsets.UTF_8 );
+			byte[]	bytes	= reply.getBytes( StandardCharsets.UTF_8 );
 			exchange.getResponseHeaders().add( "Content-Type", "application/json" );
 			exchange.sendResponseHeaders( 200, bytes.length );
 			exchange.getResponseBody().write( bytes );
