@@ -48,7 +48,7 @@ public class mcpClientHooksTest extends BaseIntegrationTest {
 
 	@BeforeEach
 	public void startServer() throws IOException {
-		this.server = HttpServer.create( new InetSocketAddress( "127.0.0.1", 0 ), 0 );
+		this.server	= HttpServer.create( new InetSocketAddress( "127.0.0.1", 0 ), 0 );
 		this.port	= this.server.getAddress().getPort();
 
 		this.server.createContext( "/mcp", exchange -> {
@@ -57,14 +57,14 @@ public class mcpClientHooksTest extends BaseIntegrationTest {
 			this.requests.add( method );
 			this.sessionIds.add( exchange.getRequestHeaders().getFirst( "Mcp-Session-Id" ) == null ? ""
 			    : exchange.getRequestHeaders().getFirst( "Mcp-Session-Id" ) );
-			String reply = switch ( method ) {
-				case "initialize" -> "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"capabilities\":{}}}";
-				case "notifications/initialized" -> "{}";
-				case "tools/list" ->
-				    "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"tools\":[{\"name\":\"search\",\"description\":\"s\",\"inputSchema\":{}},{\"name\":\"sendFeedback\",\"description\":\"f\",\"inputSchema\":{}}]}}";
-				default -> "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]}}";
-			};
-			byte[] bytes = reply.getBytes( StandardCharsets.UTF_8 );
+			String	reply	= switch ( method ) {
+								case "initialize" -> "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"capabilities\":{}}}";
+								case "notifications/initialized" -> "{}";
+								case "tools/list" ->
+								    "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"tools\":[{\"name\":\"search\",\"description\":\"s\",\"inputSchema\":{}},{\"name\":\"sendFeedback\",\"description\":\"f\",\"inputSchema\":{}}]}}";
+								default -> "{\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]}}";
+							};
+			byte[]	bytes	= reply.getBytes( StandardCharsets.UTF_8 );
 			exchange.getResponseHeaders().add( "Content-Type", "application/json" );
 			if ( method.equals( "initialize" ) ) {
 				exchange.getResponseHeaders().add( "Mcp-Session-Id", "sess-42" );
