@@ -751,7 +751,7 @@ abstract class implements="IAiRunnable" {
 	 *
 	 * @mcpServer  A URL string pointing to the MCP server, or a pre-configured MCPClient instance.
 	 * @config  Optional configuration struct with any of: token, timeout, headers, user, password,
-	 *          urlGuard (function), redirects (boolean), maxResponseBytes (numeric), handshake (boolean),
+	 *          urlGuard (function), redirects (boolean), maxResponseBytes (numeric), handshake (boolean), httpVersion ("HTTP/2" or "HTTP/1.1"),
 	 *          prefix (string, tools are named prefix__name so servers cannot clash),
 	 *          toolFilter (array of tool names, only these are exposed).
 	 *
@@ -834,6 +834,9 @@ abstract class implements="IAiRunnable" {
 		}
 		if ( arguments.config.keyExists( "maxResponseBytes" ) ) {
 			mcpClient.withMaxResponseBytes( arguments.config.maxResponseBytes )
+		}
+		if ( arguments.config.keyExists( "httpVersion" ) ) {
+			mcpClient.withHttpVersion( arguments.config.httpVersion )
 		}
 		if ( arguments.config.keyExists( "handshake" ) ) {
 			mcpClient.withHandshake( arguments.config.handshake )

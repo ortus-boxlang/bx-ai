@@ -82,6 +82,12 @@ class {
 	property name="handshake" type="boolean" default=false;
 
 	/**
+	 * The HTTP version of the requests: "HTTP/2" (the default, the same as bx:http) or "HTTP/1.1".
+	 * On a plain http address HTTP/2 starts with an upgrade request (h2c) that some servers do not handle well.
+	 */
+	property name="httpVersion" type="string" default="HTTP/2";
+
+	/**
 	 * Session id the server returned from the handshake, empty when none
 	 */
 	property name="sessionId" type="string" default="";
@@ -111,6 +117,7 @@ class {
 		variables.maxResponseBytes = 0
 		variables.handshake    = false
 		variables.sessionId    = ""
+		variables.httpVersion  = "HTTP/2"
 		variables.handshakeDone = false
 		variables.stats        = new MCPClientStats()
 
@@ -212,6 +219,21 @@ class {
 	}
 
 	/**
+	 * Choose the HTTP version of the requests. The default is "HTTP/2", the same as bx:http.
+	 * Use "HTTP/1.1" for a server on a plain http address that does not handle the HTTP/2 upgrade (h2c).
+	 *
+	 * @version "HTTP/2" or "HTTP/1.1"
+	 * @return This client for chaining
+	 */
+	function withHttpVersion( required string version ) {
+		if ( !listFindNoCase( "HTTP/2,HTTP/1.1", arguments.version ) ) {
+			throw( type: "InvalidArgument", message: "The HTTP version must be HTTP/2 or HTTP/1.1, not [#arguments.version#]" )
+		}
+		variables.httpVersion = arguments.version
+		return this
+	}
+
+	/**
 	 * Turn the MCP "initialize" handshake on or off. When on, the client greets the server once before
 	 * its first call, as the MCP specification asks, and sends back the Mcp-Session-Id the server returns.
 	 *
@@ -291,13 +313,19 @@ class {
 	/**
 	 * List available tools from the MCP server
 	 *
+	 * @cursor Optional. The nextCursor of a previous answer, to read the next page of a server that pages its tools
+	 *
 	 * @return MCPResponse with tools data
 	 */
-	MCPResponse function listTools() {
+	MCPResponse function listTools( string cursor = "" ) {
 		var body = {
 			"jsonrpc": "2.0",
 			"method": "tools/list",
 			"id": createUUID()
+		}
+		// A server that pages its tools sends a nextCursor, pass it back to read the next page
+		if ( len( arguments.cursor ) ) {
+			body[ "params" ] = { "cursor": arguments.cursor }
 		}
 		return makeRequest( "POST", "", body, "tool", "listTools" )
 	}
@@ -506,14 +534,18 @@ class {
 				"requestBody"  : arguments.body ?: {}
 			} )
 
+			// Our timeout is in milliseconds but the bx:http timeout is in seconds
+			var timeoutSeconds = max( 1, ceiling( variables.timeout / 1000 ) )
+
 			// Make HTTP request using bx:http component
 			bx: http
 				url     = targetUrl
 				method  = arguments.method
 				result  = "httpResult"
 				charset = "utf-8"
-				timeout = variables.timeout
+				timeout = timeoutSeconds
 				redirect = variables.followRedirects
+				httpVersion = variables.httpVersion
 			{
 				bx:httpParam type="header" name="content-type" value="application/json";
 				bx:httpParam type="header" name="accept" value="application/json, text/event-stream";
@@ -576,6 +608,11 @@ class {
 							if( line.trim().startsWith( "data:" ) ) {
 								var jsonData = line.trim().replaceNoCase( "data:", "" ).trim()
 								responseData = jsonDeserialize( jsonData )
+
+								// A stream can carry server notifications before the answer: skip a message that is not a JSON-RPC response
+								if( isStruct( responseData ) && !structKeyExists( responseData, "result" ) && !structKeyExists( responseData, "error" ) ){
+									continue;
+								}
 
 								// Check for JSON-RPC error
 								if( isStruct( responseData ) && structKeyExists( responseData, "error" ) ) {
