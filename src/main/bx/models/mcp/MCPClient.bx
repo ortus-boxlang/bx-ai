@@ -291,13 +291,19 @@ class {
 	/**
 	 * List available tools from the MCP server
 	 *
+	 * @cursor Optional. The nextCursor of a previous answer, to read the next page of a server that pages its tools
+	 *
 	 * @return MCPResponse with tools data
 	 */
-	MCPResponse function listTools() {
+	MCPResponse function listTools( string cursor = "" ) {
 		var body = {
 			"jsonrpc": "2.0",
 			"method": "tools/list",
 			"id": createUUID()
+		}
+		// A server that pages its tools sends a nextCursor, pass it back to read the next page
+		if ( len( arguments.cursor ) ) {
+			body[ "params" ] = { "cursor": arguments.cursor }
 		}
 		return makeRequest( "POST", "", body, "tool", "listTools" )
 	}
@@ -506,13 +512,16 @@ class {
 				"requestBody"  : arguments.body ?: {}
 			} )
 
+			// Our timeout is in milliseconds but the bx:http timeout is in seconds
+			var timeoutSeconds = max( 1, ceiling( variables.timeout / 1000 ) )
+
 			// Make HTTP request using bx:http component
 			bx: http
 				url     = targetUrl
 				method  = arguments.method
 				result  = "httpResult"
 				charset = "utf-8"
-				timeout = variables.timeout
+				timeout = timeoutSeconds
 				redirect = variables.followRedirects
 			{
 				bx:httpParam type="header" name="content-type" value="application/json";
@@ -576,6 +585,11 @@ class {
 							if( line.trim().startsWith( "data:" ) ) {
 								var jsonData = line.trim().replaceNoCase( "data:", "" ).trim()
 								responseData = jsonDeserialize( jsonData )
+
+								// A stream can carry server notifications before the answer: skip a message that is not a JSON-RPC response
+								if( isStruct( responseData ) && !structKeyExists( responseData, "result" ) && !structKeyExists( responseData, "error" ) ){
+									continue;
+								}
 
 								// Check for JSON-RPC error
 								if( isStruct( responseData ) && structKeyExists( responseData, "error" ) ) {
