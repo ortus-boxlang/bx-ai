@@ -59,6 +59,34 @@ class {
 	property name="errorCallback" type="any";
 
 	/**
+	 * Optional guard called with the target URL before every request.
+	 * Return false or throw to refuse the request, nothing is sent. Null means no guard.
+	 */
+	property name="urlGuard" type="any";
+
+	/**
+	 * Whether HTTP redirects (3xx) are followed. Default true.
+	 */
+	property name="followRedirects" type="boolean" default=true;
+
+	/**
+	 * Maximum response body size in characters. 0 means no limit.
+	 * The body is read before it is measured, so this protects what you keep and pass on, not the bytes read.
+	 */
+	property name="maxResponseBytes" type="numeric" default=0;
+
+	/**
+	 * When true, the client sends an MCP "initialize" request (and the "notifications/initialized" notice)
+	 * once before its first call and sends back the Mcp-Session-Id the server returns.
+	 */
+	property name="handshake" type="boolean" default=false;
+
+	/**
+	 * Session id the server returned from the handshake, empty when none
+	 */
+	property name="sessionId" type="string" default="";
+
+	/**
 	 * Internal stats tracker for this client instance
 	 */
 	property name="stats" type="MCPClientStats";
@@ -79,6 +107,11 @@ class {
 		variables.authUser     = ""
 		variables.authPassword = ""
 		variables.bearerToken  = ""
+		variables.followRedirects = true
+		variables.maxResponseBytes = 0
+		variables.handshake    = false
+		variables.sessionId    = ""
+		variables.handshakeDone = false
 		variables.stats        = new MCPClientStats()
 
 		return this
@@ -133,6 +166,62 @@ class {
 	 */
 	function withBearerToken( required string token ) {
 		variables.bearerToken = arguments.token
+		return this
+	}
+
+	/**
+	 * Set a guard that is called with the target URL before every request.
+	 * Return true to allow it. Return false, or throw, to refuse it: nothing is sent and the call
+	 * returns a failed MCPResponse. Use it to block private addresses or to apply an allow list.
+	 *
+	 * <pre>
+	 * MCP( url ).withUrlGuard( ( url ) => !isPrivateAddress( url ) )
+	 * </pre>
+	 *
+	 * @guard Function with the signature ( url ) => boolean
+	 * @return This client for chaining
+	 */
+	function withUrlGuard( required function guard ) {
+		variables.urlGuard = arguments.guard
+		return this
+	}
+
+	/**
+	 * Choose whether HTTP redirects are followed. They are by default.
+	 * With false, a redirect answer is a failed response and the new address is never called.
+	 *
+	 * @follow True to follow redirects, false to treat them as an error
+	 * @return This client for chaining
+	 */
+	function withRedirects( required boolean follow ) {
+		variables.followRedirects = arguments.follow
+		return this
+	}
+
+	/**
+	 * Refuse responses larger than a number of characters. 0 means no limit.
+	 * The response is read before it is measured, so this limits what is parsed and returned,
+	 * not what is downloaded.
+	 *
+	 * @max Maximum body size in characters
+	 * @return This client for chaining
+	 */
+	function withMaxResponseBytes( required numeric max ) {
+		variables.maxResponseBytes = arguments.max
+		return this
+	}
+
+	/**
+	 * Turn the MCP "initialize" handshake on or off. When on, the client greets the server once before
+	 * its first call, as the MCP specification asks, and sends back the Mcp-Session-Id the server returns.
+	 *
+	 * @enabled True to do the handshake
+	 * @return This client for chaining
+	 */
+	function withHandshake( boolean enabled = true ) {
+		variables.handshake = arguments.enabled
+		variables.handshakeDone = false
+		variables.sessionId = ""
 		return this
 	}
 
@@ -329,6 +418,40 @@ class {
 	 */
 
 	/**
+	 * Send "initialize" and "notifications/initialized" once and keep the session id the server returns.
+	 * A server that does not answer the handshake is not an error, the client carries on without a session.
+	 */
+	private void function doHandshake() {
+		variables.handshakeDone = true
+		var initResponse = makeRequest(
+			"POST",
+			"",
+			{
+				"jsonrpc": "2.0",
+				"method": "initialize",
+				"id": createUUID(),
+				"params": {
+					"protocolVersion": "2025-03-26",
+					"capabilities": {},
+					"clientInfo": { "name": "bx-ai", "version": "1.0.0" }
+				}
+			},
+			"discovery",
+			"initialize"
+		)
+		if( initResponse.isSuccess() ){
+			var responseHeaders = initResponse.getHeaders()
+			for( var headerName in responseHeaders ){
+				if( headerName.lCase() == "mcp-session-id" ){
+					var headerValue = responseHeaders[ headerName ]
+					variables.sessionId = isArray( headerValue ) ? ( headerValue.len() ? headerValue.first() : "" ) : headerValue
+				}
+			}
+			makeRequest( "POST", "", { "jsonrpc": "2.0", "method": "notifications/initialized" }, "discovery", "initialized" )
+		}
+	}
+
+	/**
 	 * Make an HTTP request to the MCP server
 	 *
 	 * @method        HTTP method (GET, POST, etc.)
@@ -361,6 +484,18 @@ class {
 				authHeader             = "Basic #encodedCredentials#"
 			}
 
+			// Guard first: a refused URL never reaches the network
+			if( !isNull( variables.urlGuard ) ){
+				if( variables.urlGuard( targetUrl ) === false ){
+					throw( type: "MCPUrlRefused", message: "URL refused by the URL guard: " & targetUrl )
+				}
+			}
+
+			// MCP handshake once, before the first real call
+			if( variables.handshake && !variables.handshakeDone && arguments.operationName != "initialize" ){
+				doHandshake()
+			}
+
 			// Start timing and fire request event
 			startTime = getTickCount()
 			BoxAnnounce( "onMCPClientRequest", {
@@ -378,9 +513,15 @@ class {
 				result  = "httpResult"
 				charset = "utf-8"
 				timeout = variables.timeout
+				redirect = variables.followRedirects
 			{
 				bx:httpParam type="header" name="content-type" value="application/json";
 				bx:httpParam type="header" name="accept" value="application/json, text/event-stream";
+
+				// MCP session from the handshake
+				if( len( variables.sessionId ) ){
+					bx:httpParam type="header" name="Mcp-Session-Id" value="#variables.sessionId#";
+				}
 
 				// Authentication header
 				if( len( authHeader ) ){
@@ -416,6 +557,11 @@ class {
 			var isSuccess = statusCode >= 200 && statusCode < 300
 			var responseData = {}
 			var errorMessage = ""
+
+			// Refuse an oversized body before parsing it
+			if( variables.maxResponseBytes > 0 && len( httpResult.filecontent ?: "" ) > variables.maxResponseBytes ){
+				throw( type: "MCPResponseTooLarge", message: "Response larger than #variables.maxResponseBytes# characters" )
+			}
 
 			// Parse response body (handles both SSE and plain JSON)
 			if( len( httpResult.filecontent ?: "" ) ) {

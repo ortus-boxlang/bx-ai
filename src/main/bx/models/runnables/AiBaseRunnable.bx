@@ -750,7 +750,10 @@ abstract class implements="IAiRunnable" {
 	 * as an MCPTool instance that is added to the model's tool list.
 	 *
 	 * @mcpServer  A URL string pointing to the MCP server, or a pre-configured MCPClient instance.
-	 * @config  Optional configuration struct with any of: token, timeout, headers, user, password.
+	 * @config  Optional configuration struct with any of: token, timeout, headers, user, password,
+	 *          urlGuard (function), redirects (boolean), maxResponseBytes (numeric), handshake (boolean),
+	 *          prefix (string, tools are named prefix__name so servers cannot clash),
+	 *          toolFilter (array of tool names, only these are exposed).
 	 *
 	 * @return This runnable for chaining
 	 */
@@ -762,11 +765,16 @@ abstract class implements="IAiRunnable" {
 			var data      = response.getData();
 			var toolsList = isArray( data ) ? data : ( data.keyExists( "tools" ) ? data.tools : [] )
 			var toolNames = [];
+			var toolPrefix = arguments.config.prefix ?: "";
+			var toolFilter = arguments.config.toolFilter ?: [];
 
-			toolsList.each( toolDef => {
-				withTools( [ new bxModules.bxai.models.tools.MCPTool( mcpClient, toolDef ) ] )
-				toolNames.append( toolDef.name ?: "" );
-			} )
+			toolsList
+				.filter( toolDef => !toolFilter.len() || toolFilter.containsNoCase( toolDef.name ?: "" ) )
+				.each( toolDef => {
+					var mcpTool = new bxModules.bxai.models.tools.MCPTool( mcpClient, toolDef, toolPrefix );
+					withTools( [ mcpTool ] )
+					toolNames.append( mcpTool.getName() );
+				} )
 
 			// Track server metadata for config inspection and system message generation
 			variables.mcpServers.append( {
@@ -817,6 +825,18 @@ abstract class implements="IAiRunnable" {
 		}
 		if ( arguments.config.keyExists( "headers" ) ) {
 			mcpClient.withHeaders( arguments.config.headers )
+		}
+		if ( arguments.config.keyExists( "urlGuard" ) ) {
+			mcpClient.withUrlGuard( arguments.config.urlGuard )
+		}
+		if ( arguments.config.keyExists( "redirects" ) ) {
+			mcpClient.withRedirects( arguments.config.redirects )
+		}
+		if ( arguments.config.keyExists( "maxResponseBytes" ) ) {
+			mcpClient.withMaxResponseBytes( arguments.config.maxResponseBytes )
+		}
+		if ( arguments.config.keyExists( "handshake" ) ) {
+			mcpClient.withHandshake( arguments.config.handshake )
 		}
 		if ( arguments.config.keyExists( "user" ) )    {
 			mcpClient.withAuth( arguments.config.user, arguments.config.password ?: "" )
