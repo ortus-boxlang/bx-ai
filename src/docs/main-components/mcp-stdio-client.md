@@ -32,8 +32,8 @@ Give the tools to an agent and let it use them:
 
 ```javascript
 agent = aiAgent(
-    agentName: "browser-agent",
-    aiModel: "openai",
+    name: "browser-agent",
+    model: aiModel( provider: "openai" ),
     mcpServers: [
         { command: [ "bxplaywright", "mcp" ], prefix: "browser", toolFilter: [ "browser_visit" ] }
     ]
@@ -160,7 +160,7 @@ agent.withMCPServers( [
 ] )
 
 // The same list as the mcpServers argument
-agent = aiAgent( agentName: "ops", aiModel: "openai", mcpServers: [ ... ] )
+agent = aiAgent( name: "ops", model: aiModel( provider: "openai" ), mcpServers: [ ... ] )
 ```
 
 ### Closing

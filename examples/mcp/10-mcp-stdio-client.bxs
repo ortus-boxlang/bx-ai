@@ -37,8 +37,8 @@ try {
 
 		// 5. Give the tools to an agent: prefix keeps names unique, toolFilter limits what the model sees
 		agent = aiAgent(
-			agentName: "stdio-agent",
-			aiModel: "openai",
+			name: "stdio-agent",
+			model: aiModel( provider: "openai" ),
 			mcpServers: [
 				{
 					command: [ "npx", "-y", "@modelcontextprotocol/server-everything" ],

@@ -768,8 +768,8 @@ public class mcpStdioClientTest extends BaseIntegrationTest {
 		// @formatter:off
 		run( """
 			agent = aiAgent(
-				agentName: "stdio-agent",
-				aiModel: "openai",
+				name: "stdio-agent",
+				model: aiModel( provider: "openai" ),
 				mcpServers: [ { command: %s, prefix: "gh", env: { A_VAR: "1" } } ]
 			)
 			hasTool = agent.hasTool( "gh__echo" )
@@ -814,7 +814,7 @@ public class mcpStdioClientTest extends BaseIntegrationTest {
 			}
 			refuse = ( cmd ) => false
 			viaModel = typeOf( () => aiModel().withMCPServer( { command: %s, commandGuard: refuse } ) )
-			viaAgent = typeOf( () => aiAgent( agentName: "x", aiModel: "openai", mcpServers: [ { command: %s, commandGuard: refuse } ] ) )
+			viaAgent = typeOf( () => aiAgent( name: "x", model: aiModel( provider: "openai" ), mcpServers: [ { command: %s, commandGuard: refuse } ] ) )
 		""".formatted( command( "ok" ), command( "ok" ) ) );
 		// @formatter:on
 

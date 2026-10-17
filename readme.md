@@ -505,8 +505,8 @@ browser.close()
 
 // Give the tools of both to an agent
 var agent = aiAgent(
-    agentName: "ops",
-    aiModel: "openai",
+    name: "ops",
+    model: aiModel( provider: "openai" ),
     mcpServers: [
         "https://docs.example.com/mcp",
         { command: [ "bxplaywright", "mcp" ], prefix: "browser", toolFilter: [ "browser_visit" ] }
