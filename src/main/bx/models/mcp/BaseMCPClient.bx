@@ -1,0 +1,441 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Base class of the MCP clients.
+ *
+ * It owns everything that does not depend on the transport: the timeout, the callbacks, the stats, the events,
+ * and the public methods that build the JSON-RPC request of each MCP operation (tools/list, tools/call, and so on).
+ *
+ * A concrete client extends it and implements transportSend(), which delivers one JSON-RPC message
+ * and returns an MCPResponse. It can also override prepare(), a hook that runs before every request.
+ */
+import bxModules.bxai.models.mcp.MCPClientStats;
+
+abstract class implements="IMCPClient" {
+
+	/**
+	 * Request timeout in milliseconds
+	 */
+	property name="timeout" type="numeric" default=30000;
+
+	/**
+	 * Success callback function
+	 */
+	property name="successCallback" type="any";
+
+	/**
+	 * Error callback function
+	 */
+	property name="errorCallback" type="any";
+
+	/**
+	 * Internal stats tracker for this client instance
+	 */
+	property name="stats" type="MCPClientStats";
+
+	static {
+		DEFAULT_TIMEOUT = 30000;
+	}
+
+	/**
+	 * Constructor, a concrete client calls it with super.init()
+	 */
+	function init() {
+		variables.timeout = static.DEFAULT_TIMEOUT
+		variables.stats   = new MCPClientStats()
+		return this
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Configuration Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Set the request timeout
+	 *
+	 * @ms Timeout in milliseconds
+	 * @return This client for chaining
+	 */
+	function withTimeout( required numeric ms ) {
+		variables.timeout = arguments.ms
+		return this
+	}
+
+	/**
+	 * Register a success callback function
+	 *
+	 * @callback Function to call on successful responses
+	 * @return This client for chaining
+	 */
+	function onSuccess( required function callback ) {
+		variables.successCallback = arguments.callback
+		return this
+	}
+
+	/**
+	 * Register an error callback function
+	 *
+	 * @callback Function to call on error responses
+	 * @return This client for chaining
+	 */
+	function onError( required function callback ) {
+		variables.errorCallback = arguments.callback
+		return this
+	}
+
+	/**
+	 * Release what the client holds. Nothing by default, the stdio client shuts its child process down.
+	 *
+	 * @return This client for chaining
+	 */
+	function close() {
+		return this
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Stats Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Get all client statistics as a plain struct (all atomic values unwrapped).
+	 *
+	 * @return Complete stats struct
+	 */
+	struct function getStats() {
+		return variables.stats.getStats()
+	}
+
+	/**
+	 * Get a lightweight summary of the most useful metrics.
+	 *
+	 * @return Summary stats struct
+	 */
+	struct function getSummary() {
+		return variables.stats.getSummary()
+	}
+
+	/**
+	 * Reset all statistics counters to zero.
+	 *
+	 * @return This client for chaining
+	 */
+	function resetStats() {
+		variables.stats.reset()
+		return this
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Discovery Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * List available tools from the MCP server
+	 *
+	 * @cursor Optional. The nextCursor of a previous answer, to read the next page of a server that pages its tools
+	 *
+	 * @return MCPResponse with tools data
+	 */
+	MCPResponse function listTools( string cursor = "" ) {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "tools/list",
+			"id": createUUID()
+		}
+		// A server that pages its tools sends a nextCursor, pass it back to read the next page
+		if ( len( arguments.cursor ) ) {
+			body[ "params" ] = { "cursor": arguments.cursor }
+		}
+		return makeRequest( body, "tool", "listTools" )
+	}
+
+	/**
+	 * List available resources from the MCP server
+	 *
+	 * @return MCPResponse with resources data
+	 */
+	MCPResponse function listResources() {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "resources/list",
+			"id": createUUID()
+		}
+		return makeRequest( body, "resource", "listResources" )
+	}
+
+	/**
+	 * List available prompts from the MCP server
+	 *
+	 * @return MCPResponse with prompts data
+	 */
+	MCPResponse function listPrompts() {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "prompts/list",
+			"id": createUUID()
+		}
+		return makeRequest( body, "prompt", "listPrompts" )
+	}
+
+	/**
+	 * Get server capabilities
+	 *
+	 * @return MCPResponse with capabilities data
+	 */
+	MCPResponse function getCapabilities() {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "initialize",
+			"id": createUUID(),
+			"params": {
+				"capabilities": {}
+			}
+		}
+		return makeRequest( body, "discovery", "getCapabilities" )
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Execution Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Send a request to invoke a tool on the MCP server
+	 *
+	 * @tool Name of the tool to send to
+	 * @args Arguments to pass to the tool
+	 * @return MCPResponse with invocation result
+	 */
+	MCPResponse function send( required string tool, struct args = {} ) {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "tools/call",
+			"params": {
+				"name": arguments.tool,
+				"arguments": arguments.args
+			},
+			"id": createUUID()
+		};
+		return makeRequest( body, "tool", arguments.tool );
+	}
+
+	/**
+	 * Read a resource from the MCP server
+	 *
+	 * @uri URI of the resource to read
+	 * @return MCPResponse with resource data
+	 */
+	MCPResponse function readResource( required string uri ) {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "resources/read",
+			"params": {
+				"uri": arguments.uri
+			},
+			"id": createUUID()
+		};
+		return makeRequest( body, "resource", arguments.uri );
+	}
+
+	/**
+	 * Get a prompt from the MCP server
+	 *
+	 * @name Name of the prompt
+	 * @args Arguments for the prompt
+	 * @return MCPResponse with prompt data
+	 */
+	MCPResponse function getPrompt( required string name, struct args = {} ) {
+		var body = {
+			"jsonrpc": "2.0",
+			"method": "prompts/get",
+			"params": {
+				"name": arguments.name,
+				"arguments": arguments.args
+			},
+			"id": createUUID()
+		};
+		return makeRequest( body, "prompt", arguments.name );
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Transport Contract (implemented by the concrete clients)
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * The name of the transport: "http" or "stdio". It is sent along in every client event.
+	 */
+	string function getTransportName() {
+		throw( type: "NotImplemented", message: "#getMetadata( this ).name# must implement getTransportName()" )
+	}
+
+	/**
+	 * Deliver one JSON-RPC message and return the answer as an MCPResponse.
+	 * A message without an id is a notification, the answer of those is a successful empty MCPResponse.
+	 * It may throw: makeRequest() turns an exception into a failed MCPResponse.
+	 *
+	 * @body          The JSON-RPC message
+	 * @operationType The type of operation: tool, resource, prompt, or discovery
+	 * @operationName The specific name being invoked (tool name, URI, prompt name, or label)
+	 *
+	 * @return MCPResponse
+	 */
+	private MCPResponse function transportSend(
+		required struct body,
+		required string operationType,
+		required string operationName
+	) {
+		throw( type: "NotImplemented", message: "#getMetadata( this ).name# must implement transportSend()" )
+	}
+
+	/**
+	 * Hook that runs before every request, before the request event is fired and before the timer starts.
+	 * Throw to refuse the request: the call returns a failed MCPResponse and nothing is sent.
+	 */
+	private void function prepare(
+		required struct body,
+		required string operationType,
+		required string operationName
+	) {
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Private Methods
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Run one request through the transport, with the events, the stats and the callbacks around it.
+	 *
+	 * @body          The JSON-RPC message
+	 * @operationType The type of operation: tool, resource, prompt, or discovery
+	 * @operationName The specific name being invoked (tool name, URI, prompt name, or label)
+	 *
+	 * @return MCPResponse with normalized response data
+	 */
+	private MCPResponse function makeRequest(
+		required struct body,
+		string operationType = "discovery",
+		string operationName = ""
+	) {
+		var mcpResponse = null
+		var startTime   = 0
+
+		try {
+			prepare( arguments.body, arguments.operationType, arguments.operationName )
+
+			// Start timing and fire request event
+			startTime = getTickCount()
+			BoxAnnounce( "onMCPClientRequest", {
+				"client"       : this,
+				"baseURL"      : getBaseURL(),
+				"transport"    : getTransportName(),
+				"operation"    : arguments.operationType,
+				"name"         : arguments.operationName,
+				"requestBody"  : arguments.body
+			} )
+
+			mcpResponse = transportSend( arguments.body, arguments.operationType, arguments.operationName )
+
+			// Record stats and fire the appropriate post-request event
+			var elapsedTime = getTickCount() - startTime
+			if ( mcpResponse.getSuccess() ) {
+				variables.stats.recordCall(
+					operationType: arguments.operationType,
+					name: arguments.operationName,
+					responseTime: elapsedTime,
+					success: true
+				)
+				BoxAnnounce( "onMCPClientResponse", {
+					"client"       : this,
+					"baseURL"      : getBaseURL(),
+					"transport"    : getTransportName(),
+					"operation"    : arguments.operationType,
+					"name"         : arguments.operationName,
+					"response"     : mcpResponse,
+					"executionTime": elapsedTime,
+					"statusCode"   : mcpResponse.getStatusCode()
+				} )
+			} else {
+				variables.stats.recordCall(
+					operationType: arguments.operationType,
+					name: arguments.operationName,
+					responseTime: elapsedTime,
+					success: false,
+					errorCode: mcpResponse.getStatusCode(),
+					errorMessage: mcpResponse.getError()
+				)
+				BoxAnnounce( "onMCPClientError", {
+					"client"       : this,
+					"baseURL"      : getBaseURL(),
+					"transport"    : getTransportName(),
+					"operation"    : arguments.operationType,
+					"name"         : arguments.operationName,
+					"error"        : mcpResponse.getError(),
+					"statusCode"   : mcpResponse.getStatusCode(),
+					"executionTime": elapsedTime
+				} )
+			}
+
+		} catch( any e ) {
+			// Handle network, process and other errors
+			mcpResponse = new bxModules.bxai.models.mcp.MCPResponse(
+				success: false,
+				data: {},
+				error: e.message,
+				statusCode: 0,
+				headers: {}
+			)
+
+			var elapsedTime = startTime > 0 ? getTickCount() - startTime : 0
+			variables.stats.recordCall(
+				operationType: arguments.operationType,
+				name: arguments.operationName,
+				responseTime: elapsedTime,
+				success: false,
+				errorCode: 0,
+				errorMessage: e.message
+			)
+			BoxAnnounce( "onMCPClientError", {
+				"client"       : this,
+				"baseURL"      : getBaseURL(),
+				"transport"    : getTransportName(),
+				"operation"    : arguments.operationType,
+				"name"         : arguments.operationName,
+				"error"        : e.message,
+				"exception"    : e,
+				"statusCode"   : 0,
+				"executionTime": elapsedTime
+			} )
+		}
+
+		// Invoke callbacks
+		if( mcpResponse.getSuccess() && !isNull( variables.successCallback ) ) {
+			variables.successCallback( mcpResponse )
+		} else if( !mcpResponse.getSuccess() && !isNull( variables.errorCallback ) ) {
+			variables.errorCallback( mcpResponse )
+		}
+
+		return mcpResponse
+	}
+
+}

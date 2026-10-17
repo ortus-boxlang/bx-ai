@@ -9,7 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ Migration
+
+- `MCPClient` was renamed to `MCPHttpClient` (`models/mcp/MCPHttpClient.bx`). Code that uses the `MCP()` BIF is not affected. Code that created the class directly with `new bxModules.bxai.models.mcp.MCPClient( url )` must use `MCP( url )`. `MCP()` now returns an `IMCPClient`, either an `MCPHttpClient` or an `MCPStdioClient`.
+
 ### 🥊 Added
+
+- **MCP client over stdio**: `MCP( { command: [ "bxplaywright", "mcp" ], env: {}, cwd: "", inheritEnv: true, maxRestarts: 2, commandGuard: fn, timeout: 30000 } )` launches an MCP server as a child process and talks to it over stdin and stdout, as the stdio transport of the MCP specification asks. It has the same methods as the HTTP client (`listTools`, `send`, `listResources`, `readResource`, `listPrompts`, `getPrompt`, `getCapabilities`, stats, callbacks) and returns the same `MCPResponse`, so `MCPTool` and agents need no change. The process is started on the first call and the `initialize` handshake with version negotiation (`2025-06-18`, `2025-03-26`, `2024-11-05`) is done for you. One background thread reads stdout and hands each answer to the caller waiting for its JSON-RPC id, so threads can share a client. Every request has a timeout and a timed out request is cancelled with `notifications/cancelled`. stderr is written to the `ai` log and its last lines are kept (`getStderrTail()`), lines on stdout that are not JSON-RPC are skipped. A dead server is started again on the next call, up to `maxRestarts` times in a row, and a call that was in flight is never repeated. `close()` closes stdin, waits, terminates, then kills the process, and live clients are also closed when the module unloads and when the JVM shuts down. New client events data: `transport` (`stdio` or `http`) and `baseURL` as `stdio:<executable>`. See `src/docs/main-components/mcp-stdio-client.md`.
+- **MCP stdio security**: no shell is ever used, the command is an array. The module setting `mcp.stdio.allowedCommands` limits the executables (empty, the default, allows any), and `commandGuard` receives the command before every launch. A refused command throws `MCPCommandRefused`, also from `withMCPServer`. On Windows `npx` is resolved through `PATHEXT` and `.cmd` files are started with `cmd.exe /c`.
+- **Stdio servers in agents and models**: `withMCPServer( { command: [ ... ] }, { prefix, toolFilter, timeout } )` and `withMCPServers( [ url, { url }, { command, prefix }, client ] )` accept stdio servers, as does the `mcpServers` argument of `aiAgent()` and `aiModel()`. New `closeMCPServers()` on agents and models closes the clients they built themselves. The options that only exist for HTTP (`token`, `headers`, `user`, `password`, `urlGuard`, `redirects`, `maxResponseBytes`, `httpVersion`, `handshake`) throw `InvalidArgument` for a stdio server.
+- **`IMCPClient` and `BaseMCPClient`**: the MCP clients now share an interface and a base class that owns the timeout, callbacks, stats, events and the JSON-RPC request of each operation. `MCPHttpClient` and `MCPStdioClient` only implement the transport.
+- **MCP example** `examples/mcp/10-mcp-stdio-client.bxs`.
 
 - **MCP client** `withHttpVersion( "HTTP/1.1" )` (and the `httpVersion` option of `withMCPServer`): the default stays `HTTP/2`, which on a plain http address starts with an upgrade request (h2c) that some servers answer badly when the body arrives after the headers. HTTP/1.1 sends no upgrade.
 - **MCP client** `listTools( cursor )` takes the `nextCursor` of a previous answer, so the tools of a server that pages them can be read page by page.
@@ -20,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Streaming text-to-speech**: new `aiSpeakStream( text, callback, params, options )` BIF and fluent `aiSpeak().text( "..." ).stream( callback )`, backed by the new `IAiSpeechStreamService` interface and the `speechStream` capability. The callback receives `{ type: "audio", data, format, sampleRate, sequence }`, `{ type: "timestamps", ... }` and a final `{ type: "done", chunks, bytes }`, so audio can be restreamed to a client as it is generated. Return `false` from the callback to stop early. Supported by Cartesia (bytes for mp3 and wav, SSE with word timestamps for pcm, mulaw and alaw), ElevenLabs, OpenAI, Mistral and Gemini. Grok only streams over a WebSocket, which is not implemented.
 
 ### 🐛 Fixed
+
+- **MCP stdio server** (`MCPRequestProcessor::processStdio()`) never ended: when stdin closed, the failed read was answered with an error and tried again in a loop that wrote `-32600` errors to stdout forever. A closed stdin now stops the transport, which is how a client asks a stdio server to stop.
+- **Example `09-mcp-stdio.bxs`** printed its start banner to stdout, which is the protocol stream. It now goes to stderr.
 
 - **MCP client** `withTimeout( ms )` is documented in milliseconds but the value was passed to `bx:http`, whose timeout is in seconds, so `withTimeout( 10000 )` waited about 2.8 hours. It is now converted to seconds (rounded up, at least 1).
 - **MCP client** read the first `data:` line of an event stream as the answer, so a server that sent a notification before the answer (progress, log) made the call return the notification. Messages that are not a JSON-RPC response are now skipped.

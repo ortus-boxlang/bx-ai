@@ -15,13 +15,13 @@
  * An ITool implementation that proxies a tool exposed by an MCP server.
  *
  * Instances are created automatically when you call withMCPServer() on an agent or model.
- * Each MCPTool wraps one entry from the MCPClient.listTools() response and delegates
- * invocations back to the MCP server via MCPClient.send().
+ * Each MCPTool wraps one entry from the IMCPClient.listTools() response and delegates
+ * invocations back to the MCP server via IMCPClient.send().
  */
 class extends="BaseTool"{
 
 	/**
-	 * The MCPClient instance used to call this tool
+	 * The IMCPClient instance used to call this tool
 	 */
 	property name="mcpClient" type="any";
 
@@ -39,7 +39,7 @@ class extends="BaseTool"{
 	 * Constructor
 	 *
 	 * @mcpClient  The MCPClient connected to the MCP server that owns this tool
-	 * @toolDefinition  A single tool struct from MCPClient.listTools() data, containing name, description, inputSchema
+	 * @toolDefinition  A single tool struct from IMCPClient.listTools() data, containing name, description, inputSchema
 	 * @prefix  Optional prefix. The exposed name becomes prefix__name, the server still receives the original name
 	 */
 	function init( required any mcpClient, required struct toolDefinition, string prefix = "" ) {
