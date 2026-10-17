@@ -45,9 +45,9 @@ public class mcpStdioClientTest extends BaseIntegrationTest {
 	 */
 	private static String command( String mode, String... extra ) {
 		try {
-			String	java		= Paths.get( System.getProperty( "java.home" ), "bin", "java" ).toString();
-			String	classes		= Paths.get( FakeStdioMcpServer.class.getProtectionDomain().getCodeSource().getLocation().toURI() ).toString();
-			StringBuilder	cmd	= new StringBuilder( "[ \"" ).append( java ).append( "\", \"-cp\", \"" ).append( classes ).append( "\", \"" )
+			String			java	= Paths.get( System.getProperty( "java.home" ), "bin", "java" ).toString();
+			String			classes	= Paths.get( FakeStdioMcpServer.class.getProtectionDomain().getCodeSource().getLocation().toURI() ).toString();
+			StringBuilder	cmd		= new StringBuilder( "[ \"" ).append( java ).append( "\", \"-cp\", \"" ).append( classes ).append( "\", \"" )
 			    .append( FakeStdioMcpServer.class.getName() ).append( "\", \"" ).append( mode ).append( "\"" );
 			for ( String part : extra ) {
 				cmd.append( ", \"" ).append( part ).append( "\"" );
@@ -589,8 +589,8 @@ public class mcpStdioClientTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "When the JVM exits without close(), the shutdown hook terminates a server that would outlive its parent" )
 	public void testShutdownHook() throws Exception {
-		Path pidFile = Files.createTempFile( "mcp-stdio-pid", ".txt" );
-		long serverPid = -1;
+		Path	pidFile		= Files.createTempFile( "mcp-stdio-pid", ".txt" );
+		long	serverPid	= -1;
 		try {
 			String	java	= Paths.get( System.getProperty( "java.home" ), "bin", "java" ).toString();
 			// The server ignores the end of stdin and sleeps for a minute, so only an active shutdown can end it early

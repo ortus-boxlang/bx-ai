@@ -132,7 +132,8 @@ public class FakeStdioMcpServer {
 				    null );
 				break;
 			case "tools/list" :
-				reply( id, "{\"tools\":[" + tool( "echo", "Echo the text back" ) + "," + tool( "pid", "Process id" ) + "," + tool( "big", "A big answer" ) + "]}",
+				reply( id,
+				    "{\"tools\":[" + tool( "echo", "Echo the text back" ) + "," + tool( "pid", "Process id" ) + "," + tool( "big", "A big answer" ) + "]}",
 				    null );
 				break;
 			case "resources/list" :
@@ -170,16 +171,16 @@ public class FakeStdioMcpServer {
 				text( id, "\"" + ProcessHandle.current().pid() + "\"" );
 				break;
 			case "getenv" :
-				String	envName	= first( Pattern.compile( "\"arguments\"\\s*:\\s*\\{[^}]*\"name\"\\s*:\\s*\"([^\"]*)\"" ), line );
-				String	value	= envName == null ? null : System.getenv( envName );
+				String envName = first( Pattern.compile( "\"arguments\"\\s*:\\s*\\{[^}]*\"name\"\\s*:\\s*\"([^\"]*)\"" ), line );
+				String value = envName == null ? null : System.getenv( envName );
 				text( id, "\"" + ( value == null ? "<unset>" : value ) + "\"" );
 				break;
 			case "cwd" :
 				text( id, "\"" + System.getProperty( "user.dir" ).replace( "\\", "\\\\" ) + "\"" );
 				break;
 			case "big" :
-				int			size	= Integer.parseInt( first( SIZE_PATTERN, line ) );
-				StringBuilder	big	= new StringBuilder( size + 2 );
+				int size = Integer.parseInt( first( SIZE_PATTERN, line ) );
+				StringBuilder big = new StringBuilder( size + 2 );
 				big.append( '"' );
 				for ( int i = 0; i < size; i++ ) {
 					big.append( i % 80 == 79 ? 'x' : 'a' );
@@ -197,14 +198,14 @@ public class FakeStdioMcpServer {
 				break;
 			case "pingcheck" :
 				out.println( "{\"jsonrpc\":\"2.0\",\"id\":\"srv-1\",\"method\":\"ping\"}" );
-				String	pingReply	= in.readLine();
-				boolean	ok			= pingReply != null && pingReply.contains( "\"srv-1\"" ) && pingReply.contains( "\"result\"" );
+				String pingReply = in.readLine();
+				boolean ok = pingReply != null && pingReply.contains( "\"srv-1\"" ) && pingReply.contains( "\"result\"" );
 				text( id, ok ? "\"ping-answered\"" : "\"ping-not-answered\"" );
 				break;
 			case "unknowncheck" :
 				out.println( "{\"jsonrpc\":\"2.0\",\"id\":\"srv-2\",\"method\":\"sampling/createMessage\",\"params\":{}}" );
-				String	unknownReply	= in.readLine();
-				boolean	refused			= unknownReply != null && unknownReply.contains( "-32601" );
+				String unknownReply = in.readLine();
+				boolean refused = unknownReply != null && unknownReply.contains( "-32601" );
 				text( id, refused ? "\"refused\"" : "\"not-refused\"" );
 				break;
 			case "cancelled" :
