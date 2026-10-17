@@ -56,7 +56,8 @@ if ( arrayLen( parsedArgs.positionals ) ) {
 	serverName = parsedArgs.positionals[ 1 ];
 }
 
-println( "Starting BoxLang AI MCP STDIO Server [#serverName#]" )
+// stdout carries ONLY protocol messages in the stdio transport, so anything meant for a human goes to stderr
+systemOutput( "Starting BoxLang AI MCP STDIO Server [#serverName#]", true, true )
 
 // Start STDIO transport (blocks until shutdown or error)
 MCPRequestProcessor::processStdio( serverName )

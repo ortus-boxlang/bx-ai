@@ -541,32 +541,40 @@ loader.ingest( vectorMemory, {
 
 ### MCP Client
 
-- **Class**: `MCPClient` ([models/mcp/MCPClient.bx](src/main/bx/models/mcp/MCPClient.bx) - 449 lines)
-  - **Purpose**: Fluent API for consuming external MCP servers
-  - **Configuration** (chainable):
-    - `withTimeout(ms)`, `withHeaders(headers)`
-    - `withAuth(user, pass)`, `withBearerToken(token)`
-    - `onSuccess(callback)`, `onError(callback)`
-  - **Discovery**:
-    - `listTools()` - Get available tools from server
-    - `listResources()` - Get available resources
-    - `listPrompts()` - Get available prompt templates
-  - **Execution**:
-    - `callTool(name, params)` - Invoke remote tool
-    - `getResource(uri)` - Fetch resource by URI
-    - `getPrompt(name, params)` - Get prompt with parameter substitution
-  - **Response Handling**: Returns `MCPResponse` with fluent checking methods
+- **Interface**: `IMCPClient` ([models/mcp/IMCPClient.bx](src/main/bx/models/mcp/IMCPClient.bx)) - the contract every MCP client implements
+- **Base class**: `BaseMCPClient` ([models/mcp/BaseMCPClient.bx](src/main/bx/models/mcp/BaseMCPClient.bx)) - timeout, callbacks, stats, events, and the JSON-RPC request of each operation. A concrete client only implements `transportSend()` (and optionally the `prepare()` hook and `close()`)
+- **Implementations** - never created with `new`, the `MCP()` BIF picks the class from its argument:
+  - `MCPHttpClient` ([models/mcp/MCPHttpClient.bx](src/main/bx/models/mcp/MCPHttpClient.bx)) - `MCP( "http://host/mcp" )`, goes through `bx:http`
+  - `MCPStdioClient` ([models/mcp/MCPStdioClient.bx](src/main/bx/models/mcp/MCPStdioClient.bx)) - `MCP( { command: [ "bxplaywright", "mcp" ] } )`, launches the server as a child process (stdin/stdout, one JSON-RPC message per line, stderr to the `ai` log). Details and rules: `src/docs/main-components/mcp-stdio-client.md`
+- **Configuration** (chainable, HTTP): `withTimeout(ms)`, `withHeaders(headers)`, `withAuth(user, pass)`, `withBearerToken(token)`, `onSuccess(callback)`, `onError(callback)`
+- **Discovery**: `listTools()`, `listResources()`, `listPrompts()`, `getCapabilities()`
+- **Execution**: `send(tool, args)`, `readResource(uri)`, `getPrompt(name, args)`
+- **Lifecycle**: `close()` (a no-op for HTTP, shuts the child process down for stdio)
+- **Response Handling**: returns `MCPResponse` with fluent checking methods. Nothing throws from a call, a failure is `isSuccess() == false`
+- **Agents/models**: `withMCPServer( urlOrStdioStructOrClient, { prefix, toolFilter, ... } )`, `withMCPServers( [...] )`, `closeMCPServers()` (closes the clients the runnable built itself)
 
 ```javascript
-// Example: Consume an MCP server
+// Example: Consume an MCP server over HTTP
 var client = MCP( "http://localhost:3000" )
     .withTimeout( 5000 )
     .withBearerToken( "secret" )
     .onError( error => println( error, true ) );
 
 var tools = client.listTools();
-var result = client.callTool( "search", { query: "BoxLang" } );
+var result = client.send( "search", { query: "BoxLang" } );
+
+// Example: Consume an MCP server that runs as a child process
+var browser = MCP( { command: [ "bxplaywright", "mcp" ], env: { HEADLESS: "true" } } );
+browser.send( "browser_visit", { url: "https://boxlang.io" } );
+browser.close();
 ```
+
+**Stdio gotchas:**
+
+- `command` is an array, never a shell string. Allow list: module setting `mcp.stdio.allowedCommands`. Guard: `commandGuard`
+- A refused command throws `MCPCommandRefused` (also from `withMCPServer`), every other failure is a failed `MCPResponse`
+- stdout carries ONLY protocol messages. In BoxLang use `systemOutput( text, true, true )` for stderr, `println()` writes to stdout
+- Tests: `FakeStdioMcpServer` (a Java main with misbehaving modes) and the harness classes in `src/test/java/ortus/boxlang/ai/mcp/`. Run `./gradlew cleanTest test --tests "*mcpStdioClientTest"`, plain `test` can report UP-TO-DATE because `build/module` is not a task input. Tests need an empty `.env` file in the repo root (gitignored)
 
 ### MCP Server
 
@@ -1252,6 +1260,7 @@ function someMethod() {
 All major components have interfaces enabling polymorphism:
 
 - `IAiService` → 18 provider implementations
+- `IMCPClient` → `MCPHttpClient`, `MCPStdioClient` (both extend `BaseMCPClient`)
 - `IAiMemory` → 7 memory types + `IVectorMemory` → 11 vector stores
 - `IDocumentLoader` → 14 loader types
 - `ITool` → Custom tool implementations
@@ -1390,7 +1399,10 @@ src/main/bx/
 │   │   ├── BaseDocumentLoader.bx    # Base loader (767 lines)
 │   │   └── *Loader.bx               # 12 loader types (Text, CSV, JSON, PDF, HTTP, etc.)
 │   ├── mcp/
-│   │   ├── MCPClient.bx            # MCP client (449 lines) - fluent API
+│   │   ├── IMCPClient.bx           # MCP client interface
+│   │   ├── BaseMCPClient.bx        # MCP client base: stats, events, JSON-RPC requests
+│   │   ├── MCPHttpClient.bx        # MCP client over HTTP
+│   │   ├── MCPStdioClient.bx       # MCP client over a child process (stdin/stdout)
 │   │   ├── MCPServer.bx            # MCP server (1542 lines!) - JSON-RPC 2.0
 │   │   ├── MCPClientStats.bx       # Client connection stats
 │   │   ├── MCPServerStats.bx       # Server request/error/latency stats

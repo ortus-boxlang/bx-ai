@@ -295,3 +295,27 @@ result = jsonDeserialize( response.fileContent )
 - GitHub Issues: https://github.com/ortus-boxlang/bx-ai/issues
 - Documentation: https://github.com/ortus-boxlang/bx-ai
 - Community: https://community.ortussolutions.com
+
+---
+
+### 9. `09-mcp-stdio.bxs` - MCP Server over stdin/stdout
+**What it demonstrates:**
+- Running an MCP server that a client launches as a child process
+- Protocol messages on stdout, human messages on stderr
+- The server exits when stdin closes
+
+---
+
+### 10. `10-mcp-stdio-client.bxs` - MCP Client over stdin/stdout
+**What it demonstrates:**
+- `MCP( { command: [ ... ] } )` launches a server as a child process
+- The handshake, tool listing and tool calls, with the same `MCPResponse` as HTTP
+- Giving the tools of a stdio server to an agent with `prefix` and `toolFilter`
+- `close()` and `agent.closeMCPServers()`
+
+**Run it:**
+```bash
+boxlang examples/mcp/10-mcp-stdio-client.bxs
+```
+
+📖 Guide: `src/docs/main-components/mcp-stdio-client.md`
