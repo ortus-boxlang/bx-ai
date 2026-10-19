@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assumptions.abort;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import io.github.cdimascio.dotenv.Dotenv;
 import ortus.boxlang.runtime.BoxRuntime;
@@ -37,6 +38,7 @@ import ortus.boxlang.runtime.services.ModuleService;
  * Use this as a base integration test for your non web-support package
  * modules. If you want web based testing, use the BaseWebIntegrationTest
  */
+@ExtendWith( PaidProviderGuard.class )
 public abstract class BaseIntegrationTest {
 
 	protected static Dotenv					dotenv						= Dotenv.load();
