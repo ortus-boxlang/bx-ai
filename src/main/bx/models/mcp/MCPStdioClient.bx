@@ -514,6 +514,10 @@ class extends="BaseMCPClient" {
 		var seconds      = createObject( "java", "java.util.concurrent.TimeUnit" ).SECONDS
 		variables.ready  = false
 
+		// A launcher (npx, sh) can exit on its own and leave the real server running, and once it is gone its descendants can
+		// no longer be found. Take them now, while they are still attached to it.
+		var descendants = snapshotDescendants( childProcess )
+
 		// Closing stdin is the polite way to ask the server to stop. A write that is stuck because the server does not read
 		// holds the write lock: do not wait for it, ending the process below also ends that write.
 		if ( variables.writeLock.tryLock( 1, seconds ) ) {
@@ -538,6 +542,44 @@ class extends="BaseMCPClient" {
 			if ( !childProcess.waitFor( static.SHUTDOWN_WAIT, seconds ) ) {
 				terminate( childProcess, true )
 				childProcess.waitFor( static.SHUTDOWN_WAIT, seconds )
+			}
+		}
+
+		endSurvivors( descendants )
+	}
+
+	/**
+	 * The processes a process started, as handles that stay usable after it exits
+	 */
+	private array function snapshotDescendants( required any childProcess ) {
+		var handles = []
+		try {
+			for ( var descendant in arguments.childProcess.descendants().toArray() ) {
+				handles.append( descendant )
+			}
+		} catch ( any e ) {
+			// A process that is already gone has nothing left to end
+		}
+		return handles
+	}
+
+	/**
+	 * End the processes that are still alive after their launcher is gone: ask them to terminate, kill the ones that do not.
+	 */
+	private void function endSurvivors( required array handles ) {
+		var seconds = createObject( "java", "java.util.concurrent.TimeUnit" ).SECONDS
+		var alive   = []
+		for ( var handle in arguments.handles ) {
+			if ( handle.isAlive() ) {
+				handle.destroy()
+				alive.append( handle )
+			}
+		}
+		for ( var handle in alive ) {
+			try {
+				handle.onExit().get( static.SHUTDOWN_WAIT, seconds )
+			} catch ( any e ) {
+				handle.destroyForcibly()
 			}
 		}
 	}
@@ -736,14 +778,22 @@ class extends="BaseMCPClient" {
 	/**
 	 * Refuse the command when the module allow list or the command guard says so.
 	 *
-	 * The allow list is the module setting mcp.stdio.allowedCommands, empty means any command.
+	 * The allow list is the module setting mcp.stdio.allowedCommands, an explicit empty array means any command.
 	 * - A command without a directory ("npx", "npx.cmd") is matched by its name: "npx", "NPX" and "npx.cmd" are the same entry.
 	 * - A command with a directory ("/usr/bin/npx", "./npx") is another file than the one the PATH finds, so it is allowed
-	 *   only when the list has that exact path.
-	 * There is no fallback: if the setting cannot be read the command is refused.
+	 *   only when the list has that exact path (compared with the case it is written in).
+	 * There is no fallback: if the setting is missing or is not an array the command is refused.
 	 */
 	private void function assertCommandAllowed() {
-		var allowedCommands = getModuleInfo( "bxai" ).settings.mcp?.stdio?.allowedCommands ?: []
+		var allowedCommands = getModuleInfo( "bxai" ).settings.mcp?.stdio?.allowedCommands
+
+		// Only an explicit empty array allows every command: a missing or malformed setting must not open the gate
+		if ( isNull( allowedCommands ) || !isArray( allowedCommands ) ) {
+			throw(
+				type: "MCPCommandRefused",
+				message: "The command [#executableName()#] was refused because the module setting mcp.stdio.allowedCommands is missing or is not an array"
+			)
+		}
 
 		if ( allowedCommands.len() ) {
 			var executable   = variables.command[ 1 ]
@@ -752,7 +802,8 @@ class extends="BaseMCPClient" {
 			for ( var entry in allowedCommands ) {
 				entry = toString( entry )
 				if ( hasDirectory ) {
-					permitted = permitted || entry == executable
+					// compare() is case sensitive, == is not: /tmp/Trusted/npx and /tmp/trusted/npx can be different files
+					permitted = permitted || compare( entry, executable ) == 0
 				} else if ( !( entry contains "/" || entry contains "\" ) ) {
 					permitted = permitted || lCase( stripExtension( entry ) ) == lCase( stripExtension( executable ) )
 				}

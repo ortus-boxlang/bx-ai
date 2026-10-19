@@ -45,6 +45,8 @@ import java.util.regex.Pattern;
  * <li>marker: writes the file given as second argument when stdin reaches its end (a graceful shutdown)</li>
  * <li>noread: after the handshake it stops reading stdin for two minutes (a busy server), so a large write to it blocks</li>
  * <li>slowthree: the first three launches wait 3 seconds before they read anything (a slow first start). The second argument is a counter file</li>
+ * <li>orphan: starts a "sleep" child process, then exits when stdin closes and leaves the child running (a launcher that does not take its server with it)</li>
+ * <li>orphanstubborn: like orphan, but the child ignores SIGTERM, only a kill ends it</li>
  * <li>grandchild: starts a "sleep" child process and ignores the end of stdin. The tool gcpid returns the pid of that child</li>
  * <li>strict: answers any request other than initialize with an error until notifications/initialized has arrived, as a server that follows the lifecycle may</li>
  * </ul>
@@ -86,8 +88,12 @@ public class FakeStdioMcpServer {
 				Thread.sleep( 3000 );
 			}
 		}
-		if ( mode.equals( "grandchild" ) ) {
+		if ( mode.equals( "grandchild" ) || mode.equals( "orphan" ) ) {
 			grandchild = new ProcessBuilder( "sleep", "120" ).start();
+		}
+		if ( mode.equals( "orphanstubborn" ) ) {
+			// Signals that are ignored stay ignored across exec: the sleep does not die of SIGTERM
+			grandchild = new ProcessBuilder( "sh", "-c", "trap '' TERM; exec sleep 120" ).start();
 		}
 
 		BufferedReader	in	= new BufferedReader( new InputStreamReader( System.in, StandardCharsets.UTF_8 ) );

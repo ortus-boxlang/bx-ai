@@ -456,6 +456,31 @@ public class mcpStdioClientTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "close() ends the processes a launcher left behind when it exited on its own, also the ones that ignore terminate" )
+	public void testCloseEndsOrphans() throws Exception {
+		for ( String serverMode : new String[] { "orphan", "orphanstubborn" } ) {
+			// @formatter:off
+			run( """
+				client = MCP( { command: %s } )
+				orphanPid = client.send( "gcpid", {} ).getData().content[ 1 ].text
+				client.close()
+			""".formatted( command( serverMode ) ) );
+			// @formatter:on
+
+			long pid = Long.parseLong( get( "orphanPid" ).toString() );
+			try {
+				long deadline = System.currentTimeMillis() + 10_000;
+				while ( ProcessHandle.of( pid ).map( ProcessHandle::isAlive ).orElse( false ) && System.currentTimeMillis() < deadline ) {
+					Thread.sleep( 200 );
+				}
+				assertThat( ProcessHandle.of( pid ).map( ProcessHandle::isAlive ).orElse( false ) ).isFalse();
+			} finally {
+				ProcessHandle.of( pid ).ifPresent( ProcessHandle::destroyForcibly );
+			}
+		}
+	}
+
+	@Test
 	@DisplayName( "MCP() still takes the old named argument baseURL" )
 	public void testBaseUrlNamedArgument() {
 		// @formatter:off
@@ -894,6 +919,76 @@ public class mcpStdioClientTest extends BaseIntegrationTest {
 		assertThat( get( "bareOk" ) ).isEqualTo( true );
 		assertThat( get( "withDirectory" ).toString() ).isEqualTo( "MCPCommandRefused" );
 		assertThat( get( "exactOk" ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "A missing, null or malformed mcp.stdio.allowedCommands refuses the command, only an explicit empty array allows all" )
+	public void testAllowedCommandsFailClosed() {
+		// @formatter:off
+		run( """
+			settings = getModuleInfo( "bxai" ).settings
+			function refusal( action ){
+				try {
+					action()
+					return "not refused"
+				} catch( any e ){
+					return e.type
+				}
+			}
+			try {
+				structDelete( settings.mcp.stdio, "allowedCommands" )
+				missing = refusal( () => MCP( { command: %1$s } ) )
+
+				settings.mcp.stdio.allowedCommands = javacast( "null", "" )
+				nullValue = refusal( () => MCP( { command: %1$s } ) )
+
+				settings.mcp.stdio.allowedCommands = "java"
+				asString = refusal( () => MCP( { command: %1$s } ) )
+
+				settings.mcp.stdio.allowedCommands = { java: true }
+				asStruct = refusal( () => MCP( { command: %1$s } ) )
+
+				settings.mcp.stdio.allowedCommands = []
+				empty = refusal( () => MCP( { command: %1$s } ).close() )
+			} finally {
+				settings.mcp.stdio.allowedCommands = []
+			}
+		""".formatted( command( "ok" ) ) );
+		// @formatter:on
+
+		assertThat( get( "missing" ).toString() ).isEqualTo( "MCPCommandRefused" );
+		assertThat( get( "nullValue" ).toString() ).isEqualTo( "MCPCommandRefused" );
+		assertThat( get( "asString" ).toString() ).isEqualTo( "MCPCommandRefused" );
+		assertThat( get( "asStruct" ).toString() ).isEqualTo( "MCPCommandRefused" );
+		assertThat( get( "empty" ).toString() ).isEqualTo( "not refused" );
+	}
+
+	@Test
+	@DisplayName( "A command with a directory is matched with the exact case of the listed path" )
+	public void testAllowedCommandsPathIsCaseSensitive() {
+		String	java	= Paths.get( System.getProperty( "java.home" ), "bin", "java" ).toString().replace( "\\", "\\\\" );
+
+		// @formatter:off
+		run( """
+			settings = getModuleInfo( "bxai" ).settings
+			function refusal( action ){
+				try {
+					action()
+					return "not refused"
+				} catch( any e ){
+					return e.type
+				}
+			}
+			try {
+				settings.mcp.stdio.allowedCommands = [ "%s" ]
+				otherCase = refusal( () => MCP( { command: %s } ) )
+			} finally {
+				settings.mcp.stdio.allowedCommands = []
+			}
+		""".formatted( java.toUpperCase(), command( "ok" ) ) );
+		// @formatter:on
+
+		assertThat( get( "otherCase" ).toString() ).isEqualTo( "MCPCommandRefused" );
 	}
 
 	// -------------------------------------------------------------------------------------------------

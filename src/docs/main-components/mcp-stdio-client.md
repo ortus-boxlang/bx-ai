@@ -231,7 +231,7 @@ A restarted server starts empty. For a server that holds state, such as the page
 
 ### Shutdown
 
-`close()` follows the specification: it closes the stdin of the process, waits 2 seconds for it to exit, then terminates it and the processes it started (a launcher such as `npx` starts the real server), waits 2 seconds more, then kills them. It never waits for a write that is stuck because the server does not read, ending the process ends that write too. After `close()` the client is closed for good and calls fail with `is closed`.
+`close()` follows the specification: it closes the stdin of the process, waits 2 seconds for it to exit, then terminates it and the processes it started (a launcher such as `npx` starts the real server), waits 2 seconds more, then kills them. The processes it started are taken before stdin is closed, so they are ended too when the launcher exits on its own and leaves the server running. It never waits for a write that is stuck because the server does not read, ending the process ends that write too. After `close()` the client is closed for good and calls fail with `is closed`.
 
 Close the clients you create. A client that is never closed keeps its child process and two threads until the module unloads or the JVM exits, so do not build a stdio client per web request without closing it. Live clients are also closed as a safety net:
 
@@ -251,7 +251,7 @@ A stdio client **runs a program**. Treat the `command` like any other thing that
 
 ### Allow list
 
-The module setting `mcp.stdio.allowedCommands` lists the executables that may be launched. An empty list, the default, allows any command.
+The module setting `mcp.stdio.allowedCommands` lists the executables that may be launched. An explicit empty list, the default, allows any command. A setting that is missing, null or not an array refuses every command. A command with a directory must be listed with the exact case of its path.
 
 ```json
 {
