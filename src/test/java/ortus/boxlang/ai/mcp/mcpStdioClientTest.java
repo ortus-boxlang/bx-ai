@@ -966,7 +966,7 @@ public class mcpStdioClientTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "A command with a directory is matched with the exact case of the listed path" )
 	public void testAllowedCommandsPathIsCaseSensitive() {
-		String	java	= Paths.get( System.getProperty( "java.home" ), "bin", "java" ).toString().replace( "\\", "\\\\" );
+		String java = Paths.get( System.getProperty( "java.home" ), "bin", "java" ).toString().replace( "\\", "\\\\" );
 
 		// @formatter:off
 		run( """
