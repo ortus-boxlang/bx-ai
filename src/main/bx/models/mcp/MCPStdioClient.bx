@@ -97,6 +97,8 @@ class extends="BaseMCPClient" {
 	function init( required struct config ) {
 		super.init()
 
+		assertKnownOptions( arguments.config )
+
 		if ( !isArray( arguments.config.command ?: "" ) || !arguments.config.command.len() ) {
 			throw( type: "InvalidArgument", message: "A stdio MCP server needs a command: a non-empty array, the executable followed by its arguments" )
 		}
@@ -125,6 +127,8 @@ class extends="BaseMCPClient" {
 		variables.stateLock           = createObject( "java", "java.util.concurrent.locks.ReentrantLock" ).init()
 		variables.writeLock           = createObject( "java", "java.util.concurrent.locks.ReentrantLock" ).init()
 		variables.launchedOnce        = false
+		// True once the process is running AND the handshake is done: only then may a request be written
+		variables.ready               = false
 		variables.closed              = false
 		variables.consecutiveRestarts = 0
 		variables.initializeResult    = {}
@@ -141,6 +145,43 @@ class extends="BaseMCPClient" {
 	 */
 	string function getTransportName() {
 		return "stdio"
+	}
+
+	/**
+	 * Refuse an option this client does not have. A misspelled security option such as commandGuard must not be ignored silently.
+	 */
+	private void function assertKnownOptions( required struct config ) {
+		var known      = [ "command", "env", "cwd", "inheritEnv", "maxRestarts", "commandGuard", "timeout" ]
+		var httpOnly   = [ "token", "headers", "user", "password", "urlGuard", "redirects", "maxResponseBytes", "httpVersion", "handshake", "url" ]
+		var registered = [ "prefix", "toolFilter" ]
+		var unknown    = []
+		for ( var optionName in arguments.config ) {
+			if ( !known.containsNoCase( optionName ) ) {
+				unknown.append( optionName )
+			}
+		}
+		if ( !unknown.len() ) {
+			return
+		}
+
+		var misplacedHttp = unknown.filter( ( optionName ) => httpOnly.containsNoCase( optionName ) )
+		if ( misplacedHttp.len() ) {
+			throw(
+				type: "InvalidArgument",
+				message: "These options only apply to an HTTP MCP server and cannot be used with a stdio server: #misplacedHttp.toList( ', ' )#"
+			)
+		}
+		var misplacedRegistration = unknown.filter( ( optionName ) => registered.containsNoCase( optionName ) )
+		if ( misplacedRegistration.len() ) {
+			throw(
+				type: "InvalidArgument",
+				message: "#misplacedRegistration.toList( ', ' )# choose how the tools are exposed: pass them to withMCPServer() or withMCPServers(), not to MCP()"
+			)
+		}
+		throw(
+			type: "InvalidArgument",
+			message: "Unknown option(s) for a stdio MCP server: #unknown.toList( ', ' )#. The options are: #known.toList( ', ' )#"
+		)
 	}
 
 	/**
@@ -267,13 +308,15 @@ class extends="BaseMCPClient" {
 		} catch ( any e ) {
 			pendingMap.remove( requestId )
 			if ( e.type contains "TimeoutException" || e.message contains "TimeoutException" ) {
-				// Tell the server we stopped waiting, as the specification asks
+				// Tell the server we stopped waiting, as the specification asks. The specification forbids cancelling initialize.
 				try {
-					writeMessage( {
-						"jsonrpc": "2.0",
-						"method" : "notifications/cancelled",
-						"params" : { "requestId": requestId, "reason": "timeout" }
-					} )
+					if ( arguments.body.method != "initialize" ) {
+						writeMessage( {
+							"jsonrpc": "2.0",
+							"method" : "notifications/cancelled",
+							"params" : { "requestId": requestId, "reason": "timeout" }
+						} )
+					}
 				} catch ( any ignored ) {
 				}
 				throw( type: "MCPTimeout", message: "The MCP server [#getBaseURL()#] did not answer within #arguments.timeoutMs# ms" )
@@ -321,7 +364,8 @@ class extends="BaseMCPClient" {
 	 * and launch it again if it died, up to maxRestarts times in a row.
 	 */
 	private void function ensureRunning() {
-		if ( isRunning() && !variables.closed ) {
+		// Not just "the process is alive": a thread that arrives while another does the handshake must wait for it
+		if ( variables.ready && !variables.closed && isRunning() ) {
 			return
 		}
 
@@ -330,7 +374,7 @@ class extends="BaseMCPClient" {
 			if ( variables.closed ) {
 				throw( type: "MCPClientClosed", message: "The MCP client for [#getBaseURL()#] is closed" )
 			}
-			if ( isRunning() ) {
+			if ( variables.ready && isRunning() ) {
 				return
 			}
 
@@ -346,9 +390,12 @@ class extends="BaseMCPClient" {
 			}
 
 			launch()
-			variables.launchedOnce = true
 			try {
 				handshake()
+				variables.ready = true
+				// From now on a dead process is a restart. A first start that never got through the handshake
+				// (a slow download, a bad command) is not, so it does not use up the restarts.
+				variables.launchedOnce = true
 			} catch ( any e ) {
 				stopProcess()
 				rethrow;
@@ -363,6 +410,7 @@ class extends="BaseMCPClient" {
 	 */
 	private void function launch() {
 		assertCommandAllowed()
+		variables.ready = false
 
 		var processBuilder = createObject( "java", "java.lang.ProcessBuilder" ).init( resolveCommand() )
 		var environment    = processBuilder.environment()
@@ -397,8 +445,8 @@ class extends="BaseMCPClient" {
 		variables.writer  = createObject( "java", "java.io.OutputStreamWriter" ).init( childProcess.getOutputStream(), "UTF-8" )
 		variables.stderrTail.clear()
 
-		asyncRun( () => readStdout( stdoutReader, childProcess, pendingMap ), "io-tasks" )
-		asyncRun( () => readStderr( stderrReader ), "io-tasks" )
+		var stderrTask = asyncRun( () => readStderr( stderrReader ), "io-tasks" )
+		asyncRun( () => readStdout( stdoutReader, childProcess, pendingMap, stderrTask ), "io-tasks" )
 
 		static.LIVE_CLIENTS.put( variables.instanceId, this )
 		registerShutdownHook()
@@ -450,26 +498,65 @@ class extends="BaseMCPClient" {
 		}
 		var childProcess = variables.process
 		var seconds      = createObject( "java", "java.util.concurrent.TimeUnit" ).SECONDS
+		variables.ready  = false
 
-		variables.writeLock.lock()
-		try {
+		// Closing stdin is the polite way to ask the server to stop. A write that is stuck because the server does not read
+		// holds the write lock: do not wait for it, ending the process below also ends that write.
+		if ( variables.writeLock.tryLock( 1, seconds ) ) {
 			try {
-				variables.writer.close()
-			} catch ( any e ) {
-				// The process may already be gone
+				try {
+					variables.writer.close()
+				} catch ( any e ) {
+					// The process may already be gone
+				}
+				variables.process = javacast( "null", "" )
+				variables.writer  = javacast( "null", "" )
+			} finally {
+				variables.writeLock.unlock()
 			}
+		} else {
 			variables.process = javacast( "null", "" )
 			variables.writer  = javacast( "null", "" )
-		} finally {
-			variables.writeLock.unlock()
 		}
 
 		if ( !childProcess.waitFor( static.SHUTDOWN_WAIT, seconds ) ) {
-			childProcess.destroy()
+			terminate( childProcess, false )
 			if ( !childProcess.waitFor( static.SHUTDOWN_WAIT, seconds ) ) {
-				childProcess.destroyForcibly()
+				terminate( childProcess, true )
 				childProcess.waitFor( static.SHUTDOWN_WAIT, seconds )
 			}
+		}
+	}
+
+	/**
+	 * End a process and the processes it started
+	 *
+	 * @childProcess The process
+	 * @force        true to kill it, false to ask it to terminate
+	 */
+	private void function terminate( required any childProcess, required boolean force ) {
+		terminateDescendants( arguments.childProcess, arguments.force )
+		if ( arguments.force ) {
+			arguments.childProcess.destroyForcibly()
+		} else {
+			arguments.childProcess.destroy()
+		}
+	}
+
+	/**
+	 * End the processes a process started (a launcher such as npx, sh or cmd starts the real server)
+	 */
+	private void function terminateDescendants( required any childProcess, required boolean force ) {
+		try {
+			for ( var descendant in arguments.childProcess.descendants().toArray() ) {
+				if ( arguments.force ) {
+					descendant.destroyForcibly()
+				} else {
+					descendant.destroy()
+				}
+			}
+		} catch ( any e ) {
+			// A process that is already gone has nothing left to end
 		}
 	}
 
@@ -510,15 +597,26 @@ class extends="BaseMCPClient" {
 	 * Read the stdout of the process line by line until it ends, and hand every answer to its waiting caller.
 	 * When the stream ends every caller still waiting is told the process exited.
 	 */
-	private void function readStdout( required any reader, required any childProcess, required any pendingMap ) {
+	private void function readStdout( required any reader, required any childProcess, required any pendingMap, required any stderrTask ) {
 		try {
 			var line = arguments.reader.readLine()
 			while ( !isNull( line ) ) {
-				handleLine( line, arguments.pendingMap )
+				// One line we cannot handle must not end the reader: the process is still alive and callers would wait for nothing
+				try {
+					handleLine( line, arguments.pendingMap )
+				} catch ( any e ) {
+					writeLog( text: "MCP server [#getBaseURL()#] sent a message that could not be handled, it was skipped: #e.message#", type: "warning", log: "ai" )
+				}
 				line = arguments.reader.readLine()
 			}
 		} catch ( any e ) {
 			// The stream was closed under us, the process is ending
+		}
+
+		// Let the stderr reader finish, so the last lines of the server are in the message that explains the exit
+		try {
+			arguments.stderrTask.get( 1, createObject( "java", "java.util.concurrent.TimeUnit" ).SECONDS )
+		} catch ( any e ) {
 		}
 
 		// The process ended: wake up everyone who waits for an answer
@@ -623,21 +721,34 @@ class extends="BaseMCPClient" {
 
 	/**
 	 * Refuse the command when the module allow list or the command guard says so.
-	 * The allow list is the module setting mcp.stdio.allowedCommands: executable names, empty means any.
+	 *
+	 * The allow list is the module setting mcp.stdio.allowedCommands, empty means any command.
+	 * - A command without a directory ("npx", "npx.cmd") is matched by its name: "npx", "NPX" and "npx.cmd" are the same entry.
+	 * - A command with a directory ("/usr/bin/npx", "./npx") is another file than the one the PATH finds, so it is allowed
+	 *   only when the list has that exact path.
+	 * There is no fallback: if the setting cannot be read the command is refused.
 	 */
 	private void function assertCommandAllowed() {
-		var allowedCommands = []
-		try {
-			allowedCommands = getModuleInfo( "bxai" ).settings.mcp.stdio.allowedCommands ?: []
-		} catch ( any e ) {
-			// No module settings, no allow list
-		}
+		var allowedCommands = getModuleInfo( "bxai" ).settings.mcp?.stdio?.allowedCommands ?: []
 
-		if ( allowedCommands.len() && !allowedCommands.map( ( name ) => lCase( toString( name ) ) ).contains( lCase( executableName() ) ) ) {
-			throw(
-				type: "MCPCommandRefused",
-				message: "The command [#executableName()#] is not in the module setting mcp.stdio.allowedCommands: #allowedCommands.toList( ', ' )#"
-			)
+		if ( allowedCommands.len() ) {
+			var executable   = variables.command[ 1 ]
+			var hasDirectory = executable contains "/" || executable contains "\"
+			var permitted    = false
+			for ( var entry in allowedCommands ) {
+				entry = toString( entry )
+				if ( hasDirectory ) {
+					permitted = permitted || entry == executable
+				} else if ( !( entry contains "/" || entry contains "\" ) ) {
+					permitted = permitted || lCase( stripExtension( entry ) ) == lCase( stripExtension( executable ) )
+				}
+			}
+			if ( !permitted ) {
+				throw(
+					type: "MCPCommandRefused",
+					message: "The command [#executableName()#] is not in the module setting mcp.stdio.allowedCommands: #allowedCommands.toList( ', ' )#. A command with a directory must be listed with that exact path"
+				)
+			}
 		}
 
 		if ( !isNull( variables.commandGuard ) ) {
@@ -648,11 +759,17 @@ class extends="BaseMCPClient" {
 	}
 
 	/**
+	 * A file name without a Windows executable extension: "npx.cmd" gives "npx"
+	 */
+	private string function stripExtension( required string fileName ) {
+		return reReplaceNoCase( arguments.fileName, "\.(exe|cmd|bat|com)$", "" )
+	}
+
+	/**
 	 * The executable of the command without its directory and without a Windows extension: "/usr/bin/npx.cmd" gives "npx"
 	 */
 	private string function executableName() {
-		var fileName = listLast( variables.command[ 1 ], "/\" )
-		return reReplaceNoCase( fileName, "\.(exe|cmd|bat|com)$", "" )
+		return stripExtension( listLast( variables.command[ 1 ], "/\" ) )
 	}
 
 	/**

@@ -28,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
 import ortus.boxlang.runtime.scopes.Key;
@@ -221,6 +222,28 @@ public class mcpStdioClientTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "Threads that make the very first calls at the same time wait for the handshake, none reaches the server before it is initialized" )
+	public void testFirstCallsWaitForHandshake() {
+		// @formatter:off
+		run( """
+			client = MCP( { command: %s } ).withTimeout( 30000 )
+			numbers = [ 1, 2, 3, 4, 5, 6, 7, 8 ]
+			// Thread 1 starts the server. The others arrive one after the other while it starts and does the handshake
+			results = numbers.map( ( n ) => {
+				sleep( ( n - 1 ) * 60 )
+				return client.send( "echo", { text: "first-" & n } )
+			}, true, 8 )
+			okCount = results.filter( r => r.isSuccess() ).len()
+			errors = results.filter( r => !r.isSuccess() ).map( r => r.getError() ).toList( "|" )
+			client.close()
+		""".formatted( command( "strict" ) ) );
+		// @formatter:on
+
+		assertThat( get( "errors" ).toString() ).isEmpty();
+		assertThat( get( "okCount" ) ).isEqualTo( 8 );
+	}
+
+	@Test
 	@DisplayName( "Requests from the server are handled: ping is answered and an unknown method is refused with -32601" )
 	public void testServerRequests() {
 		// @formatter:off
@@ -294,6 +317,156 @@ public class mcpStdioClientTest extends BaseIntegrationTest {
 		assertThat( get( "version" ).toString() ).isNotEmpty();
 		assertThat( get( "echoText" ).toString() ).contains( "hello from bx-ai" );
 		assertThat( get( "running" ) ).isEqualTo( false );
+	}
+
+	// -------------------------------------------------------------------------------------------------
+	// Found in the release review
+	// -------------------------------------------------------------------------------------------------
+
+	@Test
+	@DisplayName( "Options that make no sense for a stdio server are refused, also the typo of a security option, instead of being ignored" )
+	public void testUnknownOptionsRefused() {
+		// @formatter:off
+		run( """
+			function typeAndMessage( action ){
+				try {
+					action()
+					return "no error"
+				} catch( any e ){
+					return e.type & ": " & e.message
+				}
+			}
+			viaModel   = typeAndMessage( () => aiModel().withMCPServer( { command: %s, token: "secret" } ) )
+			viaServers = typeAndMessage( () => aiModel().withMCPServers( [ { command: %s, headers: { a: "b" } } ] ) )
+			typo       = typeAndMessage( () => MCP( { command: %s, commandGaurd: ( c ) => false } ) )
+			model      = aiModel().withMCPServer( { command: %s, prefix: "p" } )
+			prefixed   = model.hasTool( "p__echo" )
+			model.closeMCPServers()
+		""".formatted( command( "ok" ), command( "ok" ), command( "ok" ), command( "ok" ) ) );
+		// @formatter:on
+
+		assertThat( get( "viaModel" ).toString() ).startsWith( "InvalidArgument" );
+		assertThat( get( "viaModel" ).toString() ).contains( "token" );
+		assertThat( get( "viaServers" ).toString() ).startsWith( "InvalidArgument" );
+		assertThat( get( "viaServers" ).toString() ).contains( "headers" );
+		assertThat( get( "typo" ).toString() ).startsWith( "InvalidArgument" );
+		assertThat( get( "typo" ).toString() ).contains( "commandGaurd" );
+		assertThat( get( "prefixed" ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "A first start that is slower than the timeout does not use up the restarts: the client works once the server is fast enough" )
+	public void testSlowFirstStartKeepsRestartBudget() throws IOException {
+		Path counter = Files.createTempFile( "mcp-stdio-counter", ".txt" );
+		Files.delete( counter );
+		try {
+			// @formatter:off
+			run( """
+				client = MCP( { command: %s, timeout: 600, maxRestarts: 2 } )
+				errors = []
+				for( attempt = 1; attempt <= 3; attempt++ ){
+					errors.append( client.listTools().getError() )
+				}
+				client.withTimeout( 20000 )
+				fourth = client.listTools()
+				fourthOk = fourth.isSuccess()
+				fourthError = fourth.getError()
+				joined = errors.toList( "|" )
+				client.close()
+			""".formatted( command( "slowthree", counter.toString() ) ) );
+			// @formatter:on
+
+			assertThat( get( "joined" ).toString() ).doesNotContain( "keeps exiting" );
+			assertThat( get( "joined" ).toString() ).contains( "did not answer" );
+			assertThat( get( "fourthError" ).toString() ).isEmpty();
+			assertThat( get( "fourthOk" ) ).isEqualTo( true );
+		} finally {
+			Files.deleteIfExists( counter );
+		}
+	}
+
+	@Test
+	@DisplayName( "A message the client cannot make sense of does not stop it from reading: the next call still works" )
+	public void testUnreadableMessageDoesNotKillTheReader() {
+		// @formatter:off
+		run( """
+			client = MCP( { command: %s, timeout: 5000 } )
+			first = client.send( "structid", {} )
+			firstOk = first.isSuccess()
+			started = getTickCount()
+			second = client.send( "echo", { text: "still alive" } )
+			elapsed = getTickCount() - started
+			secondOk = second.isSuccess()
+			secondError = second.getError()
+			client.close()
+		""".formatted( command( "ok" ) ) );
+		// @formatter:on
+
+		assertThat( get( "firstOk" ) ).isEqualTo( true );
+		assertThat( get( "secondError" ).toString() ).isEmpty();
+		assertThat( get( "secondOk" ) ).isEqualTo( true );
+	}
+
+	@Test
+	@Timeout( 90 )
+	@DisplayName( "close() still returns and ends the process when a large request is stuck in the pipe of a server that does not read" )
+	public void testCloseWhileWriteIsBlocked() {
+		// @formatter:off
+		run( """
+			client = MCP( { command: %s, timeout: 60000 } )
+			client.listTools()
+			big = repeatString( "0123456789abcdef", 400000 )
+			sender = asyncRun( () => client.send( "echo", { text: big } ) )
+			sleep( 2000 )
+			started = getTickCount()
+			client.close()
+			closeMs = getTickCount() - started
+			running = client.isRunning()
+			senderResult = sender.get()
+			senderOk = senderResult.isSuccess()
+		""".formatted( command( "noread" ) ) );
+		// @formatter:on
+
+		assertThat( get( "running" ) ).isEqualTo( false );
+		assertThat( get( "senderOk" ) ).isEqualTo( false );
+		assertThat( ( ( Number ) get( "closeMs" ) ).longValue() ).isLessThan( 15000L );
+	}
+
+	@Test
+	@DisplayName( "close() also ends the processes the server started, they do not outlive it" )
+	public void testCloseEndsGrandchildren() throws Exception {
+		// @formatter:off
+		run( """
+			client = MCP( { command: %s } )
+			grandchildPid = client.send( "gcpid", {} ).getData().content[ 1 ].text
+			client.close()
+		""".formatted( command( "grandchild" ) ) );
+		// @formatter:on
+
+		long pid = Long.parseLong( get( "grandchildPid" ).toString() );
+		try {
+			long deadline = System.currentTimeMillis() + 10_000;
+			while ( ProcessHandle.of( pid ).map( ProcessHandle::isAlive ).orElse( false ) && System.currentTimeMillis() < deadline ) {
+				Thread.sleep( 200 );
+			}
+			assertThat( ProcessHandle.of( pid ).map( ProcessHandle::isAlive ).orElse( false ) ).isFalse();
+		} finally {
+			ProcessHandle.of( pid ).ifPresent( ProcessHandle::destroyForcibly );
+		}
+	}
+
+	@Test
+	@DisplayName( "MCP() still takes the old named argument baseURL" )
+	public void testBaseUrlNamedArgument() {
+		// @formatter:off
+		run( """
+			httpClass = getMetadata( MCP( baseURL: "http://127.0.0.1:1/mcp" ) ).name
+			positional = getMetadata( MCP( "http://127.0.0.1:1/mcp" ) ).name
+		""" );
+		// @formatter:on
+
+		assertThat( get( "httpClass" ).toString() ).endsWith( "MCPHttpClient" );
+		assertThat( get( "positional" ).toString() ).endsWith( "MCPHttpClient" );
 	}
 
 	// -------------------------------------------------------------------------------------------------
@@ -676,33 +849,49 @@ public class mcpStdioClientTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "The module setting mcp.stdio.allowedCommands limits the executables, matched by name without directory or extension" )
+	@DisplayName( "The module setting mcp.stdio.allowedCommands limits the executables: a bare name matches the name, a command with a directory must be listed with that exact path" )
 	public void testAllowedCommands() {
+		String	java		= Paths.get( System.getProperty( "java.home" ), "bin", "java" ).toString();
+		String	classes		= command( "ok" );
+		String	bareJava	= classes.replaceFirst( "^\\[ \"[^\"]*\"", "[ \"java\"" );
+
 		// @formatter:off
 		run( """
 			settings = getModuleInfo( "bxai" ).settings
-			settings.mcp.stdio.allowedCommands = [ "npx", "bxplaywright" ]
-			try {
+			function refusal( action ){
 				try {
-					MCP( { command: %s } )
-					refusedType = "not refused"
+					action()
+					return "not refused"
 				} catch( any e ){
-					refusedType = e.type
-					refusedMessage = e.message
+					return e.type
 				}
+			}
+			try {
+				settings.mcp.stdio.allowedCommands = [ "npx", "bxplaywright" ]
+				notListed = refusal( () => MCP( { command: %s } ) )
+
+				// A bare name is looked up in the PATH, "JAVA" matches "java", case does not matter
 				settings.mcp.stdio.allowedCommands = [ "JAVA" ]
-				allowed = MCP( { command: %s } )
-				allowedOk = allowed.listTools().isSuccess()
-				allowed.close()
+				bare = MCP( { command: %s } )
+				bareOk = bare.listTools().isSuccess()
+				bare.close()
+				// The same name with a directory in front is another file: it must be listed with its path
+				withDirectory = refusal( () => MCP( { command: %s } ) )
+
+				settings.mcp.stdio.allowedCommands = [ "%s" ]
+				exact = MCP( { command: %s } )
+				exactOk = exact.listTools().isSuccess()
+				exact.close()
 			} finally {
 				settings.mcp.stdio.allowedCommands = []
 			}
-		""".formatted( command( "ok" ), command( "ok" ) ) );
+		""".formatted( command( "ok" ), bareJava, command( "ok" ), java.replace( "\\", "\\\\" ), command( "ok" ) ) );
 		// @formatter:on
 
-		assertThat( get( "refusedType" ).toString() ).isEqualTo( "MCPCommandRefused" );
-		assertThat( get( "refusedMessage" ).toString() ).contains( "mcp.stdio.allowedCommands" );
-		assertThat( get( "allowedOk" ) ).isEqualTo( true );
+		assertThat( get( "notListed" ).toString() ).isEqualTo( "MCPCommandRefused" );
+		assertThat( get( "bareOk" ) ).isEqualTo( true );
+		assertThat( get( "withDirectory" ).toString() ).isEqualTo( "MCPCommandRefused" );
+		assertThat( get( "exactOk" ) ).isEqualTo( true );
 	}
 
 	// -------------------------------------------------------------------------------------------------
@@ -760,6 +949,32 @@ public class mcpStdioClientTest extends BaseIntegrationTest {
 		assertThat( get( "serverToolCount" ) ).isEqualTo( 2 );
 		assertThat( get( "runningBefore" ) ).isEqualTo( true );
 		assertThat( get( "runningAfter" ) ).isEqualTo( false );
+	}
+
+	@Test
+	@DisplayName( "Two agents do not share their MCP clients: closing the servers of one leaves the other running" )
+	public void testAgentsDoNotShareMcpClients() {
+		// @formatter:off
+		run( """
+			first  = aiModel().withMCPServer( { command: %s } )
+			second = aiModel().withMCPServer( { command: %s } )
+			firstClients  = first.getOwnedMCPClients().len()
+			secondClients = second.getOwnedMCPClients().len()
+			firstServers  = first.listMCPServers().len()
+			secondServers = second.listMCPServers().len()
+			first.closeMCPServers()
+			firstRunning  = first.getOwnedMCPClients().len()
+			secondStillRunning = second.getOwnedMCPClients()[ 1 ].isRunning()
+			second.closeMCPServers()
+		""".formatted( command( "ok" ), command( "ok" ) ) );
+		// @formatter:on
+
+		assertThat( get( "firstClients" ) ).isEqualTo( 1 );
+		assertThat( get( "secondClients" ) ).isEqualTo( 1 );
+		assertThat( get( "firstServers" ) ).isEqualTo( 1 );
+		assertThat( get( "secondServers" ) ).isEqualTo( 1 );
+		assertThat( get( "firstRunning" ) ).isEqualTo( 0 );
+		assertThat( get( "secondStillRunning" ) ).isEqualTo( true );
 	}
 
 	@Test

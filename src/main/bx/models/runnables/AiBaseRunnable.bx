@@ -743,12 +743,8 @@ abstract class implements="IAiRunnable" {
 		arguments.servers.each( mcpServer => {
 			if ( isStruct( mcpServer ) && !isObject( mcpServer ) ) {
 				if ( mcpServer.keyExists( "command" ) ) {
-					// A stdio server: prefix and toolFilter belong to the tool registration, the rest builds the client
-					var registration = [ "prefix", "toolFilter" ]
-					withMCPServer(
-						mcpServer.filter( ( k, v ) => !registration.containsNoCase( k ) ),
-						mcpServer.filter( ( k, v ) => registration.containsNoCase( k ) )
-					)
+					// A stdio server: withMCPServer() sorts prefix and toolFilter from the options of the client
+					withMCPServer( mcpServer )
 				} else {
 					withMCPServer( mcpServer.url ?: "", mcpServer.filter( ( k, v ) => k != "url" ) )
 				}
@@ -774,6 +770,14 @@ abstract class implements="IAiRunnable" {
 	 * @return This runnable for chaining
 	 */
 	public AiBaseRunnable function withMCPServer( required any mcpServer, struct config = {} ) {
+		// A stdio struct can carry prefix and toolFilter next to the command. They choose how the tools are exposed,
+		// they are not options of the client, so they move to the config (an explicit config wins).
+		if ( isStruct( arguments.mcpServer ) && !isObject( arguments.mcpServer ) && arguments.mcpServer.keyExists( "command" ) ) {
+			var registrationKeys = [ "prefix", "toolFilter" ]
+			var serverStruct     = arguments.mcpServer
+			arguments.config     = serverStruct.filter( ( k, v ) => registrationKeys.containsNoCase( k ) ).append( arguments.config, true )
+			arguments.mcpServer  = serverStruct.filter( ( k, v ) => !registrationKeys.containsNoCase( k ) )
+		}
 		var mcpClient   = buildMCPClient( arguments.mcpServer, arguments.config );
 		var ownsClient  = !isObject( arguments.mcpServer );
 		var response = mcpClient.listTools();

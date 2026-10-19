@@ -47,13 +47,21 @@ class {
 	 * prompts = MCP( "http://localhost:3000" ).listPrompts()
 	 * ```
 	 *
+	 * @baseURL Deprecated name of the first argument, kept so MCP( baseURL: url ) still works. Use server
 	 * @server The URL of the MCP server (string), or a struct for a stdio server:
 	 *         command (array, required), env (struct), cwd (string), inheritEnv (boolean, default true),
 	 *         maxRestarts (numeric, default 2), commandGuard (function), timeout (milliseconds)
 	 *
 	 * @return An IMCPClient: MCPHttpClient for a URL, MCPStdioClient for a struct
 	 */
-	function invoke( required any server ) {
+	function invoke( any server, string baseURL = "" ) {
+		// baseURL is the name of the argument before stdio servers existed, named calls MCP( baseURL: url ) keep working
+		if ( isNull( arguments.server ) ) {
+			if ( !len( arguments.baseURL ) ) {
+				throw( type: "InvalidArgument", message: "MCP() needs a server: a URL string or a struct with a command" )
+			}
+			arguments.server = arguments.baseURL
+		}
 		if ( isStruct( arguments.server ) ) {
 			return new bxModules.bxai.models.mcp.MCPStdioClient( arguments.server );
 		}
