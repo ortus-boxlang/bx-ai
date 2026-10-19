@@ -87,7 +87,7 @@ client = MCP( {
 Values such as `${env.TOKEN}` in a BoxLang configuration file are resolved by BoxLang before they reach BoxLang AI. The module only ever sees the resolved value.
 {% endhint %}
 
-A bad configuration (no `command`, an empty array, a command that is a string) throws `InvalidArgument` when `MCP()` is called.
+A bad configuration (no `command`, an empty array, a command that is a string) throws `InvalidArgument` when `MCP()` is called. So does an option that a stdio server does not have: the HTTP-only ones (`token`, `headers`, `urlGuard`, ...), `prefix` and `toolFilter` (give those to `withMCPServer()`), or a typo such as `commandGaurd`. A misspelled security option is never ignored.
 
 ## 📚 Methods
 
@@ -210,6 +210,8 @@ Before the first request the client sends `initialize` with the protocol version
 
 The process is started on the first call, never at construction, one process per client. A client you never use costs nothing.
 
+The first call also waits for the launch and the handshake, and `timeout` covers that wait. A program that downloads itself on its first run, such as `npx -y some-package`, can need much more than the default 30 seconds: give the client a larger `timeout` (for example `120000`). A first start that does not get through the handshake is not counted as a restart, so the next call simply tries again.
+
 ### Timeouts
 
 Every request waits at most `timeout` milliseconds. When the time is up the call returns a failed response (`The MCP server [stdio:x] did not answer within N ms`), the client sends `notifications/cancelled` for that request as the specification asks, and the client stays usable. A late answer to a request that already timed out is dropped.
@@ -220,7 +222,7 @@ If the process has died when you make the next call, the client starts it again 
 
 * A call that is **in flight** when the process dies fails. It is never repeated automatically, because repeating a tool call could do its work twice.
 * The next call starts the server again, and the count of restarts goes up. A successful answer sets the count back to zero.
-* After `maxRestarts` restarts in a row without a successful answer, calls fail with `keeps exiting and was started again N times`, and the last stderr lines.
+* After `maxRestarts` restarts in a row without a successful answer, calls fail with `keeps exiting and was started again N times`, and the last stderr lines. Only a server that had got through the handshake before counts as restarted.
 * `maxRestarts: 0` never starts a dead server again.
 
 {% hint style="warning" %}
@@ -229,9 +231,9 @@ A restarted server starts empty. For a server that holds state, such as the page
 
 ### Shutdown
 
-`close()` follows the specification: it closes the stdin of the process, waits 2 seconds for it to exit, then terminates it, waits 2 seconds more, then kills it. After `close()` the client is closed for good and calls fail with `is closed`.
+`close()` follows the specification: it closes the stdin of the process, waits 2 seconds for it to exit, then terminates it and the processes it started (a launcher such as `npx` starts the real server), waits 2 seconds more, then kills them. It never waits for a write that is stuck because the server does not read, ending the process ends that write too. After `close()` the client is closed for good and calls fail with `is closed`.
 
-You do not have to close every client by hand, because live clients are also closed:
+Close the clients you create. A client that is never closed keeps its child process and two threads until the module unloads or the JVM exits, so do not build a stdio client per web request without closing it. Live clients are also closed as a safety net:
 
 * when the module unloads (`onUnload`), and
 * when the JVM shuts down, by a shutdown hook.
@@ -244,12 +246,12 @@ Servers write their logs to stderr. The client reads it on its own thread so a c
 
 A stdio client **runs a program**. Treat the `command` like any other thing that executes code.
 
-* The command is an array that is handed to the operating system as is. There is **no shell**, so there is no shell expansion, and a value that holds spaces or `;` is just an argument.
+* The command is an array that is handed to the operating system as is. On Linux and macOS there is **no shell**, so there is no shell expansion, and a value that holds spaces or `;` is just an argument. On Windows a `.cmd` or `.bat` file is started through `cmd.exe`, see [Windows](#windows).
 * If the command, the arguments or the `env` come from configuration that users can edit, validate them or limit them with the controls below.
 
 ### Allow list
 
-The module setting `mcp.stdio.allowedCommands` lists the executable names that may be launched. An empty list, the default, allows any command.
+The module setting `mcp.stdio.allowedCommands` lists the executables that may be launched. An empty list, the default, allows any command.
 
 ```json
 {
@@ -267,11 +269,19 @@ The module setting `mcp.stdio.allowedCommands` lists the executable names that m
 }
 ```
 
-Names are compared without directory and without a Windows extension, case does not matter: `/usr/bin/npx`, `npx.cmd` and `NPX` all count as `npx`. A command that is not in the list throws `MCPCommandRefused` when the client is built.
+How a command is matched:
+
+* A command **without a directory** (`npx`, `npx.cmd`) is matched by its name, without a Windows extension and ignoring case: `npx`, `NPX` and `npx.cmd` are the same entry.
+* A command **with a directory** (`/usr/bin/npx`, `./npx`) is another file than the one the `PATH` finds, so it is allowed only when the list has that exact path.
+* If the setting cannot be read, the command is refused.
+
+A command that is not allowed throws `MCPCommandRefused` when the client is built.
+
+The list limits which program starts, not what the program does: an allowed `node` or `python` can still run any code passed as an argument. Use the command guard to check arguments.
 
 ### Command guard
 
-For rules that a list cannot say, pass a function. It receives a copy of the command array, before the first launch and before every restart.
+For rules that a list cannot say, pass a function. It receives a copy of the command array when the client is built and before every launch.
 
 ```javascript
 client = MCP( {
@@ -280,7 +290,7 @@ client = MCP( {
 } )
 ```
 
-Return `false` or throw to refuse. Refusing throws `MCPCommandRefused`.
+Return `false` or throw to refuse. Refusing throws `MCPCommandRefused`. The guard sees only the command array, not `env`, `cwd` or `inheritEnv`: if those come from input you do not control, validate them yourself, because variables such as `LD_PRELOAD` or `NODE_OPTIONS` change what a program does.
 
 ### Environment
 
@@ -288,7 +298,7 @@ By default the child inherits **all** of your environment variables, including s
 
 ### Windows
 
-On Windows an executable without a directory is looked up in the `PATH` using the `PATHEXT` extensions, and a `.cmd` or `.bat` file such as `npx.cmd` is started through `cmd.exe /c` with the arguments passed separately. This lets `[ "npx", "-y", "server" ]` work on every platform. This resolution is not covered by the automated tests, which run on Linux.
+On Windows an executable without a directory is looked up in the `PATH` using the `PATHEXT` extensions, and a `.cmd` or `.bat` file such as `npx.cmd` is started through `cmd.exe /c` with the arguments passed separately. This lets `[ "npx", "-y", "server" ]` work on every platform. `cmd.exe` interprets characters such as `&`, `|`, `%` and `^` in the arguments of a `.cmd` or `.bat` file, so never pass untrusted text as such an argument. This resolution is not covered by the automated tests, which run on Linux.
 
 ## 📡 Events and Statistics
 
@@ -316,7 +326,9 @@ client.getSummary()   // { totalCalls, successRate, avgResponseTime, totalToolCa
 | ------- | ----- |
 | `Could not start the MCP server [stdio:x]` | The executable is not found or cannot run. Check the `PATH` of the BoxLang process, or give the full path. |
 | `exited (exit code N) before it answered` | The server crashed or quit. The message ends with its last stderr lines. |
-| `did not answer within N ms` | The server is slow or stuck. Raise `timeout`, and read `getStderrTail()`. |
+| `did not answer within N ms` | The server is slow or stuck. Raise `timeout`, and read `getStderrTail()`. On the first call of a program that downloads itself (`npx -y ...`) the download counts too: use a `timeout` of `120000` or more. |
+| `is not in the module setting mcp.stdio.allowedCommands` | The command is not allowed. Add its name, or its exact path when the command has a directory. |
+| `Unknown option(s) for a stdio MCP server` | A misspelled option, or one that only exists for HTTP. The message lists the valid options. |
 | `answered protocol version [x], this client speaks ...` | The server speaks a version of the MCP specification that this client does not. |
 | `keeps exiting and was started again N times` | The restart limit was reached. Fix the server, then build a new client. |
 | `is closed` | `close()` was called. Build a new client. |
@@ -337,14 +349,20 @@ BoxLang AI can also be the server side of a stdio connection, see the MCP server
 // bx-playwright
 MCP( { command: [ "bxplaywright", "mcp" ] } )
 
-// The GitHub MCP server, with a token only this server sees
+// The GitHub MCP server, with a token only this server sees.
+// npx needs PATH and HOME (it starts node), and its first run downloads the package, hence the larger timeout
 MCP( {
     command   : [ "npx", "-y", "@modelcontextprotocol/server-github" ],
-    env       : { GITHUB_PERSONAL_ACCESS_TOKEN: getSystemSetting( "GITHUB_TOKEN" ) },
-    inheritEnv: false
+    env       : {
+        PATH                         : getSystemSetting( "PATH" ),
+        HOME                         : getSystemSetting( "HOME" ),
+        GITHUB_PERSONAL_ACCESS_TOKEN : getSystemSetting( "GITHUB_TOKEN" )
+    },
+    inheritEnv: false,
+    timeout   : 120000
 } )
 ```
 
 {% hint style="info" %}
-With `inheritEnv: false` the child has no `PATH`. Pass the full path of the executable, or add `PATH` to `env`. Programs such as `npx` need `PATH` and `HOME` to work.
+With `inheritEnv: false` the child has no `PATH`. Pass the full path of the executable, or add `PATH` to `env`. A program that starts other programs, such as `npx` (it starts `node`), fails with `'node': No such file or directory` without `PATH`, and often needs `HOME` too.
 {% endhint %}
