@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 
+- **CI cost**: pull requests no longer give the tests the API keys of the providers that charge per call (OpenAI, Claude, Grok, Mistral, DeepSeek, Perplexity, MiniMax, Cohere, HuggingFace, ElevenLabs, Cartesia). Ollama, the vector stores and the free tier providers still run. Add the `run-inference-tests` label to a pull request to run the paid ones, they always run on `development` and releases. A test that fails only because its key is missing is skipped in a run without them (`AI_TESTS_PAID_PROVIDERS=false`).
+
 - **MCP stdio server** (`MCPRequestProcessor::processStdio()`) never ended: when stdin closed, the failed read was answered with an error and tried again in a loop that wrote `-32600` errors to stdout forever. A closed stdin now stops the transport, which is how a client asks a stdio server to stop.
 - **Example `09-mcp-stdio.bxs`** printed its start banner to stdout, which is the protocol stream. It now goes to stderr.
 

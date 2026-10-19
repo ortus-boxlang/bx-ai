@@ -18,12 +18,14 @@
 package ortus.boxlang.ai.memory;
 
 import static com.google.common.truth.Truth.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
+import ortus.boxlang.ai.PaidProviderGuard;
 import ortus.boxlang.runtime.scopes.Key;
 import ortus.boxlang.runtime.types.IStruct;
 
@@ -116,6 +118,8 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "Test SummaryMemory triggers summarization when threshold exceeded" )
 	public void testSummarizationTriggered() {
+		// The summary comes from the provider: the assertions fail quietly when it has no key
+		assumeFalse( PaidProviderGuard.paidProvidersDisabled() );
 		runtime.executeSource(
 		    """
 		    memory = aiMemory( memory: "summary", key: "test-key", config: {
@@ -522,6 +526,8 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 	@Test
 	@DisplayName( "Test SummaryMemory progressive summarization" )
 	public void testProgressiveSummarization() {
+		// The summary comes from the provider: the assertions fail quietly when it has no key
+		assumeFalse( PaidProviderGuard.paidProvidersDisabled() );
 		runtime.executeSource(
 		    """
 		    memory = aiMemory( memory: "summary", key: "progressive-test", config: {
