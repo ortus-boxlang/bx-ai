@@ -68,6 +68,12 @@ class extends="BaseMCPClient" {
 		STDERR_TAIL_LINES  = 50;
 		// How long a step of the shutdown waits before it escalates, in seconds
 		SHUTDOWN_WAIT      = 2;
+		// The options of a stdio server, any other option is refused
+		KNOWN_OPTIONS      = [ "command", "env", "cwd", "inheritEnv", "maxRestarts", "commandGuard", "timeout" ];
+		// Options that only exist for HTTP servers
+		HTTP_ONLY_OPTIONS  = [ "token", "headers", "user", "password", "urlGuard", "redirects", "maxResponseBytes", "httpVersion", "handshake", "url" ];
+		// Options of withMCPServer(): they choose how the tools are exposed, they are not options of the client
+		REGISTRATION_OPTIONS = [ "prefix", "toolFilter" ];
 		// The live clients, so they can be closed when the module unloads
 		LIVE_CLIENTS       = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
 		// Whether the JVM shutdown hook is registered
@@ -151,9 +157,9 @@ class extends="BaseMCPClient" {
 	 * Refuse an option this client does not have. A misspelled security option such as commandGuard must not be ignored silently.
 	 */
 	private void function assertKnownOptions( required struct config ) {
-		var known      = [ "command", "env", "cwd", "inheritEnv", "maxRestarts", "commandGuard", "timeout" ]
-		var httpOnly   = [ "token", "headers", "user", "password", "urlGuard", "redirects", "maxResponseBytes", "httpVersion", "handshake", "url" ]
-		var registered = [ "prefix", "toolFilter" ]
+		var known      = static.KNOWN_OPTIONS
+		var httpOnly   = static.HTTP_ONLY_OPTIONS
+		var registered = static.REGISTRATION_OPTIONS
 		var unknown    = []
 		for ( var optionName in arguments.config ) {
 			if ( !known.containsNoCase( optionName ) ) {

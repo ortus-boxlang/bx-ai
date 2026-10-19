@@ -71,6 +71,13 @@ abstract class implements="IAiRunnable" {
 	 */
 	property name="availableSkills" type="array" default=[];
 
+	static {
+		// withMCPServer(): the keys of a stdio struct that choose how the tools are exposed, not options of the client
+		MCP_REGISTRATION_KEYS = [ "prefix", "toolFilter" ];
+		// Options that only exist for an HTTP MCP server
+		MCP_HTTP_ONLY_KEYS    = [ "token", "headers", "user", "password", "urlGuard", "redirects", "maxResponseBytes", "httpVersion", "handshake" ];
+	}
+
     /**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Interface Methods
@@ -773,7 +780,7 @@ abstract class implements="IAiRunnable" {
 		// A stdio struct can carry prefix and toolFilter next to the command. They choose how the tools are exposed,
 		// they are not options of the client, so they move to the config (an explicit config wins).
 		if ( isStruct( arguments.mcpServer ) && !isObject( arguments.mcpServer ) && arguments.mcpServer.keyExists( "command" ) ) {
-			var registrationKeys = [ "prefix", "toolFilter" ]
+			var registrationKeys = static.MCP_REGISTRATION_KEYS
 			var serverStruct     = arguments.mcpServer
 			arguments.config     = serverStruct.filter( ( k, v ) => registrationKeys.containsNoCase( k ) ).append( arguments.config, true )
 			arguments.mcpServer  = serverStruct.filter( ( k, v ) => !registrationKeys.containsNoCase( k ) )
@@ -864,7 +871,7 @@ abstract class implements="IAiRunnable" {
 
 		// A struct builds a stdio client, the keys that only make sense over HTTP are a mistake there
 		if ( isStruct( arguments.serverUrl ) && !isObject( arguments.serverUrl ) ) {
-			var httpOnlyKeys = [ "token", "headers", "user", "password", "urlGuard", "redirects", "maxResponseBytes", "httpVersion", "handshake" ]
+			var httpOnlyKeys = static.MCP_HTTP_ONLY_KEYS
 			var providedConfig = arguments.config
 			var misplacedKeys  = httpOnlyKeys.filter( key => providedConfig.keyExists( key ) )
 			if ( misplacedKeys.len() ) {

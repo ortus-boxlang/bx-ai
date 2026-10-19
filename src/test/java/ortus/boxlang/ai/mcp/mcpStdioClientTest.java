@@ -462,11 +462,13 @@ public class mcpStdioClientTest extends BaseIntegrationTest {
 		run( """
 			httpClass = getMetadata( MCP( baseURL: "http://127.0.0.1:1/mcp" ) ).name
 			positional = getMetadata( MCP( "http://127.0.0.1:1/mcp" ) ).name
+			named = getMetadata( MCP( mcpServer: "http://127.0.0.1:1/mcp" ) ).name
 		""" );
 		// @formatter:on
 
 		assertThat( get( "httpClass" ).toString() ).endsWith( "MCPHttpClient" );
 		assertThat( get( "positional" ).toString() ).endsWith( "MCPHttpClient" );
+		assertThat( get( "named" ).toString() ).endsWith( "MCPHttpClient" );
 	}
 
 	// -------------------------------------------------------------------------------------------------

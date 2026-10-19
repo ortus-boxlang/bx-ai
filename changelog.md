@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ⚠️ Migration
 
-- `MCPClient` was renamed to `MCPHttpClient` (`models/mcp/MCPHttpClient.bx`). Code that uses the `MCP()` BIF is not affected (the named argument `MCP( baseURL: url )` still works, the new name is `server`). Code that created the class directly with `new bxModules.bxai.models.mcp.MCPClient( url )` must use `MCP( url )`. `MCP()` now returns an `IMCPClient`, either an `MCPHttpClient` or an `MCPStdioClient`.
+- `MCPClient` was renamed to `MCPHttpClient` (`models/mcp/MCPHttpClient.bx`). Code that uses the `MCP()` BIF is not affected (the named argument `MCP( baseURL: url )` still works, the new name is `mcpServer`). Code that created the class directly with `new bxModules.bxai.models.mcp.MCPClient( url )` must use `MCP( url )`. `MCP()` now returns an `IMCPClient`, either an `MCPHttpClient` or an `MCPStdioClient`.
 
 ### 🥊 Added
 
