@@ -43,9 +43,15 @@ import java.util.regex.Pattern;
  * <li>noise: writes lines that are not JSON to stdout before every answer</li>
  * <li>ignoreeof: does not exit when stdin closes (the client has to terminate it)</li>
  * <li>marker: writes the file given as second argument when stdin reaches its end (a graceful shutdown)</li>
+ * <li>noread: after the handshake it stops reading stdin for two minutes (a busy server), so a large write to it blocks</li>
+ * <li>slowthree: the first three launches wait 3 seconds before they read anything (a slow first start). The second argument is a counter file</li>
+ * <li>orphan: starts a "sleep" child process, then exits when stdin closes and leaves the child running (a launcher that does not take its server with it)</li>
+ * <li>orphanstubborn: like orphan, but the child ignores SIGTERM, only a kill ends it</li>
+ * <li>grandchild: starts a "sleep" child process and ignores the end of stdin. The tool gcpid returns the pid of that child</li>
+ * <li>strict: answers any request other than initialize with an error until notifications/initialized has arrived, as a server that follows the lifecycle may</li>
  * </ul>
  *
- * Tools: echo (text), pid, getenv (name), cwd, big (size), slow (ms), crash, pingcheck, cancelled, args (returns the raw arguments).
+ * Tools: structid (writes a message whose id is a struct, then answers), gcpid, echo (text), pid, getenv (name), cwd, big (size), slow (ms), crash, pingcheck, cancelled, args (returns the raw arguments).
  */
 public class FakeStdioMcpServer {
 
@@ -59,6 +65,8 @@ public class FakeStdioMcpServer {
 	private static PrintStream		out;
 	private static String			mode;
 	private static int				cancelNotices	= 0;
+	private static boolean			initialized		= false;
+	private static Process			grandchild;
 
 	public static void main( String[] args ) throws Exception {
 		mode	= args.length > 0 ? args[ 0 ] : "ok";
@@ -70,6 +78,22 @@ public class FakeStdioMcpServer {
 		if ( mode.equals( "exitonstart" ) ) {
 			System.err.println( "boom: cannot start" );
 			System.exit( 7 );
+		}
+
+		if ( mode.equals( "slowthree" ) && markerPath != null ) {
+			Path	counter	= Path.of( markerPath );
+			int		seen	= Files.exists( counter ) ? Files.readAllLines( counter ).size() : 0;
+			Files.writeString( counter, "x\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND );
+			if ( seen < 3 ) {
+				Thread.sleep( 3000 );
+			}
+		}
+		if ( mode.equals( "grandchild" ) || mode.equals( "orphan" ) ) {
+			grandchild = new ProcessBuilder( "sleep", "120" ).start();
+		}
+		if ( mode.equals( "orphanstubborn" ) ) {
+			// Signals that are ignored stay ignored across exec: the sleep does not die of SIGTERM
+			grandchild = new ProcessBuilder( "sh", "-c", "trap '' TERM; exec sleep 120" ).start();
 		}
 
 		BufferedReader	in	= new BufferedReader( new InputStreamReader( System.in, StandardCharsets.UTF_8 ) );
@@ -85,7 +109,7 @@ public class FakeStdioMcpServer {
 		if ( mode.equals( "marker" ) && markerPath != null ) {
 			Files.writeString( Path.of( markerPath ), "eof" );
 		}
-		if ( mode.equals( "ignoreeof" ) ) {
+		if ( mode.equals( "ignoreeof" ) || mode.equals( "grandchild" ) ) {
 			Thread.sleep( 60_000 );
 		}
 	}
@@ -99,6 +123,10 @@ public class FakeStdioMcpServer {
 		}
 
 		if ( method.equals( "notifications/initialized" ) ) {
+			initialized = true;
+			if ( mode.equals( "noread" ) ) {
+				Thread.sleep( 120_000 );
+			}
 			if ( mode.equals( "dieaftershake" ) ) {
 				System.exit( 9 );
 			}
@@ -109,6 +137,11 @@ public class FakeStdioMcpServer {
 			return;
 		}
 		if ( id == null ) {
+			return;
+		}
+
+		if ( mode.equals( "strict" ) && !initialized && !method.equals( "initialize" ) ) {
+			reply( id, null, "{\"code\":-32600,\"message\":\"Server not initialized\"}" );
 			return;
 		}
 
@@ -174,6 +207,13 @@ public class FakeStdioMcpServer {
 				String envName = first( Pattern.compile( "\"arguments\"\\s*:\\s*\\{[^}]*\"name\"\\s*:\\s*\"([^\"]*)\"" ), line );
 				String value = envName == null ? null : System.getenv( envName );
 				text( id, "\"" + ( value == null ? "<unset>" : value ) + "\"" );
+				break;
+			case "structid" :
+				out.println( "{\"jsonrpc\":\"2.0\",\"id\":{\"a\":1},\"result\":{}}" );
+				text( id, "\"ok\"" );
+				break;
+			case "gcpid" :
+				text( id, "\"" + ( grandchild == null ? -1 : grandchild.pid() ) + "\"" );
 				break;
 			case "cwd" :
 				text( id, "\"" + System.getProperty( "user.dir" ).replace( "\\", "\\\\" ) + "\"" );

@@ -71,6 +71,13 @@ abstract class implements="IAiRunnable" {
 	 */
 	property name="availableSkills" type="array" default=[];
 
+	static {
+		// withMCPServer(): the keys of a stdio struct that choose how the tools are exposed, not options of the client
+		MCP_REGISTRATION_KEYS = [ "prefix", "toolFilter" ];
+		// Options that only exist for an HTTP MCP server
+		MCP_HTTP_ONLY_KEYS    = [ "token", "headers", "user", "password", "urlGuard", "redirects", "maxResponseBytes", "httpVersion", "handshake" ];
+	}
+
     /**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Interface Methods
@@ -743,12 +750,8 @@ abstract class implements="IAiRunnable" {
 		arguments.servers.each( mcpServer => {
 			if ( isStruct( mcpServer ) && !isObject( mcpServer ) ) {
 				if ( mcpServer.keyExists( "command" ) ) {
-					// A stdio server: prefix and toolFilter belong to the tool registration, the rest builds the client
-					var registration = [ "prefix", "toolFilter" ]
-					withMCPServer(
-						mcpServer.filter( ( k, v ) => !registration.containsNoCase( k ) ),
-						mcpServer.filter( ( k, v ) => registration.containsNoCase( k ) )
-					)
+					// A stdio server: withMCPServer() sorts prefix and toolFilter from the options of the client
+					withMCPServer( mcpServer )
 				} else {
 					withMCPServer( mcpServer.url ?: "", mcpServer.filter( ( k, v ) => k != "url" ) )
 				}
@@ -774,6 +777,14 @@ abstract class implements="IAiRunnable" {
 	 * @return This runnable for chaining
 	 */
 	public AiBaseRunnable function withMCPServer( required any mcpServer, struct config = {} ) {
+		// A stdio struct can carry prefix and toolFilter next to the command. They choose how the tools are exposed,
+		// they are not options of the client, so they move to the config (an explicit config wins).
+		if ( isStruct( arguments.mcpServer ) && !isObject( arguments.mcpServer ) && arguments.mcpServer.keyExists( "command" ) ) {
+			var registrationKeys = static.MCP_REGISTRATION_KEYS
+			var serverStruct     = arguments.mcpServer
+			arguments.config     = serverStruct.filter( ( k, v ) => registrationKeys.containsNoCase( k ) ).append( arguments.config, true )
+			arguments.mcpServer  = serverStruct.filter( ( k, v ) => !registrationKeys.containsNoCase( k ) )
+		}
 		var mcpClient   = buildMCPClient( arguments.mcpServer, arguments.config );
 		var ownsClient  = !isObject( arguments.mcpServer );
 		var response = mcpClient.listTools();
@@ -860,7 +871,7 @@ abstract class implements="IAiRunnable" {
 
 		// A struct builds a stdio client, the keys that only make sense over HTTP are a mistake there
 		if ( isStruct( arguments.serverUrl ) && !isObject( arguments.serverUrl ) ) {
-			var httpOnlyKeys = [ "token", "headers", "user", "password", "urlGuard", "redirects", "maxResponseBytes", "httpVersion", "handshake" ]
+			var httpOnlyKeys = static.MCP_HTTP_ONLY_KEYS
 			var providedConfig = arguments.config
 			var misplacedKeys  = httpOnlyKeys.filter( key => providedConfig.keyExists( key ) )
 			if ( misplacedKeys.len() ) {

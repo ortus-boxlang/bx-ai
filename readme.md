@@ -973,7 +973,7 @@ A gateway extending `BaseGateway` gets `onGatewayConnect`/`onGatewayDisconnect` 
 | `aiTranslate()` | Translate non-English audio to English | `audio`, `params={}`, `options={}` | String / AiTranscriptionResponse | N/A |
 | `aiParallel()` | Run multiple named runnables concurrently and collect results | `runnables` (struct of `{ name: IAiRunnable }`) | AiRunnableParallel Object | ✅ (via `runAsync()`) |
 | `aiTransform()` | Create data transformer | `transformer`, `config={}` | Transformer Runnable | N/A |
-| `MCP()` | Create MCP client for Model Context Protocol servers. A URL string gives an HTTP client, a struct with a `command` gives a stdio client that launches the server as a child process | `server` (URL string, or struct: `command`, `env`, `cwd`, `inheritEnv`, `maxRestarts`, `commandGuard`, `timeout`) | `IMCPClient` (`MCPHttpClient` or `MCPStdioClient`) | N/A |
+| `MCP()` | Create MCP client for Model Context Protocol servers. A URL string gives an HTTP client, a struct with a `command` gives a stdio client that launches the server as a child process | `mcpServer` (URL string, or struct: `command`, `env`, `cwd`, `inheritEnv`, `maxRestarts`, `commandGuard`, `timeout`) | `IMCPClient` (`MCPHttpClient` or `MCPStdioClient`) | N/A |
 | `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors`, `statsEnabled`, `force` | MCPServer Object | N/A |
 | `aiWebSearch()` | Search the web via a pluggable provider | `query`, `params={}`, `options={}` _(provider, maxResults)_ | Array of `{title, url, snippet}` | ❌ |
 | `aiWebSearchAsync()` | Search the web asynchronously | `query`, `params={}`, `options={}` _(provider, maxResults)_ | BoxLang Future | ✅ |
