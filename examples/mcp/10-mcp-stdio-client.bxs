@@ -1,0 +1,58 @@
+/**
+ * MCP STDIO Client
+ *
+ * Uses an MCP server that runs as a child process, talking to it over stdin and stdout.
+ * Full guide: src/docs/main-components/mcp-stdio-client.md
+ *
+ * Usage:
+ *   boxlang examples/mcp/10-mcp-stdio-client.bxs
+ *
+ * Needs Node.js: it starts the official MCP "everything" reference server with npx.
+ * Swap the command for any other stdio server, for example [ "bxplaywright", "mcp" ].
+ */
+
+// 1. Build a client: a struct with a command means "launch this program"
+client = MCP( {
+	command: [ "npx", "-y", "@modelcontextprotocol/server-everything" ],
+	timeout: 120000
+} )
+
+try {
+	// 2. The server is launched on the first call, and the MCP handshake is done for you
+	tools = client.listTools()
+	if ( tools.isSuccess() ) {
+		println( "Tools: " & tools.getData().tools.map( tool => tool.name ).toList() )
+		println( "Protocol version: " & client.getProtocolVersion() )
+
+		// 3. Call a tool, you always get an MCPResponse
+		response = client.send( "echo", { message: "Hello from BoxLang AI" } )
+		if ( response.isSuccess() ) {
+			println( "Answer: " & jsonSerialize( response.getData() ) )
+		} else {
+			println( "Failed: " & response.getError() )
+		}
+
+		// 4. The stderr of the server is in the "ai" log, and the last lines are kept for you
+		println( "Server stderr tail: " & client.getStderrTail().len() & " lines" )
+
+		// 5. Give the tools to an agent: prefix keeps names unique, toolFilter limits what the model sees
+		agent = aiAgent(
+			name: "stdio-agent",
+			model: aiModel( provider: "openai" ),
+			mcpServers: [
+				{
+					command: [ "npx", "-y", "@modelcontextprotocol/server-everything" ],
+					prefix: "demo",
+					toolFilter: [ "echo" ]
+				}
+			]
+		)
+		println( "Agent has demo__echo: " & agent.hasTool( "demo__echo" ) )
+		agent.closeMCPServers()
+	} else {
+		println( "Could not reach the server: " & tools.getError() )
+	}
+} finally {
+	// 6. Stop the child process. Live clients are also closed when the module unloads or the JVM exits.
+	client.close()
+}

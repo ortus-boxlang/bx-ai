@@ -38,7 +38,7 @@ public class MistralTest extends BaseIntegrationTest {
 	@Test
 	public void testMistral() {
 		// @formatter:off
-		executeWithTimeoutHandling(
+		executeLiveCall(
 			"""
 			result = aiChat( "what is boxlang?", {}, {} )
 			println( result )
@@ -54,7 +54,7 @@ public class MistralTest extends BaseIntegrationTest {
 	@Test
 	public void testChatStream() {
 		// @formatter:off
-		executeWithTimeoutHandling(
+		executeLiveCall(
 			"""
 			chunks = []
 			fullResponse = ""
@@ -82,7 +82,7 @@ public class MistralTest extends BaseIntegrationTest {
 	@Test
 	public void testStreamingCallback() {
 		// @formatter:off
-		executeWithTimeoutHandling(
+		executeLiveCall(
 			"""
 			chunkCount = 0
 			aiChatStream(
@@ -107,7 +107,7 @@ public class MistralTest extends BaseIntegrationTest {
 	@Test
 	public void testToolCall() {
 		// @formatter:off
-		executeWithTimeoutHandling(
+		executeLiveCall(
 			"""
 			tool = aiTool(
 				"get_weather",

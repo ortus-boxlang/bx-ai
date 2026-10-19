@@ -1,0 +1,77 @@
+<bx:script>
+	/**
+	 * Mode 1: stream raw audio bytes straight to the browser.
+	 *
+	 *   <audio src="speak.bxm?text=Hello&provider=cartesia&format=mp3"></audio>
+	 *
+	 * aiSpeakStream() calls the callback with each audio chunk as the provider generates it.
+	 * We write every chunk to the HTTP response and flush, so the browser starts playing
+	 * after the first chunk instead of waiting for the whole file.
+	 *
+	 * DEMO ONLY: this endpoint spends your provider credits for anyone who can reach it.
+	 * Put authentication and rate limits in front of it before exposing it.
+	 */
+	param name="url.text"     default="Hello! This audio is streaming to your browser while it is still being generated.";
+	param name="url.provider" default="cartesia";
+	param name="url.format"   default="mp3";
+	param name="url.voice"    default="female";
+
+	allowedProviders = [ "cartesia", "elevenlabs", "openai", "mistral", "gemini" ];
+	mimeTypes        = { mp3 : "audio/mpeg", pcm : "application/octet-stream", mulaw : "audio/basic" };
+
+	if ( !allowedProviders.findNoCase( url.provider ) || !mimeTypes.keyExists( url.format ) || !len( trim( url.text ) ) || len( url.text ) > 500 ) {
+		getPageContext().setStatus( 400 );
+		writeOutput( "Bad request: provider must be one of #allowedProviders.toList()#, format one of #mimeTypes.keyList()#, text 1 to 500 characters." );
+		return;
+	}
+
+	ByteBuffer  = createObject( "java", "java.nio.ByteBuffer" );
+	pageContext = getPageContext();
+	state       = { channel : "", started : false };
+
+	/** Write one chunk to the response and flush it. Returns false when the client has gone away. */
+	function sendChunk( required binary bytes ){
+		try {
+			if ( !state.started ) {
+				pageContext.setContentType( mimeTypes[ url.format ] );
+				pageContext.setHeader( "Cache-Control", "no-store" );
+				pageContext.setHeader( "X-Accel-Buffering", "no" );
+				state.channel = pageContext.getExchange().getResponseChannel();
+				state.started = true;
+			}
+			var buffer = ByteBuffer.wrap( bytes );
+			while ( buffer.hasRemaining() ) {
+				state.channel.write( buffer );
+				if ( buffer.hasRemaining() ) {
+					state.channel.awaitWritable();
+				}
+			}
+			state.channel.flush();
+			return true;
+		} catch ( any e ) {
+			// The listener stopped playback or closed the tab: stop generating
+			return false;
+		}
+	}
+
+	try {
+		summary = aiSpeakStream(
+			url.text,
+			( event ) => {
+				if ( event.type == "audio" ) {
+					// Returning false stops the provider stream immediately
+					return sendChunk( event.data );
+				}
+			},
+			{ voice : url.voice },
+			{ provider : url.provider, outputFormat : url.format }
+		);
+	} catch ( any e ) {
+		// Nothing has been sent yet, so we can still report the failure properly
+		if ( !state.started ) {
+			pageContext.setStatus( 502 );
+			pageContext.setContentType( "text/plain" );
+			writeOutput( "Speech provider error: #e.message#" );
+		}
+	}
+</bx:script>

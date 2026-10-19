@@ -21,19 +21,25 @@ class {
 	 * Creates a fluent MCP client for consuming Model Context Protocol servers
 	 * <p>
 	 * MCP is a protocol for connecting AI models to external tools and data sources.
-	 * This BIF provides a convenient way to interact with MCP servers.
+	 * Pass a URL to talk to a server over HTTP, or a struct with a command to launch a server
+	 * as a child process and talk to it over stdin/stdout.
 	 *
 	 * Example:
 	 * ```
-	 * // Simple usage
+	 * // HTTP
 	 * result = MCP( "http://localhost:3000" ).send( "searchDocs", { query: "syntax" } )
 	 *
-	 * // With configuration
+	 * // HTTP with configuration
 	 * client = MCP( "http://localhost:3000" )
 	 *     .withTimeout( 5000 )
 	 *     .withBearerToken( "token" )
 	 *     .onSuccess( ( response ) => { writeLog( "Success: #response.getData()#" ) } )
 	 *     .onError( ( response ) => { writeLog( "Error: #response.getError()#" ) } )
+	 *
+	 * // Stdio: a child process
+	 * client = MCP( { command : [ "bxplaywright", "mcp" ], env : { FOO : "x" }, cwd : "/tmp" } )
+	 * tools = client.listTools()
+	 * client.close()
 	 *
 	 * // Discovery
 	 * tools = MCP( "http://localhost:3000" ).listTools()
@@ -41,12 +47,25 @@ class {
 	 * prompts = MCP( "http://localhost:3000" ).listPrompts()
 	 * ```
 	 *
-	 * @baseURL The base URL of the MCP server (required)
+	 * @baseURL Deprecated name of the first argument, kept so MCP( baseURL: url ) still works. Use mcpServer
+	 * @mcpServer The URL of the MCP server (string), or a struct for a stdio server:
+	 *         command (array, required), env (struct), cwd (string), inheritEnv (boolean, default true),
+	 *         maxRestarts (numeric, default 2), commandGuard (function), timeout (milliseconds)
 	 *
-	 * @return An MCPClient instance with fluent API
+	 * @return An IMCPClient: MCPHttpClient for a URL, MCPStdioClient for a struct
 	 */
-	function invoke( required string baseURL ) {
-		return new bxModules.bxai.models.mcp.MCPClient( arguments.baseURL );
+	function invoke( any mcpServer, string baseURL = "" ) {
+		// baseURL is the name of the argument before stdio servers existed, named calls MCP( baseURL: url ) keep working
+		if ( isNull( arguments.mcpServer ) ) {
+			if ( !len( arguments.baseURL ) ) {
+				throw( type: "InvalidArgument", message: "MCP() needs a server: a URL string or a struct with a command" )
+			}
+			arguments.mcpServer = arguments.baseURL
+		}
+		if ( isStruct( arguments.mcpServer ) ) {
+			return new bxModules.bxai.models.mcp.MCPStdioClient( arguments.mcpServer );
+		}
+		return new bxModules.bxai.models.mcp.MCPHttpClient( toString( arguments.mcpServer ) );
 	}
 
 }

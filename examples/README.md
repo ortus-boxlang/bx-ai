@@ -64,6 +64,10 @@ export CLAUDE_API_KEY="sk-ant-..."
 # Google (Gemini models)
 export GEMINI_API_KEY="..."
 
+# Cloudflare Workers AI (requires both)
+export CLOUDFLARE_API_KEY="..."
+export CLOUDFLARE_ACCOUNT_ID="..."
+
 # Cohere
 export COHERE_API_KEY="..."
 
@@ -101,6 +105,7 @@ response = aiChat(
 - **OpenAI**: https://platform.openai.com/api-keys
 - **Anthropic (Claude)**: https://console.anthropic.com/
 - **Google (Gemini)**: https://makersuite.google.com/app/apikey
+- **Cloudflare**: https://dash.cloudflare.com/profile/api-tokens
 - **Cohere**: https://dashboard.cohere.com/api-keys
 - **Voyage AI**: https://www.voyageai.com/
 - **Groq**: https://console.groq.com/
@@ -167,6 +172,10 @@ Autonomous agents with memory and tools:
 - **04-research-agent.bxs** - Research agent with vector memory for semantic article search
 - **05-multi-memory-agent.bxs** - One agent using multiple memory types simultaneously
 - **06-sub-agents.bxs** - Agent orchestration with specialized sub-agents
+
+### `/http-streaming-speech` - Stream Speech to a Browser over HTTP
+
+A complete web demo of `aiSpeakStream()`. BoxLang streams audio to the browser as it is generated, either as raw mp3 for an `<audio>` tag or as PCM events with word timestamps for a voice-agent style player. See its [README](http-streaming-speech/README.md).
 
 ### `/advanced` - Advanced Features
 

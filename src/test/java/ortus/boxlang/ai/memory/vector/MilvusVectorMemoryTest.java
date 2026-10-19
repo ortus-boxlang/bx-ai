@@ -23,6 +23,7 @@ import java.util.Map;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -34,8 +35,14 @@ import ortus.boxlang.runtime.types.IStruct;
  * Integration tests for MilvusVectorMemory
  *
  * Requires Milvus running on localhost:19530
- * Run: docker compose up -d milvus-standalone
+ * Run: docker compose --profile milvus up -d milvus-standalone
+ *
+ * Disabled in CI: Milvus needs MinIO for object storage and MinIO's public images are no longer pullable
+ * (docker.io and quay.io both return unauthorized), which broke `docker compose up` for the whole suite.
+ * Milvus support is planned to move into its own module. Remove @Disabled to run it locally once the
+ * Milvus stack has a working object store.
  */
+@Disabled( "Milvus stack is not started in CI: MinIO images are no longer publicly pullable. Planned to move to its own module." )
 @DisplayName( "MilvusVectorMemory Integration Tests" )
 public class MilvusVectorMemoryTest extends BaseIntegrationTest {
 

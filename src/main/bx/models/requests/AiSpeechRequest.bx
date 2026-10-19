@@ -333,6 +333,7 @@ class extends="AiBaseRequest" {
 		if ( arguments.options.keyExists( "outputFormat" ) )         variables.outputFormat         = arguments.options.outputFormat
 		if ( arguments.options.keyExists( "outputFile" ) )           variables.outputFile           = arguments.options.outputFile
 		if ( arguments.options.keyExists( "timeout" ) )              variables.timeout              = arguments.options.timeout
+		if ( arguments.options.keyExists( "baseURL" ) )              variables.baseURL              = arguments.options.baseURL
 		if ( arguments.options.keyExists( "logRequest" ) )           variables.logRequest           = arguments.options.logRequest
 		if ( arguments.options.keyExists( "logRequestToConsole" ) )  variables.logRequestToConsole  = arguments.options.logRequestToConsole
 		if ( arguments.options.keyExists( "logResponse" ) )          variables.logResponse          = arguments.options.logResponse
@@ -368,6 +369,32 @@ class extends="AiBaseRequest" {
 	 * @return AiSpeechResponse, or the saved file path string when outputFile is set
 	 */
 	function speak(){
+		var args = buildSpeakArguments()
+		return aiSpeak( variables.text, args.params, args.options )
+	}
+
+	/**
+	 * Terminator — stream synthesized speech to a callback as it is generated.
+	 * Calls aiSpeakStream() with the current state of this request, which fires all events,
+	 * validates the provider supports streaming, and returns a summary struct.
+	 *
+	 * The callback receives `{ type: "audio", data, format, sampleRate, sequence }`,
+	 * `{ type: "timestamps", ... }` and a final `{ type: "done", chunks, bytes }`.
+	 * Return an explicit `false` from the callback to stop the stream early.
+	 *
+	 * @callback Function invoked with each stream event struct
+	 *
+	 * @return Summary struct: { provider, model, audioFormat, sampleRate, chunks, bytes, completed }
+	 */
+	function stream( required function callback ){
+		var args = buildSpeakArguments()
+		return aiSpeakStream( variables.text, arguments.callback, args.params, args.options )
+	}
+
+	/**
+	 * Build the params and options structs handed to aiSpeak() / aiSpeakStream() from the current builder state.
+	 */
+	private struct function buildSpeakArguments(){
 		// Resolve gendered voice if set but not yet resolved
 		if ( len( variables.voice ) && listFindNoCase( "male,female", variables.voice ) ) {
 			resolveGenderedVoice( variables.voice )
@@ -383,23 +410,25 @@ class extends="AiBaseRequest" {
 			newParams.voice = variables.voice
 		}
 
-		return aiSpeak(
-			variables.text,
-			newParams,
-			{
-				provider             : variables.provider,
-				apiKey               : variables.apiKey,
-				speed                : variables.speed,
-				instructions         : variables.instructions,
-				outputFormat         : variables.outputFormat,
-				outputFile           : variables.outputFile,
-				timeout              : variables.timeout,
-				logRequest           : variables.logRequest,
-				logRequestToConsole  : variables.logRequestToConsole,
-				logResponse          : variables.logResponse,
-				logResponseToConsole : variables.logResponseToConsole
-			}
-		)
+		var newOptions = {
+			provider             : variables.provider,
+			apiKey               : variables.apiKey,
+			speed                : variables.speed,
+			instructions         : variables.instructions,
+			outputFormat         : variables.outputFormat,
+			outputFile           : variables.outputFile,
+			timeout              : variables.timeout,
+			logRequest           : variables.logRequest,
+			logRequestToConsole  : variables.logRequestToConsole,
+			logResponse          : variables.logResponse,
+			logResponseToConsole : variables.logResponseToConsole
+		}
+		// Only override the provider endpoint when one was explicitly set
+		if ( len( variables.baseURL ) ) {
+			newOptions.baseURL = variables.baseURL
+		}
+
+		return { params : newParams, options : newOptions }
 	}
 
 	/**

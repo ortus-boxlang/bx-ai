@@ -24,6 +24,8 @@
  *
  * Every module will have its own classloader that will be used to load the module libs and dependencies.
  */
+import bxModules.bxai.models.mcp.MCPStdioClient;
+
 class {
 
 	/**
@@ -138,6 +140,17 @@ class {
 			// The default return format of the AI response: single, all, raw
 			returnFormat : "single",
 			// --------------------------------------------------------------------------
+			// MCP Clients
+			// --------------------------------------------------------------------------
+			mcp : {
+				// MCP servers that run as a child process and talk over stdin/stdout: MCP( { command : [ ... ] } )
+				stdio : {
+					// Executable names a stdio server may use, for example [ "bxplaywright", "npx" ]
+					// "/usr/bin/npx" and "npx.cmd" both count as "npx". Empty means any command is allowed.
+					allowedCommands : []
+				}
+			},
+			// --------------------------------------------------------------------------
 			// Skills Directory — Global Skill Auto-Discovery
 			// --------------------------------------------------------------------------
 			// Path to the directory scanned for SKILL.md files at module startup.
@@ -177,10 +190,11 @@ class {
 				 */
 				voiceGenderMap : {
 					openai     : { male : "ash",                     female : "nova"                   },
-					grok       : { male : "onyx",                    female : "nova"                   },
+					grok       : { male : "rex",                     female : "eve"                    },
 					gemini     : { male : "Fenrir",                  female : "Aoede"                  },
-					mistral    : { male : "",                        female : "Charlotte"               },
-					elevenlabs : { male : "",                        female : "21m00Tcm4TlvDq8ikWAM"   }
+					mistral    : { male : "",                        female : ""                        },
+					elevenlabs : { male : "CwhRBWXzGAHq8TQ4Fs17", female : "EXAVITQu4vr4xnSDxMaL" },
+					cartesia   : { male : "47c38ca4-5f35-497b-b1a3-415245fb35e1", female : "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4" }
 				}
 			},
 
@@ -494,6 +508,8 @@ class {
 	 * Called by the ModuleService on module deactivation
 	 */
 	function onUnload(){
+		// Shut down the child processes of every live MCP stdio client
+		MCPStdioClient::closeAll();
 	}
 
 	/**

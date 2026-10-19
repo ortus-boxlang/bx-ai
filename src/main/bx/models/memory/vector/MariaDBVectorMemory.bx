@@ -1,0 +1,606 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * MariaDB Vector Memory Implementation using MariaDB's native vector support (11.7+)
+ *
+ * Everything runs inside the database: the VECTOR(n) column type, an HNSW VECTOR INDEX,
+ * and the VEC_DISTANCE_* functions. No distance math happens in the application layer.
+ *
+ * Notes about MariaDB vector indexes:
+ * - Only ONE vector index is allowed per table, and it is fixed to one distance metric (cosine or euclidean)
+ *   and one dimension size. Every collection that shares a table therefore shares the metric and dimensions.
+ * - A table with a vector index needs a primary key of 256 bytes or less. A (id, collection) key is too long,
+ *   so the primary key is doc_key = SHA-256( collection + id ), computed in SQL. It also drives the upsert.
+ * - The index is only used for queries shaped as: ORDER BY VEC_DISTANCE_<metric>( column, vector ) LIMIT n
+ * - Dot product is not supported natively, so only COSINE and L2 are available.
+ */
+class extends="BaseVectorMemory" {
+
+	/**
+	 * MariaDB datasource name
+	 */
+	property name="datasource" type="string";
+
+	/**
+	 * Table name for vector storage
+	 */
+	property name="table" type="string";
+
+	/**
+	 * Distance function: COSINE or L2 (Euclidean)
+	 */
+	property name="distanceFunction" type="string";
+
+	/**
+	 * Create the table automatically if it does not exist
+	 */
+	property name="autoCreate" type="boolean";
+
+	/**
+	 * HNSW M parameter for the vector index (3-200). Higher is more accurate but slower and larger.
+	 */
+	property name="m" type="numeric";
+
+	static {
+		DEFAULT_DISTANCE_FUNCTION = "COSINE"
+		DEFAULT_TABLE = "bx_ai_vectors"
+		DEFAULT_DIMENSIONS = 1536
+		DEFAULT_M = 8
+		// Our distance function => MariaDB index DISTANCE option and distance SQL function
+		DISTANCE_FUNCTIONS = {
+			"COSINE": { index: "cosine", sqlFunction: "VEC_DISTANCE_COSINE" },
+			"L2": { index: "euclidean", sqlFunction: "VEC_DISTANCE_EUCLIDEAN" }
+		}
+		// Identifiers (table name) and metadata filter keys must be simple names since they are placed in SQL text
+		SAFE_IDENTIFIER = "^[A-Za-z_][A-Za-z0-9_]*$"
+		// Filter keys that map to dedicated columns instead of the JSON metadata
+		TENANT_COLUMNS = [ "userId", "conversationId" ]
+	}
+
+	/**
+	 * Configure the MariaDB vector memory instance
+	 *
+	 * @config Configuration struct with MariaDB-specific options
+	 *
+	 * @return MariaDBVectorMemory for chaining
+	 */
+	IAiMemory function configure( required struct config ) {
+		// Extract MariaDB-specific config FIRST
+		param arguments.config.datasource = ""
+		param arguments.config.table = static.DEFAULT_TABLE
+		param arguments.config.distanceFunction = static.DEFAULT_DISTANCE_FUNCTION
+		param arguments.config.autoCreate = true
+		param arguments.config.m = static.DEFAULT_M
+
+		if ( !len( arguments.config.datasource ) ) {
+			throw(
+				type = "MariaDBVectorMemory.MissingDatasource",
+				message = "Datasource is required for MariaDBVectorMemory. Provide it in the config."
+			)
+		}
+
+		if ( !reFind( static.SAFE_IDENTIFIER, arguments.config.table ) ) {
+			throw(
+				type = "MariaDBVectorMemory.InvalidTable",
+				message = "Invalid table name: #arguments.config.table#. Use letters, numbers and underscores only."
+			)
+		}
+
+		variables.datasource = arguments.config.datasource
+		variables.table = arguments.config.table
+		variables.autoCreate = arguments.config.autoCreate
+		variables.distanceFunction = arguments.config.distanceFunction.ucase()
+
+		if ( !static.DISTANCE_FUNCTIONS.keyExists( variables.distanceFunction ) ) {
+			throw(
+				type = "MariaDBVectorMemory.InvalidDistanceFunction",
+				message = "Invalid distance function: #variables.distanceFunction#. Must be COSINE or L2. MariaDB has no native dot product."
+			)
+		}
+
+		variables.m = int( arguments.config.m )
+		if ( variables.m < 3 || variables.m > 200 ) {
+			throw(
+				type = "MariaDBVectorMemory.InvalidM",
+				message = "Invalid m value: #variables.m#. MariaDB requires a value between 3 and 200."
+			)
+		}
+
+		// A vector column needs a fixed size
+		if ( !arguments.config.keyExists( "dimensions" ) || !val( arguments.config.dimensions ) ) {
+			arguments.config.dimensions = static.DEFAULT_DIMENSIONS
+		}
+
+		// Now call parent configure which will call ensureCollection()
+		super.configure( arguments.config )
+
+		return this
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * ABSTRACT METHOD IMPLEMENTATIONS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Ensure the table exists for vector storage (honors autoCreate)
+	 */
+	IVectorMemory function ensureCollection() {
+		if ( !tableExists() ) {
+			if ( !variables.autoCreate ) {
+				throw(
+					type = "MariaDBVectorMemory.TableNotFound",
+					message = "Table [#variables.table#] does not exist and autoCreate is false."
+				)
+			}
+			createTable()
+		} else {
+			assertIndexMatchesConfig()
+		}
+
+		return this
+	}
+
+	/**
+	 * Store (upsert) a document in MariaDB
+	 *
+	 * @id Document ID
+	 * @text Document text
+	 * @embedding Vector embedding
+	 * @metadata Document metadata
+	 */
+	IVectorMemory function storeDocument(
+		required string id,
+		required string text,
+		required array embedding,
+		required struct metadata
+	) {
+		assertDimensions( arguments.embedding )
+
+		var userId = arguments.metadata.keyExists( "userId" ) ? arguments.metadata.userId : ""
+		var conversationId = arguments.metadata.keyExists( "conversationId" ) ? arguments.metadata.conversationId : ""
+
+		queryExecute(
+			"INSERT INTO #variables.table# (
+				doc_key, id, collection, text, embedding, metadata, userId, conversationId
+			) VALUES (
+				UNHEX( SHA2( CONCAT( :collection, CHAR(0), :id ), 256 ) ),
+				:id, :collection, :text, VEC_FromText(:embedding), :metadata, :userId, :conversationId
+			)
+			ON DUPLICATE KEY UPDATE
+				text = VALUES(text),
+				embedding = VALUES(embedding),
+				metadata = VALUES(metadata),
+				userId = VALUES(userId),
+				conversationId = VALUES(conversationId)",
+			{
+				id: arguments.id,
+				collection: variables.collection,
+				text: arguments.text,
+				embedding: formatVectorString( arguments.embedding ),
+				metadata: jsonSerialize( arguments.metadata ),
+				userId: userId,
+				conversationId: conversationId
+			},
+			{ datasource: variables.datasource }
+		)
+
+		return this
+	}
+
+	/**
+	 * Search by vector embedding using MariaDB's native vector index
+	 *
+	 * @embedding Vector to search with
+	 * @limit Max results
+	 * @filter Metadata filter. userId and conversationId use dedicated columns, other keys use the JSON metadata.
+	 *
+	 * @return Array of results with similarity scores (higher is more similar)
+	 */
+	array function searchByVector(
+		required array embedding,
+		required numeric limit,
+		required struct filter
+	) {
+		assertDimensions( arguments.embedding )
+
+		var distanceSql = static.DISTANCE_FUNCTIONS[ variables.distanceFunction ].sqlFunction
+		var where = buildWhere( arguments.filter )
+		var queryVector = formatVectorString( arguments.embedding )
+
+		// The ORDER BY must be the bare distance function call + LIMIT for the vector index to be used.
+		// The limit is cast to an integer since it is placed in the SQL text.
+		where.params.queryVectorSelect = queryVector
+		where.params.queryVectorOrder = queryVector
+
+		var rows = queryExecute(
+			"SELECT
+				id,
+				text,
+				metadata AS metadata_json,
+				VEC_ToText( embedding ) AS embedding_str,
+				#distanceSql#( embedding, VEC_FromText(:queryVectorSelect) ) AS distance
+			FROM #variables.table#
+			WHERE #where.sql#
+			ORDER BY #distanceSql#( embedding, VEC_FromText(:queryVectorOrder) )
+			LIMIT #max( 1, int( arguments.limit ) )#",
+			where.params,
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		return rows.map( ( row ) => {
+			return {
+				id: row.id,
+				text: row.text,
+				score: convertDistanceToScore( row.distance ),
+				metadata: jsonDeserialize( row.metadata_json ),
+				embedding: parseVectorString( row.embedding_str )
+			}
+		} )
+	}
+
+	/**
+	 * Get all documents from the collection, scoped to the bound userId/conversationId
+	 *
+	 * @return Array of documents
+	 */
+	array function getAllDocuments() {
+		var filter = {}
+		if ( len( variables.userId ) ) {
+			filter.userId = variables.userId
+		}
+		if ( len( variables.conversationId ) ) {
+			filter.conversationId = variables.conversationId
+		}
+		var where = buildWhere( filter )
+
+		var rows = queryExecute(
+			"SELECT
+				id,
+				text,
+				metadata AS metadata_json,
+				VEC_ToText( embedding ) AS embedding_str
+			FROM #variables.table#
+			WHERE #where.sql#
+			ORDER BY created_at DESC",
+			where.params,
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		return rows.map( ( row ) => {
+			return {
+				id: row.id,
+				text: row.text,
+				metadata: jsonDeserialize( row.metadata_json ),
+				embedding: parseVectorString( row.embedding_str )
+			}
+		} )
+	}
+
+	/**
+	 * Get document by ID
+	 *
+	 * @id Document ID
+	 *
+	 * @return Struct document or empty struct
+	 */
+	struct function getDocumentById( required string id ) {
+		var rows = queryExecute(
+			"SELECT
+				id,
+				text,
+				metadata AS metadata_json,
+				VEC_ToText( embedding ) AS embedding_str
+			FROM #variables.table#
+			WHERE id = :id AND collection = :collection",
+			{
+				id: arguments.id,
+				collection: variables.collection
+			},
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		if ( rows.isEmpty() ) {
+			return {}
+		}
+
+		var row = rows.first()
+		return {
+			id: row.id,
+			text: row.text,
+			metadata: jsonDeserialize( row.metadata_json ),
+			embedding: parseVectorString( row.embedding_str )
+		}
+	}
+
+	/**
+	 * Delete document by ID
+	 *
+	 * @id Document ID
+	 *
+	 * @return Boolean success
+	 */
+	boolean function deleteDocument( required string id ) {
+		queryExecute(
+			"DELETE FROM #variables.table# WHERE id = :id AND collection = :collection",
+			{
+				id: arguments.id,
+				collection: variables.collection
+			},
+			{ datasource: variables.datasource, result: "deleteResult" }
+		)
+
+		return deleteResult.recordCount > 0
+	}
+
+	/**
+	 * Delete documents by filter
+	 *
+	 * @filter Metadata filter
+	 *
+	 * @return Numeric count deleted
+	 */
+	numeric function deleteDocumentsByFilter( required struct filter ) {
+		var where = buildWhere( arguments.filter )
+
+		queryExecute(
+			"DELETE FROM #variables.table# WHERE #where.sql#",
+			where.params,
+			{ datasource: variables.datasource, result: "deleteResult" }
+		)
+
+		return deleteResult.recordCount
+	}
+
+	/**
+	 * Clear all documents in this collection
+	 */
+	IVectorMemory function clearCollection() {
+		queryExecute(
+			"DELETE FROM #variables.table# WHERE collection = :collection",
+			{ collection: variables.collection },
+			{ datasource: variables.datasource }
+		)
+
+		return this
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * COLLECTION MANAGEMENT
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Collections are rows in a shared table, so this only ensures the table exists
+	 *
+	 * @name The collection name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function createCollection( required string name ) {
+		ensureCollection()
+		return this
+	}
+
+	/**
+	 * Check if the backing table exists
+	 *
+	 * @name The collection name
+	 *
+	 * @return Boolean
+	 */
+	boolean function collectionExists( required string name ) {
+		return tableExists()
+	}
+
+	/**
+	 * Delete all documents of a collection
+	 *
+	 * @name The collection name
+	 *
+	 * @return IVectorMemory for chaining
+	 */
+	IVectorMemory function deleteCollection( required string name ) {
+		queryExecute(
+			"DELETE FROM #variables.table# WHERE collection = :collection",
+			{ collection: arguments.name },
+			{ datasource: variables.datasource }
+		)
+
+		return this
+	}
+
+	/**
+	 * ------------------------------------------------------------------------------
+	 * PRIVATE HELPER METHODS
+	 * ------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Create the table with the native VECTOR column and VECTOR INDEX
+	 */
+	private void function createTable() {
+		var indexMetric = static.DISTANCE_FUNCTIONS[ variables.distanceFunction ].index
+
+		queryExecute(
+			"CREATE TABLE IF NOT EXISTS #variables.table# (
+				doc_key BINARY(32) NOT NULL,
+				id VARCHAR(255) NOT NULL,
+				collection VARCHAR(255) NOT NULL DEFAULT 'default',
+				text LONGTEXT NOT NULL,
+				embedding VECTOR(#int( variables.dimensions )#) NOT NULL,
+				metadata JSON NOT NULL,
+				userId VARCHAR(255) NOT NULL DEFAULT '',
+				conversationId VARCHAR(255) NOT NULL DEFAULT '',
+				created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+				updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+				PRIMARY KEY (doc_key),
+				KEY idx_#variables.table#_id (collection, id),
+				KEY idx_#variables.table#_tenant (collection, userId, conversationId),
+				VECTOR INDEX idx_#variables.table#_embedding (embedding) M=#variables.m# DISTANCE=#indexMetric#
+			)",
+			{},
+			{ datasource: variables.datasource }
+		)
+	}
+
+	/**
+	 * A table can only have one vector index with one metric. Fail clearly if the existing table
+	 * was built for a different metric than the one configured, since queries would silently skip the index.
+	 */
+	private void function assertIndexMatchesConfig() {
+		var expected = static.DISTANCE_FUNCTIONS[ variables.distanceFunction ].index
+		var ddl = ""
+
+		try {
+			var rows = queryExecute(
+				"SHOW CREATE TABLE #variables.table#",
+				{},
+				{ datasource: variables.datasource, returntype: "array" }
+			)
+			// The column holding the DDL differs by driver, so join every value of the first row
+			var row = rows.first()
+			for ( var col in row ) {
+				ddl &= " " & row[ col ]
+			}
+		} catch ( any e ) {
+			// Cannot inspect the table (permissions?), skip the check
+			return
+		}
+
+		var found = reFindNoCase( "DISTANCE\W*=\W*(cosine|euclidean)", ddl, 1, true )
+		if ( found.pos.len() > 1 && found.pos[ 2 ] > 0 ) {
+			var actual = mid( ddl, found.pos[ 2 ], found.len[ 2 ] ).lcase()
+			if ( actual != expected ) {
+				throw(
+					type = "MariaDBVectorMemory.DistanceMismatch",
+					message = "Table [#variables.table#] has a vector index built for [#actual#] but distanceFunction [#variables.distanceFunction#] needs [#expected#]. MariaDB allows only one vector index per table."
+				)
+			}
+		}
+	}
+
+	/**
+	 * Check if the table exists in the current database
+	 */
+	private boolean function tableExists() {
+		var rows = queryExecute(
+			"SELECT 1 AS found
+			FROM information_schema.tables
+			WHERE table_schema = DATABASE() AND LOWER( table_name ) = LOWER( :tableName )",
+			{ tableName: variables.table },
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+
+		return !rows.isEmpty()
+	}
+
+	/**
+	 * Build a parameterized WHERE clause scoped to the collection.
+	 * userId and conversationId use dedicated columns, any other key uses JSON_VALUE on the metadata.
+	 * Keys are validated because they are placed in the SQL text, values are always bound.
+	 *
+	 * @filter Struct of key/value filters
+	 *
+	 * @return Struct with sql and params
+	 */
+	private struct function buildWhere( required struct filter ) {
+		var sql = "collection = :collection"
+		var params = { collection: variables.collection }
+		var i = 0
+
+		for ( var key in arguments.filter ) {
+			if ( !reFind( static.SAFE_IDENTIFIER, key ) ) {
+				throw(
+					type = "MariaDBVectorMemory.InvalidFilterKey",
+					message = "Invalid filter key: [#key#]. Use letters, numbers and underscores only."
+				)
+			}
+			i++
+			params[ "filter#i#" ] = arguments.filter[ key ]
+			var column = ""
+			for ( var tenantColumn in static.TENANT_COLUMNS ) {
+				if ( tenantColumn.lcase() == key.lcase() ) {
+					column = tenantColumn
+				}
+			}
+			if ( len( column ) ) {
+				sql &= " AND #column# = :filter#i#"
+			} else {
+				sql &= " AND JSON_VALUE( metadata, '$.#key#' ) = :filter#i#"
+			}
+		}
+
+		return { sql: sql, params: params }
+	}
+
+	/**
+	 * Fail early with a clear message instead of a driver error when dimensions do not match the column
+	 *
+	 * @embedding The embedding to check
+	 */
+	private void function assertDimensions( required array embedding ) {
+		if ( arguments.embedding.len() != variables.dimensions ) {
+			throw(
+				type = "MariaDBVectorMemory.DimensionMismatch",
+				message = "Embedding has #arguments.embedding.len()# dimensions but the memory is configured for #variables.dimensions#. Set the [dimensions] config to match your embedding model."
+			)
+		}
+	}
+
+	/**
+	 * Convert a native MariaDB distance to a similarity score (0-1, higher is more similar)
+	 *
+	 * @distance The distance returned by VEC_DISTANCE_*
+	 *
+	 * @return Numeric score
+	 */
+	private numeric function convertDistanceToScore( required numeric distance ) {
+		if ( variables.distanceFunction == "COSINE" ) {
+			// Cosine distance is 0 (identical) to 2 (opposite)
+			return max( 0, 1 - arguments.distance )
+		}
+		// L2
+		return 1 / ( 1 + arguments.distance )
+	}
+
+	/**
+	 * Parse the VEC_ToText output back into an array
+	 *
+	 * @vectorStr Vector string like "[0.1,0.2,0.3]"
+	 *
+	 * @return Array of numbers
+	 */
+	private array function parseVectorString( required string vectorStr ) {
+		return arguments.vectorStr
+			.replace( "[", "" )
+			.replace( "]", "" )
+			.listToArray( "," )
+			.map( target => val( target ) )
+	}
+
+	/**
+	 * Format an embedding as the text VEC_FromText expects
+	 *
+	 * @embedding Array of embedding values
+	 *
+	 * @return String in format "[x,y,z,...]"
+	 */
+	private string function formatVectorString( required array embedding ) {
+		return "[" & arguments.embedding.toList() & "]"
+	}
+
+}

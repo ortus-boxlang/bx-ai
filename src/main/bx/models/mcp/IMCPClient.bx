@@ -1,0 +1,141 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * The contract of a client that consumes a Model Context Protocol (MCP) server, whatever the transport.
+ *
+ * Implementations:
+ * - MCPHttpClient  : talks to a server over HTTP, built by MCP( "https://host/mcp" )
+ * - MCPStdioClient : launches a server as a child process and talks over stdin/stdout, built by MCP( { command : [ ... ] } )
+ *
+ * Every call returns an MCPResponse, so MCPTool and the agent code never care about the transport.
+ */
+interface {
+
+	/**
+	 * A label for the server this client talks to. The URL for HTTP, "stdio:<executable>" for a child process.
+	 */
+	function getBaseURL();
+
+	/**
+	 * Set the request timeout
+	 *
+	 * @ms Timeout in milliseconds
+	 *
+	 * @return This client for chaining
+	 */
+	function withTimeout( required numeric ms );
+
+	/**
+	 * Register a function called with the MCPResponse of every successful call
+	 *
+	 * @callback Function with the signature ( response ) => any
+	 *
+	 * @return This client for chaining
+	 */
+	function onSuccess( required function callback );
+
+	/**
+	 * Register a function called with the MCPResponse of every failed call
+	 *
+	 * @callback Function with the signature ( response ) => any
+	 *
+	 * @return This client for chaining
+	 */
+	function onError( required function callback );
+
+	/**
+	 * List the tools of the server
+	 *
+	 * @cursor Optional. The nextCursor of a previous answer, to read the next page
+	 *
+	 * @return MCPResponse with the tools data
+	 */
+	function listTools( string cursor = "" );
+
+	/**
+	 * List the resources of the server
+	 *
+	 * @return MCPResponse with the resources data
+	 */
+	function listResources();
+
+	/**
+	 * List the prompts of the server
+	 *
+	 * @return MCPResponse with the prompts data
+	 */
+	function listPrompts();
+
+	/**
+	 * Get the capabilities of the server
+	 *
+	 * @return MCPResponse with the capabilities data
+	 */
+	function getCapabilities();
+
+	/**
+	 * Call a tool of the server
+	 *
+	 * @tool Name of the tool
+	 * @args Arguments of the tool
+	 *
+	 * @return MCPResponse with the result of the tool
+	 */
+	function send( required string tool, struct args = {} );
+
+	/**
+	 * Read a resource of the server
+	 *
+	 * @uri URI of the resource
+	 *
+	 * @return MCPResponse with the resource data
+	 */
+	function readResource( required string uri );
+
+	/**
+	 * Get a prompt of the server
+	 *
+	 * @name Name of the prompt
+	 * @args Arguments of the prompt
+	 *
+	 * @return MCPResponse with the prompt data
+	 */
+	function getPrompt( required string name, struct args = {} );
+
+	/**
+	 * Get all client statistics as a plain struct
+	 */
+	function getStats();
+
+	/**
+	 * Get a lightweight summary of the most useful metrics
+	 */
+	function getSummary();
+
+	/**
+	 * Reset all statistics counters to zero
+	 *
+	 * @return This client for chaining
+	 */
+	function resetStats();
+
+	/**
+	 * Release what the client holds. A no-op for HTTP. For stdio it shuts the child process down.
+	 * It is safe to call more than once.
+	 *
+	 * @return This client for chaining
+	 */
+	function close();
+
+}

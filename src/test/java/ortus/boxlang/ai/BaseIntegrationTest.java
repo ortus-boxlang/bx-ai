@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assumptions.abort;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 import io.github.cdimascio.dotenv.Dotenv;
 import ortus.boxlang.runtime.BoxRuntime;
@@ -37,6 +38,7 @@ import ortus.boxlang.runtime.services.ModuleService;
  * Use this as a base integration test for your non web-support package
  * modules. If you want web based testing, use the BaseWebIntegrationTest
  */
+@ExtendWith( PaidProviderGuard.class )
 public abstract class BaseIntegrationTest {
 
 	protected static Dotenv					dotenv						= Dotenv.load();
@@ -201,6 +203,40 @@ public abstract class BaseIntegrationTest {
 				for ( String marker : LIVE_CALL_ENVIRONMENT_MARKERS ) {
 					if ( haystack.contains( marker ) ) {
 						abort( "Bedrock live call unavailable for these credentials: " + message );
+					}
+				}
+			}
+			throw e;
+		}
+	}
+
+	/**
+	 * Markers for transient provider failures (rate limits, backend 5xx) that say nothing about our code.
+	 */
+	private static final String[] LIVE_CALL_TRANSIENT_MARKERS = {
+	    "rate limit", "rate_limit", "ratelimit", "rate-limit", "too many requests", "capacity exceeded", "quota",
+	    "429", "http 500", "http 502", "http 503", "http 504", "resource_exhausted", "service unavailable"
+	};
+
+	/**
+	 * Runs a live provider call and skips (aborts) the test when the provider answers with a rate limit
+	 * or transient 5xx, after the service's own retries are spent. Any other failure still fails the build.
+	 *
+	 * @return same contract as executeWithTimeoutHandling()
+	 */
+	protected boolean executeLiveCall( String source, IBoxContext context ) {
+		try {
+			return executeWithTimeoutHandling( source, context );
+		} catch ( Exception e ) {
+			for ( Throwable t = e; t != null; t = t.getCause() ) {
+				String message = t.getMessage();
+				if ( message == null ) {
+					continue;
+				}
+				String haystack = message.toLowerCase();
+				for ( String marker : LIVE_CALL_TRANSIENT_MARKERS ) {
+					if ( haystack.contains( marker ) ) {
+						abort( "Live provider call unavailable (transient): " + message );
 					}
 				}
 			}

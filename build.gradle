@@ -303,6 +303,7 @@ task downloadBoxLangModules( type: Download ) {
 		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-postgresql/${postgresqlModuleVersion}/bx-postgresql-${postgresqlModuleVersion}.zip",
 		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-sqlite/${sqliteModuleVersion}/bx-sqlite-${sqliteModuleVersion}.zip",
 		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-mysql/${mysqlModuleVersion}/bx-mysql-${mysqlModuleVersion}.zip",
+		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-mariadb/${mariadbModuleVersion}/bx-mariadb-${mariadbModuleVersion}.zip",
 		"https://downloads.ortussolutions.com/ortussolutions/boxlang-modules/bx-web-support/${webSupportVersion}/bx-web-support-${webSupportVersion}.zip"
 	] )
     // Specify the destination for the downloaded file
@@ -324,6 +325,9 @@ task extractBoxLangModules( type: Copy ) {
 	}
 	from( zipTree( "src/test/resources/modules/bx-mysql-${mysqlModuleVersion}.zip" ) ) {
 		into "bx-mysql"
+	}
+	from( zipTree( "src/test/resources/modules/bx-mariadb-${mariadbModuleVersion}.zip" ) ) {
+		into "bx-mariadb"
 	}
 	from( zipTree( "src/test/resources/modules/bx-web-support-${webSupportVersion}.zip" ) ) {
 		into "bx-web-support"

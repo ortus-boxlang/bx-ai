@@ -43,6 +43,12 @@ abstract class implements="IAiRunnable" {
 	property name="mcpServers" type="array" default=[];
 
 	/**
+	 * The MCP clients this runnable built itself (from a URL or a stdio config), as opposed to clients passed in ready-made.
+	 * closeMCPServers() closes these, the stdio ones hold a child process.
+	 */
+	property name="ownedMCPClients" type="array" default=[];
+
+	/**
 	 * The tools attached to this runnable for tool-augmented generation.
 	 */
 	property name="tools" type="array" default=[];
@@ -64,6 +70,13 @@ abstract class implements="IAiRunnable" {
 	 * On agents, the LLM can activate individual skills via the built-in loadSkill() tool.
 	 */
 	property name="availableSkills" type="array" default=[];
+
+	static {
+		// withMCPServer(): the keys of a stdio struct that choose how the tools are exposed, not options of the client
+		MCP_REGISTRATION_KEYS = [ "prefix", "toolFilter" ];
+		// Options that only exist for an HTTP MCP server
+		MCP_HTTP_ONLY_KEYS    = [ "token", "headers", "user", "password", "urlGuard", "redirects", "maxResponseBytes", "httpVersion", "handshake" ];
+	}
 
     /**
 	 * ---------------------------------------------------------------------------------------------------------
@@ -725,8 +738,9 @@ abstract class implements="IAiRunnable" {
 	 *
 	 * Each entry in the array can be:
 	 * - A URL string to the MCP server: "http://server:3000"
-	 * - A config struct: { url: "http://server:3000", token: "...", timeout: 5000 }
-	 * - A pre-configured MCPClient instance
+	 * - An HTTP config struct: { url: "http://server:3000", token: "...", timeout: 5000 }
+	 * - A stdio config struct: { command: [ "bxplaywright", "mcp" ], env: {}, cwd: "", prefix: "browser" }
+	 * - A pre-configured IMCPClient instance
 	 *
 	 * @servers  Array of MCP server descriptors
 	 *
@@ -735,7 +749,12 @@ abstract class implements="IAiRunnable" {
 	public AiBaseRunnable function withMCPServers( required array servers ) {
 		arguments.servers.each( mcpServer => {
 			if ( isStruct( mcpServer ) && !isObject( mcpServer ) ) {
-				withMCPServer( mcpServer.url ?: "", mcpServer.filter( ( k, v ) => k != "url" ) )
+				if ( mcpServer.keyExists( "command" ) ) {
+					// A stdio server: withMCPServer() sorts prefix and toolFilter from the options of the client
+					withMCPServer( mcpServer )
+				} else {
+					withMCPServer( mcpServer.url ?: "", mcpServer.filter( ( k, v ) => k != "url" ) )
+				}
 			} else {
 				withMCPServer( mcpServer )
 			}
@@ -749,24 +768,44 @@ abstract class implements="IAiRunnable" {
 	 * Connects to the MCP server, calls listTools(), and wraps each discovered tool
 	 * as an MCPTool instance that is added to the model's tool list.
 	 *
-	 * @mcpServer  A URL string pointing to the MCP server, or a pre-configured MCPClient instance.
-	 * @config  Optional configuration struct with any of: token, timeout, headers, user, password.
+	 * @mcpServer  A URL string pointing to the MCP server, or a pre-configured IMCPClient instance.
+	 * @config  Optional configuration struct with any of: token, timeout, headers, user, password,
+	 *          urlGuard (function), redirects (boolean), maxResponseBytes (numeric), handshake (boolean), httpVersion ("HTTP/2" or "HTTP/1.1"),
+	 *          prefix (string, tools are named prefix__name so servers cannot clash),
+	 *          toolFilter (array of tool names, only these are exposed).
 	 *
 	 * @return This runnable for chaining
 	 */
 	public AiBaseRunnable function withMCPServer( required any mcpServer, struct config = {} ) {
+		// A stdio struct can carry prefix and toolFilter next to the command. They choose how the tools are exposed,
+		// they are not options of the client, so they move to the config (an explicit config wins).
+		if ( isStruct( arguments.mcpServer ) && !isObject( arguments.mcpServer ) && arguments.mcpServer.keyExists( "command" ) ) {
+			var registrationKeys = static.MCP_REGISTRATION_KEYS
+			var serverStruct     = arguments.mcpServer
+			arguments.config     = serverStruct.filter( ( k, v ) => registrationKeys.containsNoCase( k ) ).append( arguments.config, true )
+			arguments.mcpServer  = serverStruct.filter( ( k, v ) => !registrationKeys.containsNoCase( k ) )
+		}
 		var mcpClient   = buildMCPClient( arguments.mcpServer, arguments.config );
+		var ownsClient  = !isObject( arguments.mcpServer );
 		var response = mcpClient.listTools();
+		if ( ownsClient ) {
+			variables.ownedMCPClients.append( mcpClient );
+		}
 
 		if ( response.isSuccess() ) {
 			var data      = response.getData();
 			var toolsList = isArray( data ) ? data : ( data.keyExists( "tools" ) ? data.tools : [] )
 			var toolNames = [];
+			var toolPrefix = arguments.config.prefix ?: "";
+			var toolFilter = arguments.config.toolFilter ?: [];
 
-			toolsList.each( toolDef => {
-				withTools( [ new bxModules.bxai.models.tools.MCPTool( mcpClient, toolDef ) ] )
-				toolNames.append( toolDef.name ?: "" );
-			} )
+			toolsList
+				.filter( toolDef => !toolFilter.len() || toolFilter.containsNoCase( toolDef.name ?: "" ) )
+				.each( toolDef => {
+					var mcpTool = new bxModules.bxai.models.tools.MCPTool( mcpClient, toolDef, toolPrefix );
+					withTools( [ mcpTool ] )
+					toolNames.append( mcpTool.getName() );
+				} )
 
 			// Track server metadata for config inspection and system message generation
 			variables.mcpServers.append( {
@@ -777,12 +816,35 @@ abstract class implements="IAiRunnable" {
 			// Write to logs that the MCP server connection failed, but don't throw an error since the runnable can still function without the tools
 			var errorData = response.getError();
 			writeLog(
-				text: "Failed to connect to MCP server at " & ( isSimpleValue( arguments.mcpServer ) ? arguments.mcpServer : arguments.mcpServer.getBaseURL() ) & " - " & errorData,
+				text: "Failed to connect to MCP server at " & mcpClient.getBaseURL() & " - " & errorData,
 				type: "error",
 				log: "ai"
 			)
+			// A stdio client that could not list its tools must not keep a child process alive
+			if ( ownsClient ) {
+				mcpClient.close();
+			}
 		}
 
+		return this;
+	}
+
+	/**
+	 * Close the MCP clients this runnable built itself. For stdio servers this shuts the child processes down.
+	 * Clients that were passed in ready-made are left alone, their owner closes them.
+	 * Safe to call more than once.
+	 *
+	 * @return This runnable for chaining
+	 */
+	public AiBaseRunnable function closeMCPServers() {
+		variables.ownedMCPClients.each( ownedClient => {
+			try {
+				ownedClient.close()
+			} catch ( any e ) {
+				writeLog( text: "Failed to close MCP client " & ownedClient.getBaseURL() & " - " & e.message, type: "error", log: "ai" )
+			}
+		} )
+		variables.ownedMCPClients = []
 		return this;
 	}
 
@@ -797,17 +859,29 @@ abstract class implements="IAiRunnable" {
 	}
 
 	/**
-	 * Build (or reuse) an MCPClient, applying optional config overrides.
+	 * Build (or reuse) an IMCPClient, applying optional config overrides.
 	 *
-	 * @serverUrl  URL string or existing MCPClient
+	 * @serverUrl  URL string, stdio config struct or existing IMCPClient
 	 * @config  Optional struct with token, timeout, headers, user, password
 	 *
-	 * @return Configured MCPClient
+	 * @return Configured IMCPClient
 	 */
 	private any function buildMCPClient( required any serverUrl, struct config = {} ) {
-		var mcpClient = isSimpleValue( arguments.serverUrl )
-			? mcp( arguments.serverUrl )
-			: arguments.serverUrl
+		var mcpClient = isObject( arguments.serverUrl ) ? arguments.serverUrl : mcp( arguments.serverUrl )
+
+		// A struct builds a stdio client, the keys that only make sense over HTTP are a mistake there
+		if ( isStruct( arguments.serverUrl ) && !isObject( arguments.serverUrl ) ) {
+			var httpOnlyKeys = static.MCP_HTTP_ONLY_KEYS
+			var providedConfig = arguments.config
+			var misplacedKeys  = httpOnlyKeys.filter( key => providedConfig.keyExists( key ) )
+			if ( misplacedKeys.len() ) {
+				mcpClient.close()
+				throw(
+					type: "InvalidArgument",
+					message: "These options only apply to an HTTP MCP server and cannot be used with a stdio server: #misplacedKeys.toList( ', ' )#"
+				)
+			}
+		}
 
 		if ( arguments.config.keyExists( "timeout" ) ) {
 			mcpClient.withTimeout( arguments.config.timeout )
@@ -817,6 +891,21 @@ abstract class implements="IAiRunnable" {
 		}
 		if ( arguments.config.keyExists( "headers" ) ) {
 			mcpClient.withHeaders( arguments.config.headers )
+		}
+		if ( arguments.config.keyExists( "urlGuard" ) ) {
+			mcpClient.withUrlGuard( arguments.config.urlGuard )
+		}
+		if ( arguments.config.keyExists( "redirects" ) ) {
+			mcpClient.withRedirects( arguments.config.redirects )
+		}
+		if ( arguments.config.keyExists( "maxResponseBytes" ) ) {
+			mcpClient.withMaxResponseBytes( arguments.config.maxResponseBytes )
+		}
+		if ( arguments.config.keyExists( "httpVersion" ) ) {
+			mcpClient.withHttpVersion( arguments.config.httpVersion )
+		}
+		if ( arguments.config.keyExists( "handshake" ) ) {
+			mcpClient.withHandshake( arguments.config.handshake )
 		}
 		if ( arguments.config.keyExists( "user" ) )    {
 			mcpClient.withAuth( arguments.config.user, arguments.config.password ?: "" )

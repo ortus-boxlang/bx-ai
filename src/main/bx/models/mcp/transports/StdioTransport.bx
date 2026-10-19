@@ -53,13 +53,35 @@ class extends="BaseTransport" {
 
 	/**
 	 * Read a JSON-RPC request from STDIN
-	 * Blocks until a complete line is received
+	 * Blocks until a complete line is received.
+	 * When STDIN is closed it returns a request whose metadata.method is "shutdown".
 	 */
 	struct function readRequest() {
+		// Read a line from STDIN. When the input has ended (the client closed our stdin) the read fails,
+		// ask the processor to stop instead of failing again and again in its loop.
+		var line = "";
 		try {
-			// Read a line from STDIN
-			var line = cliRead();
+			line = cliRead();
+		} catch ( any e ) {
+			this.log( "info", "STDIN closed, stopping the STDIO transport" );
+			return {
+				"serverName"  : variables.defaultServerName,
+				"method"      : "POST",
+				"body"        : "",
+				"headers"     : {},
+				"acceptHeader": "application/json",
+				"params"      : {},
+				"origin"      : "",
+				"requestId"   : createUUID(),
+				"metadata"    : {
+					"protocol"   : "stdio",
+					"method"     : "shutdown",
+					"requestTime": now()
+				}
+			};
+		}
 
+		try {
 			// Parse JSON-RPC request
 			var parsed = jsonDeserialize( line );
 

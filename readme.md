@@ -203,7 +203,9 @@ Just make sure you have already a server setup with BoxLang.  You can check our 
 The following are the AI providers supported by this module. **Please note that in order to interact with these providers you will need to have an account with them and an API key.** 🔑
 
 - ☁️ [AWS Bedrock](https://aws.amazon.com/bedrock/) - Claude, Titan, Llama, Mistral via AWS
+- 🔊 [Cartesia](https://cartesia.ai/) - Low-latency text-to-speech (Sonic) and speech-to-text (Ink-Whisper)
 - 🧠 [Claude Anthropic](https://www.anthropic.com/claude)
+- 🟠 [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/) - Requires `CLOUDFLARE_ACCOUNT_ID` (or the `accountId` option) alongside `CLOUDFLARE_API_KEY`
 - 🧬 [Cohere](https://cohere.com/)
 - 🔍 [DeepSeek](https://www.deepseek.com/)
 - 🐳 [Docker Model Runner](https://docs.docker.com/ai/model-runner/) - Local models via Docker Desktop
@@ -229,7 +231,9 @@ Here is a matrix of the providers and their feature support. Please keep checkin
 | Provider            | Chat & Streaming | Real-time Tools | Embeddings       | TTS (Speech)     | STT (Transcription) |
 |---------------------|------------------|-----------------|------------------|------------------|---------------------|
 | AWS Bedrock         | ✅               | ✅              | ✅               | ❌               | ❌                  |
+| Cartesia            | ❌               | ❌              | ❌               | ✅ (Sonic)       | ✅ (Ink-Whisper)    |
 | Claude              | ✅               | ✅              | ❌               | ❌               | ❌                  |
+| Cloudflare          | ✅               | ✅              | ✅               | ❌               | ❌                  |
 | Cohere              | ✅               | ✅              | ✅               | ❌               | ❌                  |
 | DeepSeek            | ✅               | ✅              | ✅               | ❌               | ❌                  |
 | Docker Model Runner | ✅               | ✅              | ✅               | ❌               | ❌                  |
@@ -487,6 +491,31 @@ var mcpSrv = mcpServer( "my-tools", "Business tools API" )
 ```
 
 📖 [MCP Protocol Guide](https://ai.ortusbooks.com/main-components/mcp)
+
+### 🖥️ MCP Clients (HTTP and stdio)
+
+```javascript
+// An MCP server behind a URL
+var docs = MCP( "https://docs.example.com/mcp" ).withBearerToken( "secret" )
+
+// An MCP server that runs as a child process, over stdin and stdout
+var browser = MCP( { command: [ "bxplaywright", "mcp" ], env: { HEADLESS: "true" } } )
+browser.send( "browser_visit", { url: "https://boxlang.io" } )
+browser.close()
+
+// Give the tools of both to an agent
+var agent = aiAgent(
+    name: "ops",
+    model: aiModel( provider: "openai" ),
+    mcpServers: [
+        "https://docs.example.com/mcp",
+        { command: [ "bxplaywright", "mcp" ], prefix: "browser", toolFilter: [ "browser_visit" ] }
+    ]
+)
+agent.closeMCPServers()
+```
+
+📖 [MCP Stdio Client Guide](src/docs/main-components/mcp-stdio-client.md)
 
 ### 🎙️ Speech & Transcription
 
@@ -944,7 +973,7 @@ A gateway extending `BaseGateway` gets `onGatewayConnect`/`onGatewayDisconnect` 
 | `aiTranslate()` | Translate non-English audio to English | `audio`, `params={}`, `options={}` | String / AiTranscriptionResponse | N/A |
 | `aiParallel()` | Run multiple named runnables concurrently and collect results | `runnables` (struct of `{ name: IAiRunnable }`) | AiRunnableParallel Object | ✅ (via `runAsync()`) |
 | `aiTransform()` | Create data transformer | `transformer`, `config={}` | Transformer Runnable | N/A |
-| `MCP()` | Create MCP client for Model Context Protocol servers | `baseURL` | MCPClient Object | N/A |
+| `MCP()` | Create MCP client for Model Context Protocol servers. A URL string gives an HTTP client, a struct with a `command` gives a stdio client that launches the server as a child process | `mcpServer` (URL string, or struct: `command`, `env`, `cwd`, `inheritEnv`, `maxRestarts`, `commandGuard`, `timeout`) | `IMCPClient` (`MCPHttpClient` or `MCPStdioClient`) | N/A |
 | `mcpServer()` | Get or create MCP server for exposing tools | `name="default"`, `description`, `version`, `cors`, `statsEnabled`, `force` | MCPServer Object | N/A |
 | `aiWebSearch()` | Search the web via a pluggable provider | `query`, `params={}`, `options={}` _(provider, maxResults)_ | Array of `{title, url, snippet}` | ❌ |
 | `aiWebSearchAsync()` | Search the web asynchronously | `query`, `params={}`, `options={}` _(provider, maxResults)_ | BoxLang Future | ✅ |

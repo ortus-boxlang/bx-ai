@@ -102,6 +102,14 @@ public class ProviderCapabilitiesTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "Cloudflare reports chat, stream and embeddings capabilities" )
+	public void testCloudflareCapabilities() {
+		Array caps = executeGetCapabilities( "Cloudflare" );
+		assertThat( caps ).containsAtLeast( "chat", "stream", "embeddings" );
+		assertThat( executeHasCapability( "Cloudflare", "embeddings" ) ).isTrue();
+	}
+
+	@Test
 	@DisplayName( "Mistral reports chat, stream and embeddings capabilities" )
 	public void testMistralCapabilities() {
 		Array caps = executeGetCapabilities( "Mistral" );

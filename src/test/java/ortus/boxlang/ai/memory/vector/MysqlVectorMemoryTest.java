@@ -638,4 +638,42 @@ public class MysqlVectorMemoryTest extends BaseIntegrationTest {
 		assertThat( bobChat1ConvId ).isEqualTo( "chat1" );
 	}
 
+	@DisplayName( "Test unsafe filter keys are rejected" )
+	@Test
+	public void testUnsafeFilterKeyRejected() throws Exception {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.memory.vector.MysqlVectorMemory;
+
+			memory = new MysqlVectorMemory( key: createUUID(), collection: "test_unsafe" );
+			memory.configure({
+				datasource: "%s",
+				table: "test_vectors_unsafe",
+				embeddingProvider: "openai",
+				embeddingModel: "text-embedding-3-small"
+			});
+
+			searchError = "";
+			deleteError = "";
+			try {
+				memory.findSimilar( embedding: [ 1, 0, 0 ], limit: 5, filter: { "x') OR 1=1 -- ": "y" } );
+			} catch ( any e ) {
+				searchError = e.type;
+			}
+			try {
+				memory.removeWhere( { "a.b": "y" } );
+			} catch ( any e ) {
+				deleteError = e.type;
+			}
+			"""
+			.formatted( DATASOURCE_NAME ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "searchError" ) ) ).isEqualTo( "MysqlVectorMemory.InvalidFilterKey" );
+		assertThat( variables.getAsString( Key.of( "deleteError" ) ) ).isEqualTo( "MysqlVectorMemory.InvalidFilterKey" );
+	}
+
 }

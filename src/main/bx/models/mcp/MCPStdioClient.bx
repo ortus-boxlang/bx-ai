@@ -1,0 +1,921 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Client for consuming a Model Context Protocol (MCP) server that runs as a child process.
+ *
+ * Build it with the MCP() BIF: MCP( { command : [ "bxplaywright", "mcp" ] } )
+ *
+ * How it works (MCP specification, stdio transport):
+ * - The server is launched on the first call, one process per client, never through a shell.
+ * - Messages are single lines of JSON on the stdin and stdout of the process.
+ * - Anything the server writes to stderr is sent to the "ai" log and never read as protocol.
+ * - Before the first request the client does the MCP handshake: initialize, then notifications/initialized.
+ * - One reader thread reads stdout and hands every answer to the caller waiting for its JSON-RPC id.
+ * - If the process dies the next call launches it again, up to maxRestarts times in a row.
+ * - close() closes stdin, waits, then terminates the process. Live clients are also closed when the module unloads
+ *   and when the JVM shuts down.
+ */
+class extends="BaseMCPClient" {
+
+	/**
+	 * The command to launch: the executable followed by its arguments
+	 */
+	property name="command" type="array";
+
+	/**
+	 * Environment variables added to the environment of the child process
+	 */
+	property name="env" type="struct" default={};
+
+	/**
+	 * Working directory of the child process, empty means the one of the current process
+	 */
+	property name="cwd" type="string" default="";
+
+	/**
+	 * When true (default) the child process starts with the environment of the current process plus env.
+	 * When false it starts with an empty environment plus env.
+	 */
+	property name="inheritEnv" type="boolean" default=true;
+
+	/**
+	 * How many times in a row a dead server is launched again before the client gives up.
+	 * The count starts again after the server answers a request.
+	 */
+	property name="maxRestarts" type="numeric" default=2;
+
+	/**
+	 * Optional guard called with the command array before every launch.
+	 * Return false or throw to refuse it: nothing is started.
+	 */
+	property name="commandGuard" type="any";
+
+	static {
+		// The versions of the MCP specification this client speaks, the latest first
+		SUPPORTED_VERSIONS = [ "2025-06-18", "2025-03-26", "2024-11-05" ];
+		// How many lines of stderr are kept to explain a failure
+		STDERR_TAIL_LINES  = 50;
+		// How long a step of the shutdown waits before it escalates, in seconds
+		SHUTDOWN_WAIT      = 2;
+		// The options of a stdio server, any other option is refused
+		KNOWN_OPTIONS      = [ "command", "env", "cwd", "inheritEnv", "maxRestarts", "commandGuard", "timeout" ];
+		// Options that only exist for HTTP servers
+		HTTP_ONLY_OPTIONS  = [ "token", "headers", "user", "password", "urlGuard", "redirects", "maxResponseBytes", "httpVersion", "handshake", "url" ];
+		// Options of withMCPServer(): they choose how the tools are exposed, they are not options of the client
+		REGISTRATION_OPTIONS = [ "prefix", "toolFilter" ];
+		// A Windows executable extension: "npx.cmd" is the command "npx"
+		EXECUTABLE_EXTENSION = "\.(exe|cmd|bat|com)$";
+		// A file name that already has an extension
+		HAS_EXTENSION        = "\.[a-z]{2,4}$";
+		// A batch file, it cannot run alone and is started through cmd.exe /c
+		BATCH_FILE           = "\.(cmd|bat)$";
+		// The extensions Windows tries when the PATHEXT variable is not set
+		DEFAULT_PATHEXT      = ".COM;.EXE;.BAT;.CMD";
+		// The live clients, so they can be closed when the module unloads
+		LIVE_CLIENTS       = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
+		// Whether the JVM shutdown hook is registered
+		HOOK_STATE         = createObject( "java", "java.util.concurrent.atomic.AtomicBoolean" ).init( false );
+	}
+
+	/**
+	 * Close every live stdio client. Called when the module unloads and when the JVM shuts down.
+	 */
+	static function closeAll() {
+		var clients = static.LIVE_CLIENTS.values().toArray()
+		for ( var liveClient in clients ) {
+			try {
+				liveClient.close()
+			} catch ( any e ) {
+				// Closing must never stop the other clients from closing
+			}
+		}
+	}
+
+	/**
+	 * Constructor
+	 *
+	 * @config Struct with: command (array, required), env (struct), cwd (string), inheritEnv (boolean, default true),
+	 *         maxRestarts (numeric, default 2), commandGuard (function), timeout (milliseconds)
+	 */
+	function init( required struct config ) {
+		super.init()
+
+		assertKnownOptions( arguments.config )
+
+		if ( !isArray( arguments.config.command ?: "" ) || !arguments.config.command.len() ) {
+			throw( type: "InvalidArgument", message: "A stdio MCP server needs a command: a non-empty array, the executable followed by its arguments" )
+		}
+		variables.command = arguments.config.command.map( ( part ) => toString( part ) )
+		if ( !len( trim( variables.command[ 1 ] ) ) ) {
+			throw( type: "InvalidArgument", message: "The first element of the command is empty, it must be the executable" )
+		}
+
+		variables.env         = arguments.config.env ?: {}
+		variables.cwd         = arguments.config.cwd ?: ""
+		variables.inheritEnv  = arguments.config.inheritEnv ?: true
+		variables.maxRestarts = arguments.config.maxRestarts ?: 2
+		if ( arguments.config.keyExists( "commandGuard" ) ) {
+			variables.commandGuard = arguments.config.commandGuard
+		}
+		if ( arguments.config.keyExists( "timeout" ) ) {
+			variables.timeout = arguments.config.timeout
+		}
+
+		// Process state
+		variables.instanceId          = createUUID()
+		variables.process             = javacast( "null", "" )
+		variables.writer              = javacast( "null", "" )
+		variables.pending             = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init()
+		variables.stderrTail          = createObject( "java", "java.util.concurrent.ConcurrentLinkedDeque" ).init()
+		variables.stateLock           = createObject( "java", "java.util.concurrent.locks.ReentrantLock" ).init()
+		variables.writeLock           = createObject( "java", "java.util.concurrent.locks.ReentrantLock" ).init()
+		variables.launchedOnce        = false
+		// True once the process is running AND the handshake is done: only then may a request be written
+		variables.ready               = false
+		variables.closed              = false
+		variables.consecutiveRestarts = 0
+		variables.initializeResult    = {}
+		variables.protocolVersion     = ""
+
+		// Fail fast: a command that is not allowed never becomes a client
+		assertCommandAllowed()
+
+		return this
+	}
+
+	/**
+	 * The name of the transport
+	 */
+	string function getTransportName() {
+		return "stdio"
+	}
+
+	/**
+	 * Refuse an option this client does not have. A misspelled security option such as commandGuard must not be ignored silently.
+	 */
+	private void function assertKnownOptions( required struct config ) {
+		var known      = static.KNOWN_OPTIONS
+		var httpOnly   = static.HTTP_ONLY_OPTIONS
+		var registered = static.REGISTRATION_OPTIONS
+		var unknown    = []
+		for ( var optionName in arguments.config ) {
+			if ( !known.containsNoCase( optionName ) ) {
+				unknown.append( optionName )
+			}
+		}
+		if ( !unknown.len() ) {
+			return
+		}
+
+		var misplacedHttp = unknown.filter( ( optionName ) => httpOnly.containsNoCase( optionName ) )
+		if ( misplacedHttp.len() ) {
+			throw(
+				type: "InvalidArgument",
+				message: "These options only apply to an HTTP MCP server and cannot be used with a stdio server: #misplacedHttp.toList( ', ' )#"
+			)
+		}
+		var misplacedRegistration = unknown.filter( ( optionName ) => registered.containsNoCase( optionName ) )
+		if ( misplacedRegistration.len() ) {
+			throw(
+				type: "InvalidArgument",
+				message: "#misplacedRegistration.toList( ', ' )# choose how the tools are exposed: pass them to withMCPServer() or withMCPServers(), not to MCP()"
+			)
+		}
+		throw(
+			type: "InvalidArgument",
+			message: "Unknown option(s) for a stdio MCP server: #unknown.toList( ', ' )#. The options are: #known.toList( ', ' )#"
+		)
+	}
+
+	/**
+	 * A label for this server: "stdio:" and the executable, the arguments are left out as they can hold secrets
+	 */
+	string function getBaseURL() {
+		return "stdio:" & executableName()
+	}
+
+	/**
+	 * The MCP protocol version negotiated with the server, empty before the first call
+	 */
+	string function getProtocolVersion() {
+		return variables.protocolVersion
+	}
+
+	/**
+	 * The last lines the server wrote to stderr, oldest first
+	 */
+	array function getStderrTail() {
+		var lines = []
+		for ( var line in variables.stderrTail.toArray() ) {
+			lines.append( line )
+		}
+		return lines
+	}
+
+	/**
+	 * True when the child process is running
+	 */
+	boolean function isRunning() {
+		return !isNull( variables.process ) && variables.process.isAlive()
+	}
+
+	/**
+	 * Shut the child process down: close its stdin, wait, then terminate it, then kill it.
+	 * The client cannot be used afterwards. Safe to call more than once.
+	 *
+	 * @return This client for chaining
+	 */
+	function close() {
+		variables.stateLock.lock()
+		try {
+			variables.closed = true
+			stopProcess()
+		} finally {
+			variables.stateLock.unlock()
+		}
+		static.LIVE_CLIENTS.remove( variables.instanceId )
+		return this
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Transport
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Deliver one JSON-RPC message to the server and wait for its answer.
+	 */
+	private MCPResponse function transportSend(
+		required struct body,
+		required string operationType,
+		required string operationName
+	) {
+		ensureRunning()
+
+		// The handshake already got the capabilities, asking again would break the protocol
+		if ( arguments.body.method == "initialize" && arguments.operationName == "getCapabilities" ) {
+			return new bxModules.bxai.models.mcp.MCPResponse(
+				success: true,
+				data: variables.initializeResult,
+				statusCode: 200
+			)
+		}
+
+		// A notification has no id and gets no answer
+		if ( !arguments.body.keyExists( "id" ) ) {
+			writeMessage( arguments.body )
+			return new bxModules.bxai.models.mcp.MCPResponse( success: true, data: {}, statusCode: 200 )
+		}
+
+		var answer = exchange( arguments.body, variables.timeout )
+		variables.consecutiveRestarts = 0
+
+		if ( answer.keyExists( "error" ) ) {
+			return new bxModules.bxai.models.mcp.MCPResponse(
+				success: false,
+				data: {},
+				error: isStruct( answer.error ) ? ( answer.error.message ?: "Unknown error" ) : answer.error,
+				statusCode: 200
+			)
+		}
+		return new bxModules.bxai.models.mcp.MCPResponse(
+			success: true,
+			data: answer.result ?: {},
+			statusCode: 200
+		)
+	}
+
+	/**
+	 * Write a request and wait for the answer that carries its id.
+	 * Throws when the server does not answer in time or when the process exits first.
+	 *
+	 * @body      The JSON-RPC request
+	 * @timeoutMs How long to wait, in milliseconds
+	 *
+	 * @return The JSON-RPC answer as a struct
+	 */
+	private struct function exchange( required struct body, required numeric timeoutMs ) {
+		var requestId  = toString( arguments.body.id )
+		var pendingMap = variables.pending
+		var future     = createObject( "java", "java.util.concurrent.CompletableFuture" ).init()
+		var answer     = {}
+
+		pendingMap.put( requestId, future )
+		try {
+			writeMessage( arguments.body )
+			answer = future.get(
+				javacast( "long", arguments.timeoutMs ),
+				createObject( "java", "java.util.concurrent.TimeUnit" ).MILLISECONDS
+			)
+		} catch ( any e ) {
+			pendingMap.remove( requestId )
+			if ( e.type contains "TimeoutException" || e.message contains "TimeoutException" ) {
+				// Tell the server we stopped waiting, as the specification asks. The specification forbids cancelling initialize.
+				try {
+					if ( arguments.body.method != "initialize" ) {
+						writeMessage( {
+							"jsonrpc": "2.0",
+							"method" : "notifications/cancelled",
+							"params" : { "requestId": requestId, "reason": "timeout" }
+						} )
+					}
+				} catch ( any ignored ) {
+				}
+				throw( type: "MCPTimeout", message: "The MCP server [#getBaseURL()#] did not answer within #arguments.timeoutMs# ms" )
+			}
+			rethrow;
+		}
+
+		if ( answer.keyExists( "__processExited" ) ) {
+			throw( type: "MCPProcessExited", message: answer.__processExited )
+		}
+		return answer
+	}
+
+	/**
+	 * Write one message to the stdin of the process: one line of JSON.
+	 */
+	private void function writeMessage( required struct message ) {
+		// JSON escapes the newlines inside strings, so a compact document is always one line
+		var line = jsonSerialize( arguments.message )
+		variables.writeLock.lock()
+		try {
+			if ( isNull( variables.writer ) ) {
+				throw( type: "MCPProcessExited", message: "The MCP server [#getBaseURL()#] is not running" )
+			}
+			variables.writer.write( line & char( 10 ) )
+			variables.writer.flush()
+		} catch ( any e ) {
+			if ( e.type == "MCPProcessExited" ) {
+				rethrow;
+			}
+			throw( type: "MCPProcessExited", message: "Could not write to the MCP server [#getBaseURL()#], it has probably exited: #e.message##stderrSummary()#" )
+		} finally {
+			variables.writeLock.unlock()
+		}
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Process lifecycle
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Make sure a handshaken server process is running: launch it the first time,
+	 * and launch it again if it died, up to maxRestarts times in a row.
+	 */
+	private void function ensureRunning() {
+		// Not just "the process is alive": a thread that arrives while another does the handshake must wait for it
+		if ( variables.ready && !variables.closed && isRunning() ) {
+			return
+		}
+
+		variables.stateLock.lock()
+		try {
+			if ( variables.closed ) {
+				throw( type: "MCPClientClosed", message: "The MCP client for [#getBaseURL()#] is closed" )
+			}
+			if ( variables.ready && isRunning() ) {
+				return
+			}
+
+			if ( variables.launchedOnce ) {
+				if ( variables.consecutiveRestarts >= variables.maxRestarts ) {
+					throw(
+						type: "MCPProcessExited",
+						message: "The MCP server [#getBaseURL()#] keeps exiting and was started again #variables.maxRestarts# times without answering#stderrSummary()#"
+					)
+				}
+				variables.consecutiveRestarts++
+				writeLog( text: "MCP server [#getBaseURL()#] is not running, starting it again (#variables.consecutiveRestarts# of #variables.maxRestarts#)", type: "warning", log: "ai" )
+			}
+
+			launch()
+			try {
+				handshake()
+				variables.ready = true
+				// From now on a dead process is a restart. A first start that never got through the handshake
+				// (a slow download, a bad command) is not, so it does not use up the restarts.
+				variables.launchedOnce = true
+			} catch ( any e ) {
+				stopProcess()
+				rethrow;
+			}
+		} finally {
+			variables.stateLock.unlock()
+		}
+	}
+
+	/**
+	 * Start the child process and the threads that read its stdout and stderr
+	 */
+	private void function launch() {
+		assertCommandAllowed()
+		variables.ready = false
+
+		var processBuilder = createObject( "java", "java.lang.ProcessBuilder" ).init( resolveCommand() )
+		var environment    = processBuilder.environment()
+		if ( !variables.inheritEnv ) {
+			environment.clear()
+		}
+		for ( var envName in variables.env ) {
+			environment.put( toString( envName ), toString( variables.env[ envName ] ) )
+		}
+		if ( len( variables.cwd ) ) {
+			processBuilder.directory( createObject( "java", "java.io.File" ).init( variables.cwd ) )
+		}
+
+		var childProcess = ""
+		try {
+			childProcess = processBuilder.start()
+		} catch ( any e ) {
+			throw( type: "MCPLaunchFailed", message: "Could not start the MCP server [#getBaseURL()#]: #e.message#" )
+		}
+
+		var stdoutReader = createObject( "java", "java.io.BufferedReader" ).init(
+			createObject( "java", "java.io.InputStreamReader" ).init( childProcess.getInputStream(), "UTF-8" )
+		)
+		var stderrReader = createObject( "java", "java.io.BufferedReader" ).init(
+			createObject( "java", "java.io.InputStreamReader" ).init( childProcess.getErrorStream(), "UTF-8" )
+		)
+
+		// Every generation of the process has its own table of waiting callers
+		var pendingMap = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init()
+		variables.pending = pendingMap
+		variables.process = childProcess
+		variables.writer  = createObject( "java", "java.io.OutputStreamWriter" ).init( childProcess.getOutputStream(), "UTF-8" )
+		variables.stderrTail.clear()
+
+		var stderrTask = asyncRun( () => readStderr( stderrReader ), "io-tasks" )
+		asyncRun( () => readStdout( stdoutReader, childProcess, pendingMap, stderrTask ), "io-tasks" )
+
+		static.LIVE_CLIENTS.put( variables.instanceId, this )
+		registerShutdownHook()
+	}
+
+	/**
+	 * The MCP handshake: initialize, check the version the server answers, then notifications/initialized
+	 */
+	private void function handshake() {
+		var answer = exchange(
+			{
+				"jsonrpc": "2.0",
+				"method" : "initialize",
+				"id"     : createUUID(),
+				"params" : {
+					"protocolVersion": static.SUPPORTED_VERSIONS[ 1 ],
+					"capabilities"   : {},
+					"clientInfo"     : { "name": "bx-ai", "version": moduleVersion() }
+				}
+			},
+			variables.timeout
+		)
+
+		if ( answer.keyExists( "error" ) ) {
+			var reason = isStruct( answer.error ) ? ( answer.error.message ?: "unknown error" ) : answer.error
+			throw( type: "MCPHandshakeFailed", message: "The MCP server [#getBaseURL()#] refused to initialize: #reason#" )
+		}
+
+		var result  = answer.result ?: {}
+		var version = result.protocolVersion ?: ""
+		if ( !static.SUPPORTED_VERSIONS.contains( version ) ) {
+			throw(
+				type: "MCPHandshakeFailed",
+				message: "The MCP server [#getBaseURL()#] answered protocol version [#version#], this client speaks #static.SUPPORTED_VERSIONS.toList( ', ' )#"
+			)
+		}
+
+		variables.protocolVersion  = version
+		variables.initializeResult = result
+		writeMessage( { "jsonrpc": "2.0", "method": "notifications/initialized" } )
+	}
+
+	/**
+	 * Close stdin, wait for the process to exit, then terminate it, then kill it. Caller holds the state lock.
+	 */
+	private void function stopProcess() {
+		if ( isNull( variables.process ) ) {
+			return
+		}
+		var childProcess = variables.process
+		var seconds      = createObject( "java", "java.util.concurrent.TimeUnit" ).SECONDS
+		variables.ready  = false
+
+		// A launcher (npx, sh) can exit on its own and leave the real server running, and once it is gone its descendants can
+		// no longer be found. Take them now, while they are still attached to it.
+		var descendants = snapshotDescendants( childProcess )
+
+		// Closing stdin is the polite way to ask the server to stop. A write that is stuck because the server does not read
+		// holds the write lock: do not wait for it, ending the process below also ends that write.
+		if ( variables.writeLock.tryLock( 1, seconds ) ) {
+			try {
+				try {
+					variables.writer.close()
+				} catch ( any e ) {
+					// The process may already be gone
+				}
+				variables.process = javacast( "null", "" )
+				variables.writer  = javacast( "null", "" )
+			} finally {
+				variables.writeLock.unlock()
+			}
+		} else {
+			variables.process = javacast( "null", "" )
+			variables.writer  = javacast( "null", "" )
+		}
+
+		if ( !childProcess.waitFor( static.SHUTDOWN_WAIT, seconds ) ) {
+			terminate( childProcess, false )
+			if ( !childProcess.waitFor( static.SHUTDOWN_WAIT, seconds ) ) {
+				terminate( childProcess, true )
+				childProcess.waitFor( static.SHUTDOWN_WAIT, seconds )
+			}
+		}
+
+		endSurvivors( descendants )
+	}
+
+	/**
+	 * The processes a process started, as handles that stay usable after it exits
+	 */
+	private array function snapshotDescendants( required any childProcess ) {
+		var handles = []
+		try {
+			for ( var descendant in arguments.childProcess.descendants().toArray() ) {
+				handles.append( descendant )
+			}
+		} catch ( any e ) {
+			// A process that is already gone has nothing left to end
+		}
+		return handles
+	}
+
+	/**
+	 * End the processes that are still alive after their launcher is gone: ask them to terminate, kill the ones that do not.
+	 */
+	private void function endSurvivors( required array handles ) {
+		var seconds = createObject( "java", "java.util.concurrent.TimeUnit" ).SECONDS
+		var alive   = []
+		for ( var handle in arguments.handles ) {
+			if ( handle.isAlive() ) {
+				handle.destroy()
+				alive.append( handle )
+			}
+		}
+		for ( var handle in alive ) {
+			try {
+				handle.onExit().get( static.SHUTDOWN_WAIT, seconds )
+			} catch ( any e ) {
+				handle.destroyForcibly()
+			}
+		}
+	}
+
+	/**
+	 * End a process and the processes it started
+	 *
+	 * @childProcess The process
+	 * @force        true to kill it, false to ask it to terminate
+	 */
+	private void function terminate( required any childProcess, required boolean force ) {
+		terminateDescendants( arguments.childProcess, arguments.force )
+		if ( arguments.force ) {
+			arguments.childProcess.destroyForcibly()
+		} else {
+			arguments.childProcess.destroy()
+		}
+	}
+
+	/**
+	 * End the processes a process started (a launcher such as npx, sh or cmd starts the real server)
+	 */
+	private void function terminateDescendants( required any childProcess, required boolean force ) {
+		try {
+			for ( var descendant in arguments.childProcess.descendants().toArray() ) {
+				if ( arguments.force ) {
+					descendant.destroyForcibly()
+				} else {
+					descendant.destroy()
+				}
+			}
+		} catch ( any e ) {
+			// A process that is already gone has nothing left to end
+		}
+	}
+
+	/**
+	 * Make sure the JVM closes the child processes when it shuts down, once
+	 */
+	private void function registerShutdownHook() {
+		if ( static.HOOK_STATE.compareAndSet( false, true ) ) {
+			try {
+				var hook = createObject( "java", "java.lang.Thread" ).init( () => closeAllLive() )
+				createObject( "java", "java.lang.Runtime" ).getRuntime().addShutdownHook( hook )
+			} catch ( any e ) {
+				static.HOOK_STATE.set( false )
+			}
+		}
+	}
+
+	/**
+	 * Body of the shutdown hook: a static function cannot be handed to a thread directly
+	 */
+	private void function closeAllLive() {
+		var clients = static.LIVE_CLIENTS.values().toArray()
+		for ( var liveClient in clients ) {
+			try {
+				liveClient.close()
+			} catch ( any e ) {
+			}
+		}
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Reader threads
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Read the stdout of the process line by line until it ends, and hand every answer to its waiting caller.
+	 * When the stream ends every caller still waiting is told the process exited.
+	 */
+	private void function readStdout( required any reader, required any childProcess, required any pendingMap, required any stderrTask ) {
+		try {
+			var line = arguments.reader.readLine()
+			while ( !isNull( line ) ) {
+				// One line we cannot handle must not end the reader: the process is still alive and callers would wait for nothing
+				try {
+					handleLine( line, arguments.pendingMap )
+				} catch ( any e ) {
+					writeLog( text: "MCP server [#getBaseURL()#] sent a message that could not be handled, it was skipped: #e.message#", type: "warning", log: "ai" )
+				}
+				line = arguments.reader.readLine()
+			}
+		} catch ( any e ) {
+			// The stream was closed under us, the process is ending
+		}
+
+		// Let the stderr reader finish, so the last lines of the server are in the message that explains the exit
+		try {
+			arguments.stderrTask.get( 1, createObject( "java", "java.util.concurrent.TimeUnit" ).SECONDS )
+		} catch ( any e ) {
+		}
+
+		// The process ended: wake up everyone who waits for an answer
+		var exitCode = "unknown"
+		try {
+			arguments.childProcess.waitFor( 2, createObject( "java", "java.util.concurrent.TimeUnit" ).SECONDS )
+			exitCode = arguments.childProcess.exitValue()
+		} catch ( any e ) {
+		}
+		var exitMessage = "The MCP server [#getBaseURL()#] exited (exit code #exitCode#) before it answered#stderrSummary()#"
+		for ( var waitingId in arguments.pendingMap.keySet().toArray() ) {
+			var waiting = arguments.pendingMap.remove( waitingId )
+			if ( !isNull( waiting ) ) {
+				waiting.complete( { "__processExited": exitMessage } )
+			}
+		}
+	}
+
+	/**
+	 * Handle one line of stdout: an answer, a request from the server, a notification, or noise
+	 */
+	private void function handleLine( required string line, required any pendingMap ) {
+		var text = trim( arguments.line )
+		if ( !len( text ) ) {
+			return
+		}
+
+		var message = ""
+		try {
+			message = jsonDeserialize( text )
+		} catch ( any e ) {
+			writeLog( text: "MCP server [#getBaseURL()#] wrote a line to stdout that is not JSON, it was skipped: #left( text, 200 )#", type: "warning", log: "ai" )
+			return
+		}
+		if ( !isStruct( message ) ) {
+			writeLog( text: "MCP server [#getBaseURL()#] wrote JSON to stdout that is not a JSON-RPC message, it was skipped: #left( text, 200 )#", type: "warning", log: "ai" )
+			return
+		}
+
+		// A message with a method comes from the server: a request when it has an id, a notification otherwise
+		if ( message.keyExists( "method" ) ) {
+			if ( message.keyExists( "id" ) && !isNull( message.id ) ) {
+				answerServerRequest( message )
+			}
+			return
+		}
+
+		// Otherwise it is the answer to one of our requests. An error with a null id answers nobody (the server could not tell which request failed).
+		if ( message.keyExists( "id" ) && !isNull( message.id ) ) {
+			var waiting = arguments.pendingMap.remove( toString( message.id ) )
+			if ( !isNull( waiting ) ) {
+				waiting.complete( message )
+			}
+		}
+	}
+
+	/**
+	 * Answer a request the server sends us. ping is answered, anything else is a method this client does not offer.
+	 */
+	private void function answerServerRequest( required struct message ) {
+		try {
+			if ( arguments.message.method == "ping" ) {
+				writeMessage( { "jsonrpc": "2.0", "id": arguments.message.id, "result": {} } )
+			} else {
+				writeMessage( {
+					"jsonrpc": "2.0",
+					"id"     : arguments.message.id,
+					"error"  : { "code": -32601, "message": "Method not found: #arguments.message.method#" }
+				} )
+			}
+		} catch ( any e ) {
+			// The process is ending, nobody is left to read the answer
+		}
+	}
+
+	/**
+	 * Read the stderr of the process line by line into the "ai" log and into the tail kept for error messages
+	 */
+	private void function readStderr( required any reader ) {
+		try {
+			var line = arguments.reader.readLine()
+			while ( !isNull( line ) ) {
+				if ( len( trim( line ) ) ) {
+					variables.stderrTail.add( line )
+					while ( variables.stderrTail.size() > static.STDERR_TAIL_LINES ) {
+						variables.stderrTail.pollFirst()
+					}
+					writeLog( text: "[#getBaseURL()#] #line#", type: "debug", log: "ai" )
+				}
+				line = arguments.reader.readLine()
+			}
+		} catch ( any e ) {
+			// The stream was closed under us, the process is ending
+		}
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Security
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Refuse the command when the module allow list or the command guard says so.
+	 *
+	 * The allow list is the module setting mcp.stdio.allowedCommands, an explicit empty array means any command.
+	 * - A command without a directory ("npx", "npx.cmd") is matched by its name: "npx", "NPX" and "npx.cmd" are the same entry.
+	 * - A command with a directory ("/usr/bin/npx", "./npx") is another file than the one the PATH finds, so it is allowed
+	 *   only when the list has that exact path (compared with the case it is written in).
+	 * There is no fallback: if the setting is missing or is not an array the command is refused.
+	 */
+	private void function assertCommandAllowed() {
+		var allowedCommands = getModuleInfo( "bxai" ).settings.mcp?.stdio?.allowedCommands
+
+		// Only an explicit empty array allows every command: a missing or malformed setting must not open the gate
+		if ( isNull( allowedCommands ) || !isArray( allowedCommands ) ) {
+			throw(
+				type: "MCPCommandRefused",
+				message: "The command [#executableName()#] was refused because the module setting mcp.stdio.allowedCommands is missing or is not an array"
+			)
+		}
+
+		if ( allowedCommands.len() ) {
+			var executable   = variables.command[ 1 ]
+			var hasDirectory = executable contains "/" || executable contains "\"
+			var permitted    = false
+			for ( var entry in allowedCommands ) {
+				entry = toString( entry )
+				if ( hasDirectory ) {
+					// compare() is case sensitive, == is not: /tmp/Trusted/npx and /tmp/trusted/npx can be different files
+					permitted = permitted || compare( entry, executable ) == 0
+				} else if ( !( entry contains "/" || entry contains "\" ) ) {
+					permitted = permitted || lCase( stripExtension( entry ) ) == lCase( stripExtension( executable ) )
+				}
+			}
+			if ( !permitted ) {
+				throw(
+					type: "MCPCommandRefused",
+					message: "The command [#executableName()#] is not in the module setting mcp.stdio.allowedCommands: #allowedCommands.toList( ', ' )#. A command with a directory must be listed with that exact path"
+				)
+			}
+		}
+
+		if ( !isNull( variables.commandGuard ) ) {
+			if ( variables.commandGuard( duplicate( variables.command ) ) === false ) {
+				throw( type: "MCPCommandRefused", message: "The command [#executableName()#] was refused by the command guard" )
+			}
+		}
+	}
+
+	/**
+	 * A file name without a Windows executable extension: "npx.cmd" gives "npx"
+	 */
+	private string function stripExtension( required string fileName ) {
+		return reReplaceNoCase( arguments.fileName, static.EXECUTABLE_EXTENSION, "" )
+	}
+
+	/**
+	 * The executable of the command without its directory and without a Windows extension: "/usr/bin/npx.cmd" gives "npx"
+	 */
+	private string function executableName() {
+		return stripExtension( listLast( variables.command[ 1 ], "/\" ) )
+	}
+
+	/**
+	 * The command to start. On Windows an executable without a path is looked up in the PATH with the PATHEXT
+	 * extensions, and a .cmd or .bat file (npx.cmd) is started through cmd.exe /c because it cannot run alone.
+	 * The arguments are always passed as separate elements, never as one shell string.
+	 */
+	private array function resolveCommand() {
+		var resolved = duplicate( variables.command )
+		var osName   = createObject( "java", "java.lang.System" ).getProperty( "os.name" )
+		if ( !osName.toLowerCase().startsWith( "windows" ) ) {
+			return resolved
+		}
+
+		var executable = resolved[ 1 ]
+		var extensions = listToArray( getSystemSetting( "PATHEXT", static.DEFAULT_PATHEXT ), ";" )
+		var folders    = []
+		var found      = ""
+
+		if ( executable contains "/" || executable contains "\" ) {
+			folders = [ "" ]
+		} else {
+			folders = listToArray( getSystemSetting( "PATH", "" ), ";" )
+			if ( len( variables.cwd ) ) {
+				folders.prepend( variables.cwd )
+			}
+		}
+
+		for ( var folder in folders ) {
+			var basePath = len( folder ) ? ( folder & "\" & executable ) : executable
+			// An explicit extension wins, otherwise try every PATHEXT extension
+			var candidates = reFindNoCase( static.HAS_EXTENSION, executable ) ? [ basePath ] : extensions.map( ( ext ) => basePath & ext )
+			for ( var candidate in candidates ) {
+				if ( fileExists( candidate ) ) {
+					found = candidate
+					break
+				}
+			}
+			if ( len( found ) ) {
+				break
+			}
+		}
+
+		if ( !len( found ) ) {
+			return resolved
+		}
+		resolved[ 1 ] = found
+		if ( reFindNoCase( static.BATCH_FILE, found ) ) {
+			resolved.prepend( "/c" )
+			resolved.prepend( "cmd.exe" )
+		}
+		return resolved
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Helpers
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * The last lines of stderr as a suffix for an error message, empty when the server wrote nothing
+	 */
+	private string function stderrSummary() {
+		var lines = getStderrTail()
+		if ( !lines.len() ) {
+			return ""
+		}
+		var lastLines = lines.len() > 10 ? lines.slice( lines.len() - 9, 10 ) : lines
+		return ". Last stderr lines: " & lastLines.toList( " | " )
+	}
+
+	/**
+	 * The version of this module, sent to the server as the client version
+	 */
+	private string function moduleVersion() {
+		try {
+			return getModuleInfo( "bxai" ).version
+		} catch ( any e ) {
+			return "1.0.0"
+		}
+	}
+
+}
