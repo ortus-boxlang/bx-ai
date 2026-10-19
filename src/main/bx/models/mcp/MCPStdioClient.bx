@@ -74,6 +74,14 @@ class extends="BaseMCPClient" {
 		HTTP_ONLY_OPTIONS  = [ "token", "headers", "user", "password", "urlGuard", "redirects", "maxResponseBytes", "httpVersion", "handshake", "url" ];
 		// Options of withMCPServer(): they choose how the tools are exposed, they are not options of the client
 		REGISTRATION_OPTIONS = [ "prefix", "toolFilter" ];
+		// A Windows executable extension: "npx.cmd" is the command "npx"
+		EXECUTABLE_EXTENSION = "\.(exe|cmd|bat|com)$";
+		// A file name that already has an extension
+		HAS_EXTENSION        = "\.[a-z]{2,4}$";
+		// A batch file, it cannot run alone and is started through cmd.exe /c
+		BATCH_FILE           = "\.(cmd|bat)$";
+		// The extensions Windows tries when the PATHEXT variable is not set
+		DEFAULT_PATHEXT      = ".COM;.EXE;.BAT;.CMD";
 		// The live clients, so they can be closed when the module unloads
 		LIVE_CLIENTS       = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
 		// Whether the JVM shutdown hook is registered
@@ -768,7 +776,7 @@ class extends="BaseMCPClient" {
 	 * A file name without a Windows executable extension: "npx.cmd" gives "npx"
 	 */
 	private string function stripExtension( required string fileName ) {
-		return reReplaceNoCase( arguments.fileName, "\.(exe|cmd|bat|com)$", "" )
+		return reReplaceNoCase( arguments.fileName, static.EXECUTABLE_EXTENSION, "" )
 	}
 
 	/**
@@ -791,7 +799,7 @@ class extends="BaseMCPClient" {
 		}
 
 		var executable = resolved[ 1 ]
-		var extensions = listToArray( getSystemSetting( "PATHEXT", ".COM;.EXE;.BAT;.CMD" ), ";" )
+		var extensions = listToArray( getSystemSetting( "PATHEXT", static.DEFAULT_PATHEXT ), ";" )
 		var folders    = []
 		var found      = ""
 
@@ -807,7 +815,7 @@ class extends="BaseMCPClient" {
 		for ( var folder in folders ) {
 			var basePath = len( folder ) ? ( folder & "\" & executable ) : executable
 			// An explicit extension wins, otherwise try every PATHEXT extension
-			var candidates = reFindNoCase( "\.[a-z]{2,4}$", executable ) ? [ basePath ] : extensions.map( ( ext ) => basePath & ext )
+			var candidates = reFindNoCase( static.HAS_EXTENSION, executable ) ? [ basePath ] : extensions.map( ( ext ) => basePath & ext )
 			for ( var candidate in candidates ) {
 				if ( fileExists( candidate ) ) {
 					found = candidate
@@ -823,7 +831,7 @@ class extends="BaseMCPClient" {
 			return resolved
 		}
 		resolved[ 1 ] = found
-		if ( reFindNoCase( "\.(cmd|bat)$", found ) ) {
+		if ( reFindNoCase( static.BATCH_FILE, found ) ) {
 			resolved.prepend( "/c" )
 			resolved.prepend( "cmd.exe" )
 		}
