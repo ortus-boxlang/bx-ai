@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.6.0] - 2026-10-20
+
 ### ⚠️ Migration
 
 - `MCPClient` was renamed to `MCPHttpClient` (`models/mcp/MCPHttpClient.bx`). Code that uses the `MCP()` BIF is not affected (the named argument `MCP( baseURL: url )` still works, the new name is `mcpServer`). Code that created the class directly with `new bxModules.bxai.models.mcp.MCPClient( url )` must use `MCP( url )`. `MCP()` now returns an `IMCPClient`, either an `MCPHttpClient` or an `MCPStdioClient`.
@@ -16,17 +18,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🥊 Added
 
 - **MCP client over stdio**: `MCP( { command: [ "bxplaywright", "mcp" ], env: {}, cwd: "", inheritEnv: true, maxRestarts: 2, commandGuard: fn, timeout: 30000 } )` launches an MCP server as a child process and talks to it over stdin and stdout, as the stdio transport of the MCP specification asks. It has the same methods as the HTTP client (`listTools`, `send`, `listResources`, `readResource`, `listPrompts`, `getPrompt`, `getCapabilities`, stats, callbacks) and returns the same `MCPResponse`, so `MCPTool` and agents need no change. The process is started on the first call and the `initialize` handshake with version negotiation (`2025-06-18`, `2025-03-26`, `2024-11-05`) is done for you. One background thread reads stdout and hands each answer to the caller waiting for its JSON-RPC id, so threads can share a client. Every request has a timeout and a timed out request is cancelled with `notifications/cancelled`. stderr is written to the `ai` log and its last lines are kept (`getStderrTail()`), lines on stdout that are not JSON-RPC are skipped. A dead server is started again on the next call, up to `maxRestarts` times in a row, and a call that was in flight is never repeated. Several threads that make their first calls together wait for the handshake. A first start that is slower than `timeout` (for example a first `npx -y` download) does not use up the restarts. `close()` closes stdin, waits, terminates, then kills the process and the processes it started, never waits for a write that is stuck on a server that does not read, and live clients are also closed when the module unloads and when the JVM shuts down. New client events data: `transport` (`stdio` or `http`) and `baseURL` as `stdio:<executable>`. See `src/docs/main-components/mcp-stdio-client.md`.
+
 - **MCP stdio security**: no shell is ever used, the command is an array. The module setting `mcp.stdio.allowedCommands` limits the executables (empty, the default, allows any): a command without a directory (`npx`, `npx.cmd`) is matched by name, a command with a directory must be listed with that exact path, and a setting that is missing, null or not an array refuses the command (only an explicit empty array allows all). Paths are compared with their exact case. `close()` also ends the processes a launcher left running when it exited on its own. `commandGuard` receives the command when the client is built and before every launch. Options a stdio server does not have (the HTTP-only ones, `prefix` and `toolFilter`, or a typo such as `commandGaurd`) throw `InvalidArgument` instead of being ignored. A refused command throws `MCPCommandRefused`, also from `withMCPServer`. On Windows `npx` is resolved through `PATHEXT` and `.cmd` files are started with `cmd.exe /c`.
+
 - **Stdio servers in agents and models**: `withMCPServer( { command: [ ... ] }, { prefix, toolFilter, timeout } )` and `withMCPServers( [ url, { url }, { command, prefix }, client ] )` accept stdio servers, as does the `mcpServers` argument of `aiAgent()` and `aiModel()`. New `closeMCPServers()` on agents and models closes the clients they built themselves. The options that only exist for HTTP (`token`, `headers`, `user`, `password`, `urlGuard`, `redirects`, `maxResponseBytes`, `httpVersion`, `handshake`) throw `InvalidArgument` for a stdio server.
+
 - **`IMCPClient` and `BaseMCPClient`**: the MCP clients now share an interface and a base class that owns the timeout, callbacks, stats, events and the JSON-RPC request of each operation. `MCPHttpClient` and `MCPStdioClient` only implement the transport.
+
 - **MCP example** `examples/mcp/10-mcp-stdio-client.bxs`.
 
 - **MCP client** `withHttpVersion( "HTTP/1.1" )` (and the `httpVersion` option of `withMCPServer`): the default stays `HTTP/2`, which on a plain http address starts with an upgrade request (h2c) that some servers answer badly when the body arrives after the headers. HTTP/1.1 sends no upgrade.
+
 - **MCP client** `listTools( cursor )` takes the `nextCursor` of a previous answer, so the tools of a server that pages them can be read page by page.
+
 - **MCP client controls** for callers that must limit what a client may reach, all opt in and unchanged by default: `withUrlGuard( fn )` is called with the URL before every request and refuses it when it returns `false` or throws, so nothing is sent; `withRedirects( false )` turns a redirect into a failed response; `withMaxResponseBytes( n )` refuses a response longer than `n` characters (the body is read first, so it limits what is parsed and returned, not what is downloaded); `withHandshake()` sends `initialize` and `notifications/initialized` once and sends back the `Mcp-Session-Id`. `withMCPServer( server, config )` accepts the same options as `urlGuard`, `redirects`, `maxResponseBytes` and `handshake`, plus `prefix` (tools are exposed as `prefix__name` so two servers cannot clash, the server still receives the original name) and `toolFilter` (an array of tool names, only these are exposed).
+
 - **MariaDB vector memory** (`MariaDBVectorMemory`, `aiMemory( memory: "mariadb" )`): vector storage and semantic search on MariaDB 11.7+ using the native `VECTOR(n)` type, an HNSW `VECTOR INDEX` and the `VEC_DISTANCE_COSINE` / `VEC_DISTANCE_EUCLIDEAN` functions, so ranking runs in the database. Supports `COSINE` and `L2` (MariaDB has no native dot product), `autoCreate`, the HNSW `m` option, and `userId` / `conversationId` isolation. MariaDB allows one vector index per table, so collections sharing a table share its metric and dimensions. Works as a `HybridMemory` `vectorProvider`. Requires the `bx-mariadb` module.
+
 - **HTTP streaming speech demo** (`examples/http-streaming-speech`): a runnable MiniServer demo that streams `aiSpeakStream()` audio to a browser, either as raw mp3 for an `<audio>` tag or as PCM events with word timestamps for a Web Audio player with barge-in.
+
 - **Cartesia provider** (`cartesia`): text-to-speech with Sonic (mp3, wav, pcm, mulaw, alaw) and speech-to-text with Ink-Whisper. Use `aiService( "cartesia", apiKey )` or set `CARTESIA_API_KEY`. `translate()` throws `UnsupportedCapability`. `flac` and `opus` throw `InvalidArgument`.
+
 - **Streaming text-to-speech**: new `aiSpeakStream( text, callback, params, options )` BIF and fluent `aiSpeak().text( "..." ).stream( callback )`, backed by the new `IAiSpeechStreamService` interface and the `speechStream` capability. The callback receives `{ type: "audio", data, format, sampleRate, sequence }`, `{ type: "timestamps", ... }` and a final `{ type: "done", chunks, bytes }`, so audio can be restreamed to a client as it is generated. Return `false` from the callback to stop early. Supported by Cartesia (bytes for mp3 and wav, SSE with word timestamps for pcm, mulaw and alaw), ElevenLabs, OpenAI, Mistral and Gemini. Grok only streams over a WebSocket, which is not implemented.
 
 ### 🐛 Fixed
@@ -34,19 +46,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CI cost**: pull requests no longer give the tests the API keys of the providers that charge per call (OpenAI, Claude, Grok, Mistral, DeepSeek, Perplexity, MiniMax, Cohere, HuggingFace, ElevenLabs, Cartesia). Ollama, the vector stores and the free tier providers still run. Add the `run-inference-tests` label to a pull request to run the paid ones, they always run on `development` and releases. A test that fails only because its key is missing is skipped in a run without them (`AI_TESTS_PAID_PROVIDERS=false`).
 
 - **MCP stdio server** (`MCPRequestProcessor::processStdio()`) never ended: when stdin closed, the failed read was answered with an error and tried again in a loop that wrote `-32600` errors to stdout forever. A closed stdin now stops the transport, which is how a client asks a stdio server to stop.
+
 - **Example `09-mcp-stdio.bxs`** printed its start banner to stdout, which is the protocol stream. It now goes to stderr.
 
 - **MCP client** `withTimeout( ms )` is documented in milliseconds but the value was passed to `bx:http`, whose timeout is in seconds, so `withTimeout( 10000 )` waited about 2.8 hours. It is now converted to seconds (rounded up, at least 1).
+
 - **MCP client** read the first `data:` line of an event stream as the answer, so a server that sent a notification before the answer (progress, log) made the call return the notification. Messages that are not a JSON-RPC response are now skipped.
+
 - **MysqlVectorMemory** placed metadata filter keys directly into SQL. Filter keys are now validated (letters, numbers and underscores) and an invalid key throws `MysqlVectorMemory.InvalidFilterKey`.
+
 - **ElevenLabs** ignored the requested voice, model, output format and speed, so `voice`, `.female()` and `outputFormat` had no effect. They are now honored, `wav` output is a real wav, and the STT upload uses the documented `file` field. The default voice is now the premade Sarah voice because Rachel is a library voice that free plan keys cannot use over the API.
+
 - **Grok** text-to-speech now sends the documented xAI body (`text`, `voice_id`, `language`, `output_format`) and the default voice is `eve`. The `male()` and `female()` keywords map to `rex` and `eve`.
+
 - **Mistral** text-to-speech now decodes the JSON `audio_data` response, and a UUID voice is sent as `voice_id`.
+
 - **Gemini** text-to-speech returned headerless PCM labelled as wav. It is now wrapped in a RIFF header so the file plays.
 
 - **Cloudflare Workers AI provider** (`cloudflare`): chat, streaming, tool calling and embeddings through the Workers AI OpenAI compatible endpoints. Requires an account ID via the `accountId` option or the `CLOUDFLARE_ACCOUNT_ID` environment variable, plus `CLOUDFLARE_API_KEY`. Defaults to `@cf/openai/gpt-oss-20b` for chat and `@cf/baai/bge-base-en-v1.5` for embeddings.
+
 - **Mistral** text-to-speech failed with `Voice 'Charlotte' not found` because `Charlotte` is not a valid Mistral voice, and OpenAI's default voice (`ash`) also leaked into Mistral requests. With no voice requested, Mistral now uses the first preset voice from `GET /v1/audio/voices` (looked up once and cached). If that lookup fails the request is still sent and Mistral's own error is shown. The `male()` and `female()` shortcuts for Mistral now use that provider default.
+
 - **Gemini** text-to-speech defaulted to `gemini-2.5-flash-preview-tts`, which is no longer listed in the Gemini docs, and failed with an empty error message. The default is now `gemini-3.8-flash-tts`, and errors include the HTTP status, the model and the response body.
+
 - **Gemini** streaming text-to-speech failed with `Unable to parse stream event: Failed to parse JSON [DONE]`. The Interactions stream ends with a non-JSON `[DONE]` sentinel. Speech streaming now ignores it, for every provider that uses SSE.
 
 ## [3.5.0] - 2026-09-11
@@ -769,7 +791,8 @@ One of our biggest library updates yet! This release introduces a powerful new d
 
 - First iteration of this module
 
-[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.5.0...HEAD
+[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.6.0...HEAD
+[3.6.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.5.0...v3.6.0
 [3.5.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.3.2...v3.4.0
 [3.3.2]: https://github.com/ortus-boxlang/bx-ai/compare/v3.3.1...v3.3.2
