@@ -191,8 +191,10 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 	}
 
 	/**
-	 * Mistral references voices by `voice_id`.
-	 * - A UUID passed as the generic `voice` is mapped onto `voice_id`. Any other value is left untouched.
+	 * Mistral references voices by `voice_id` and has no `voice` field: it answers "voice is not supported".
+	 * - A UUID passed as the generic `voice` is mapped onto `voice_id`.
+	 * - Any other `voice` (a name, or a voice of another provider such as OpenAI's) is dropped, so the preset
+	 *   voice below is used instead of a rejected request.
 	 * - When no voice (and no reference audio) was requested, the first preset voice is used, looked up from
 	 *   GET /v1/audio/voices. If that lookup fails the request is sent without a voice and Mistral's own
 	 *   error explains what it needs.
@@ -203,12 +205,14 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		required struct dataPacket,
 		required string operation
 	){
-		if (
-			arguments.operation == "speech" &&
-			isSimpleValue( arguments.dataPacket.voice ?: "" ) &&
-			reFindNoCase( "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", arguments.dataPacket.voice ?: "" )
-		) {
-			arguments.dataPacket.voice_id = arguments.dataPacket.voice
+		if ( arguments.operation == "speech" && arguments.dataPacket.keyExists( "voice" ) ) {
+			if (
+				!len( arguments.dataPacket.voice_id ?: "" ) &&
+				isSimpleValue( arguments.dataPacket.voice ) &&
+				reFindNoCase( "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", arguments.dataPacket.voice )
+			) {
+				arguments.dataPacket.voice_id = arguments.dataPacket.voice
+			}
 			structDelete( arguments.dataPacket, "voice" )
 		}
 

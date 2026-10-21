@@ -9,7 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🐛 Fixed
+
+- **Mistral speech** no longer sends a `voice` field. Mistral only knows `voice_id` and answered "voice is not supported for speech v1" when a voice name (or the voice of another provider, such as OpenAI's `nova`) reached it. A UUID is still sent as `voice_id`, any other voice is dropped and the first preset voice is used.
+
 ### 🥊 Added
+
+- **Manual releases**: the `Release` workflow can be run by hand (Actions, Run workflow) from `development` or `main`, with a `snapshot` input. It never runs the tests. Unchecked it makes a release (changelog, tag, publish, GitHub release, version bump), checked it makes a `-snapshot` build, whatever the branch, with no tag, release or version bump.
+- The live MiniMax tests are manual now: they only run with `AI_TESTS_MINIMAX=true`.
 
 - **Configuration profiles**: name a combination of provider, model, params, options and API key once, then select it by name. A profile is set in the new `profiles` setting, for example `fast : { provider: "openai", model: "gpt-4.1-mini", params: { temperature: 0 }, apiKeyEnv: "OPENAI_API_KEY" }`. A profile may set `description` (text for UIs, returned by `aiProfile()` and `aiProfiles()`), `provider`, `model` (shorthand for `params.model`), `params`, `options`, `apiKeyEnv` (the NAME of the env var that holds the key, preferred) or `apiKey`. Params layer as `defaultParams`, then `providers.<name>.params`, then the profile, then the params of the call. The profile `default` always exists: it is the top level `provider`, `apiKey` and `defaultParams`, and the new `defaultProfile` setting makes another profile the default. Without profiles nothing changes.
   - `aiChat( ..., options: { profile: "fast" } )`, `aiChatStream()`, `aiEmbed()`, `aiService( profile: "fast" )`, `aiModel( profile: "fast" )` and `aiAgent( profile: "fast" )`. An explicit provider, API key, param or option always wins over the profile. A profile API key is only used with the provider of the profile.

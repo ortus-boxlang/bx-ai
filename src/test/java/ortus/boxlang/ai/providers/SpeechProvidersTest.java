@@ -145,7 +145,7 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 		} );
 
 		// Mistral preset voice lookup. Each base path has its own cache entry in the service.
-		for ( String base : new String[] { "/mistral", "/mistralvoices", "/mistralexplicit" } ) {
+		for ( String base : new String[] { "/mistral", "/mistralvoices", "/mistralexplicit", "/mistralvoicename", "/mistralvoiceoption" } ) {
 			stub.createContext( base + "/audio/voices", exchange -> {
 				hits.computeIfAbsent( base + "/audio/voices", k -> new AtomicInteger() ).incrementAndGet();
 				exchange.getRequestBody().readAllBytes();
@@ -157,7 +157,7 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 			} );
 		}
 		// Whole-file speech for the extra bases
-		for ( String base : new String[] { "/mistralvoices", "/mistralexplicit", "/mistralbad" } ) {
+		for ( String base : new String[] { "/mistralvoices", "/mistralexplicit", "/mistralbad", "/mistralvoicename", "/mistralvoiceoption" } ) {
 			stub.createContext( base + "/audio/speech", exchange -> {
 				record( exchange, base.substring( 1 ) );
 				respond( exchange, "application/json", ( "{\"audio_data\":\"" + b64( "MP3DATA" ) + "\"}" ).getBytes( StandardCharsets.UTF_8 ) );
@@ -569,6 +569,27 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 
 		assertThat( seenBody.get( "mistralexplicit" ) ).contains( "\"voice_id\":\"44444444-4444-4444-4444-444444444444\"" );
 		assertThat( hits.get( "/mistralexplicit/audio/voices" ) ).isNull();
+	}
+
+	@DisplayName( "Mistral has no voice field: a voice that is not an id is dropped and the preset voice is used" )
+	@Test
+	public void testMistralVoiceNameIsDropped() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			// The voice of another provider, as a param and as an option
+			aiSpeak( "Hi", { voice: "nova" }, { provider: "mistral", apiKey: "mk", baseURL: "%s/mistralvoicename" } )
+			aiSpeak( "Hi", {}, { provider: "mistral", apiKey: "mk", voice: "nova", baseURL: "%s/mistralvoiceoption" } )
+			""".formatted( stubURL, stubURL ),
+			context
+		);
+		// @formatter:on
+
+		for ( String sent : new String[] { "mistralvoicename", "mistralvoiceoption" } ) {
+			String body = seenBody.get( sent );
+			assertThat( body ).doesNotContain( "\"voice\":" );
+			assertThat( body ).contains( "\"voice_id\":\"33333333-3333-3333-3333-333333333333\"" );
+		}
 	}
 
 	@DisplayName( "A failed Mistral preset lookup does not block the speech request" )
