@@ -1079,6 +1079,16 @@ aiService( "bedrock", {
 })
 ```
 
+### Profiles
+
+Named combinations of provider, model, params, options and API key, set in the `profiles` setting (see `models/util/ProfileResolver.bx`). All resolution goes through `ProfileResolver`, never read `settings.profiles` directly in a BIF.
+
+- Select with `options.profile` (`aiChat`, `aiChatStream`, `aiEmbed`) or `profile` (`aiService`, `aiModel`, `aiAgent`). `agent.withProfile( name )` switches for good, `agent.run( input, params, { profile: name } )` for one run. `defaultProfile` picks the profile used when a call names no provider.
+- Params layer: `defaultParams` < `providers.<name>.params` < profile < call params. Explicit provider, apiKey, params and options always win.
+- A profile name cannot be a provider name or `default`. Validated in `onRuntimeStart()`.
+- Keys: prefer `apiKeyEnv` (the env var NAME). Never return or log a key: `aiProfile()`, `aiProfiles()` and `aiProviders()` only say `hasApiKey`. `profiles` is removed from request options in `AiBaseRequest.prepareOptions()`, `aiChatStream` and `aiEmbed`.
+- Tests: `ProfilesTest` with the `mock` provider. `MockService.getRecorded()` entries have `model`, `messages` and `params`.
+
 ### Request Configuration Hierarchy
 
 1. **AiBaseRequest** - Base for all requests

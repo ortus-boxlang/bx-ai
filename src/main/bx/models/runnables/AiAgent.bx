@@ -23,6 +23,7 @@ import bxModules.bxai.models.middleware.IAiMiddleware;
 import bxModules.bxai.models.middleware.StructMiddlewareAdapter;
 import bxModules.bxai.models.middleware.core.RunControlMiddleware;
 import bxModules.bxai.models.gateway.contracts.HumanInteractionDecision;
+import bxModules.bxai.models.util.ProfileResolver;
 
 class extends="AiBaseRunnable" {
 
@@ -47,6 +48,11 @@ class extends="AiBaseRunnable" {
 	 * The AI model instance to use for this agent
 	 */
 	property name="aiModel" type="AiModel";
+
+	/**
+	 * The name of the profile the agent's model was built from, empty when the model was passed in directly
+	 */
+	property name="profile" type="string" default="";
 
 	/**
 	 * Memory instances (array of IAiMemory)
@@ -366,7 +372,7 @@ class extends="AiBaseRunnable" {
 		// -------------------------------------------------------------------------------------------
 		// Execute via model - service handles returnFormat and returns formatted result
 		// The return can be a direct response, a middleware result (e.g. for suspension), or a tool call result depending on the execution flow
-		var response = variables.aiModel.run( messages, effectiveParams, effectiveOptions )
+		var response = resolveRunModel( effectiveOptions ).run( messages, effectiveParams, effectiveOptions )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Handle Terminal Middleware Results (suspend/cancel/reject) ---
@@ -529,7 +535,7 @@ class extends="AiBaseRunnable" {
 		// -------------------------------------------------------------------------------------------
 		// --- Stream via model (tools handled by model/service) ---
 		// -------------------------------------------------------------------------------------------
-		variables.aiModel.stream( wrappedCallback, messages, effectiveParams, effectiveOptions )
+		resolveRunModel( effectiveOptions ).stream( wrappedCallback, messages, effectiveParams, effectiveOptions )
 
 		// -------------------------------------------------------------------------------------------
 		// --- Handle Terminal Middleware Results (suspend/cancel/reject) ---
@@ -721,6 +727,56 @@ class extends="AiBaseRunnable" {
 	AiAgent function setModel( required AiModel model ) {
 		variables.aiModel = arguments.model.withTools( variables.tools )
 		return this
+	}
+
+	/**
+	 * Switch this agent to a configured profile.
+	 * The model is replaced, everything else stays: memory, tools, sub-agents, instructions, params and options.
+	 * To use a profile for a single run, pass <code>options.profile</code> to run() or stream() instead.
+	 *
+	 * @name The profile name
+	 *
+	 * @throws ProfileNotFound if the profile does not exist
+	 *
+	 * @return this for chaining
+	 */
+	AiAgent function withProfile( required string name ) {
+		var previous = variables.profile
+		// Keep every tool the current model has: the agent's own, sub-agent tools, skill and MCP tools
+		variables.aiModel = buildProfileModel( arguments.name ).withTools( variables.aiModel.getTools() )
+		variables.profile = arguments.name
+		BoxAnnounce( "onAIProfileSwitch", { agent: this, from: previous, to: arguments.name, scope: "agent" } )
+		return this
+	}
+
+	/**
+	 * Build a model for a profile, the same way aiModel( profile ) does
+	 *
+	 * @name The profile name
+	 */
+	private AiModel function buildProfileModel( required string name ) {
+		var resolved = ProfileResolver::resolve( arguments.name )
+		var service = aiService( provider: resolved.provider, profile: arguments.name )
+		var profileModel = new AiModel( service ).withParams( resolved.params ).withOptions( resolved.options )
+		profileModel.setProfile( arguments.name )
+		BoxAnnounce( "onAIModelCreate", { model: profileModel, service: service } )
+		return profileModel
+	}
+
+	/**
+	 * The model for one run: the agent's own, or a temporary one when options.profile names another profile.
+	 * The agent itself is not changed, so the next run uses its own profile again.
+	 *
+	 * @options The effective run options
+	 */
+	private AiModel function resolveRunModel( required struct options ) {
+		var requested = arguments.options.profile ?: ""
+		if ( !len( requested ) || requested == variables.profile ) {
+			return variables.aiModel
+		}
+		var runModel = buildProfileModel( requested ).withTools( variables.aiModel.getTools() )
+		BoxAnnounce( "onAIProfileSwitch", { agent: this, from: variables.profile, to: requested, scope: "run" } )
+		return runModel
 	}
 
 	/**
@@ -1316,6 +1372,7 @@ class extends="AiBaseRunnable" {
 			"description": variables.description,
 			"instructions": variables.instructions,
 			"model": variables.aiModel.getConfig(),
+			"profile": variables.profile,
 			"middlewareCount": variables.middleware.len(),
 			"middleware": listMiddleware(),
 			"memoryCount": variables.memories.len(),

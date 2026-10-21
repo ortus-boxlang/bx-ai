@@ -14,6 +14,8 @@
  * ----------------------------------------------------------------------------------
  * AI Chat Stream
  */
+import bxModules.bxai.models.util.ProfileResolver;
+
 @BoxBIF
 class {
 
@@ -71,8 +73,15 @@ class {
 		struct options = {},
 		struct headers = {}
 	) {
+		// Layer the requested (or default) profile first, the module settings below only fill gaps
+		var profiled = ProfileResolver::applyFor( arguments.params, arguments.options )
+		arguments.params = profiled.params
+		arguments.options = profiled.options
+
 		// Merge options: MODULE_SETTINGS first, then DEFAULT_OPTIONS fills in gaps
 		arguments.options.append( static.MODULE_SETTINGS, false );
+		// Profiles hold env var names and are never copied into a request
+		arguments.options.delete( "profiles" );
 		arguments.options.append( static.DEFAULT_OPTIONS, false );
 		arguments.options.stream = true;
 

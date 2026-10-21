@@ -25,6 +25,7 @@
  * Every module will have its own classloader that will be used to load the module libs and dependencies.
  */
 import bxModules.bxai.models.mcp.MCPStdioClient;
+import bxModules.bxai.models.util.ProfileResolver;
 
 class {
 
@@ -126,6 +127,21 @@ class {
 				// 	params : {},
 				// 	options: {}
 				// }
+			},
+			// Named combinations of provider, model, params, options and API key. Select one with
+			// options.profile in aiChat()/aiEmbed(), or profile in aiModel()/aiAgent()/aiService().
+			// A profile name cannot be the name of a provider or "default".
+			// Params layer: defaultParams < providers.<name>.params < profile < call params.
+			// Ex: fast : { provider: "openai", model: "gpt-4.1-mini", params: { temperature: 0 }, apiKeyEnv: "OPENAI_API_KEY" }
+			profiles : {
+			},
+			// The profile used when none is requested. Empty means "default", built from the settings above.
+			defaultProfile : "",
+			// Defaults for aiEmbed(). Empty values use the default provider and its own embedding model.
+			embeddings : {
+				defaultProvider : "",
+				defaultModel    : "",
+				defaultApiKey   : ""
 			},
 			// The default timeout of the ai requests
 			timeout : 90,
@@ -343,6 +359,7 @@ class {
 			"onAIModelCreate",
 			"onAIProviderCreate",
 			"onMissingAiProvider",
+			"onAIProfileSwitch",
 
 			// Request & Response Events
 			"onAIChatRequest",
@@ -447,6 +464,9 @@ class {
 	 * Also assures us that datasources and caches are available if our skills need them during auto-discovery.
 	 */
 	function onRuntimeStart(){
+		// Reject bad profile settings early, with the setting that is wrong
+		ProfileResolver::validate( moduleRecord.settings )
+
 		// Auto-discover global skills from the configured skillsDirectory
 		var skillsDir = moduleRecord.settings.skillsDirectory
 

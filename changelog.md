@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🥊 Added
+
+- **Configuration profiles**: name a combination of provider, model, params, options and API key once, then select it by name. A profile is set in the new `profiles` setting, for example `fast : { provider: "openai", model: "gpt-4.1-mini", params: { temperature: 0 }, apiKeyEnv: "OPENAI_API_KEY" }`. A profile may set `provider`, `model` (shorthand for `params.model`), `params`, `options`, `apiKeyEnv` (the NAME of the env var that holds the key, preferred) or `apiKey`. Params layer as `defaultParams`, then `providers.<name>.params`, then the profile, then the params of the call. The profile `default` always exists: it is the top level `provider`, `apiKey` and `defaultParams`, and the new `defaultProfile` setting makes another profile the default. Without profiles nothing changes.
+  - `aiChat( ..., options: { profile: "fast" } )`, `aiChatStream()`, `aiEmbed()`, `aiService( profile: "fast" )`, `aiModel( profile: "fast" )` and `aiAgent( profile: "fast" )`. An explicit provider, API key, param or option always wins over the profile. A profile API key is only used with the provider of the profile.
+  - Agents: `agent.withProfile( "planner" )` switches the agent for good, `agent.run( input, params, { profile: "planner" } )` (and `stream()`) switches for one run only. The model is replaced, memory, tools, sub-agents, params and options stay. `agent.getProfile()` returns the active profile. Seed a sub-agent with its own profile through `aiAgent( profile: )`.
+  - Introspection for chat UIs and remote control: `aiProfiles()`, `aiProfile( name )` and `aiProviders()` return plain structs and never an API key, only `hasApiKey` and the env var name. Params and options that look like secrets are masked.
+  - Validation when the module starts: a profile name cannot be a provider name, `default`, or contain characters other than letters, numbers, `_` and `-`, and `defaultProfile` must name a profile. Errors are `InvalidConfiguration`. An unknown profile at call time throws `ProfileNotFound`.
+  - New interception point `onAIProfileSwitch` with `{ agent, from, to, scope }`, where scope is `agent` or `run`.
+  - Profiles are never copied into request options, so a key can not reach logs or events through them.
+- **Embeddings defaults**: the new `embeddings` setting (`defaultProvider`, `defaultModel`, `defaultApiKey`) gives `aiEmbed()` its own default instead of the chat provider. Empty values keep the old behavior.
+- `MockService` records the other params of each request (`temperature`, `max_tokens`, ...) in `getRecorded()` as `params`.
+
 ## [3.6.0] - 2026-10-20
 
 ### ⚠️ Migration

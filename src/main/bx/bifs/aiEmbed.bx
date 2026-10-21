@@ -38,6 +38,8 @@
  * )
  * ```
  */
+import bxModules.bxai.models.util.ProfileResolver;
+
 @BoxBIF
 class {
 
@@ -48,7 +50,7 @@ class {
 	 *
 	 * @input The input text or array of texts to generate embeddings for
 	 * @params A set of request params to pass to the provider (e.g., model, encoding_format)
-	 * @options A set of request options (e.g., provider, apiKey, returnFormat, timeout, logResponse, logResponseToConsole, logRequest, logRequestToConsole)
+	 * @options A set of request options (e.g., profile, provider, apiKey, returnFormat, timeout, logResponse, logResponseToConsole, logRequest, logRequestToConsole)
 	 *
 	 * @return The embeddings response from the provider. Format depends on returnFormat option:
 	 *         - "raw" (default): Full API response with metadata
@@ -60,8 +62,27 @@ class {
 		struct params = {},
 		struct options = {}
 	){
+		// Embedding defaults: the profile is applied by name, else the embeddings settings fill what the call left out.
+		// Order of priority: call, profile, embeddings settings, then the default provider settings.
+		var profiled = ProfileResolver::applyFor( arguments.params, arguments.options )
+		arguments.params = profiled.params
+		arguments.options = profiled.options
+		var embeddingSettings = static.MODULE_SETTINGS.embeddings ?: {}
+		if( !len( arguments.options.provider ?: "" ) && len( embeddingSettings.defaultProvider ?: "" ) ){
+			arguments.options.provider = embeddingSettings.defaultProvider
+			// The global apiKey belongs to the default provider, so an embeddings provider gets its own key or the convention one
+			if( !arguments.options.keyExists( "apiKey" ) ){
+				arguments.options.apiKey = embeddingSettings.defaultApiKey ?: ""
+			}
+		}
+		if( !len( arguments.params.model ?: "" ) && len( embeddingSettings.defaultModel ?: "" ) ){
+			arguments.params.model = embeddingSettings.defaultModel
+		}
+
 		// Merge options
 		arguments.options.append( static.MODULE_SETTINGS, false );
+		// Profiles hold env var names and are never copied into a request
+		arguments.options.delete( "profiles" );
 
 		// Create the embedding request
 		var embeddingRequest = new bxModules.bxai.models.requests.AiEmbeddingRequest(
