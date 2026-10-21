@@ -1,0 +1,364 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Resolves, lists and validates the named configuration profiles of the module settings.
+ *
+ * A profile is a named combination of provider, model, params, options and API key.
+ * The profile "default" always exists: it is the top level `provider`, `apiKey` and `defaultParams`
+ * settings, unless `defaultProfile` points at a named profile.
+ *
+ * Layering of params (lowest to highest): defaultParams, providers.<name>.params, profile, call params.
+ * The first two layers are applied by the provider service itself, the resolver adds the last two.
+ *
+ * Profiles never store a resolved API key. They hold an env var NAME (`apiKeyEnv`) that is read when
+ * the profile is resolved, and nothing returned by describe() or list() contains a key.
+ */
+class {
+
+	static {
+		/**
+		 * The providers that ship with the module, used to validate profile names and for aiProviders()
+		 */
+		PROVIDERS = [
+			"bedrock",
+			"cartesia",
+			"claude",
+			"cloudflare",
+			"cohere",
+			"deepseek",
+			"docker",
+			"elevenlabs",
+			"gemini",
+			"grok",
+			"groq",
+			"huggingface",
+			"minimax",
+			"mistral",
+			"mock",
+			"ollama",
+			"openai",
+			"openai-compatible",
+			"openrouter",
+			"perplexity",
+			"voyage"
+		];
+		// The implicit profile built from the top level settings
+		DEFAULT_PROFILE = "default";
+		// Option and param keys whose values are masked when a profile is described
+		SECRET_KEY_PATTERN = "(?i)(key|token|secret|password)";
+	}
+
+	/**
+	 * The names of the providers that ship with the module
+	 *
+	 * @return Array of provider names
+	 */
+	static array function providerNames() {
+		return static.PROVIDERS;
+	}
+
+	/**
+	 * The name of the profile used when none is requested: `defaultProfile` if set, else "default"
+	 */
+	static string function defaultName() {
+		var configured = getModuleInfo( "bxai" ).settings.defaultProfile ?: "";
+		return len( configured ) ? configured : static.DEFAULT_PROFILE;
+	}
+
+	/**
+	 * The profile a call asks for: `options.profile`, else the configured `defaultProfile` when the call
+	 * did not name a provider. Empty means no profile applies and the call behaves as it always did.
+	 *
+	 * @options The call options
+	 */
+	static string function profileFor( struct options = {} ) {
+		if ( len( arguments.options.profile ?: "" ) ) {
+			return arguments.options.profile;
+		}
+		if ( !len( arguments.options.provider ?: "" ) ) {
+			return getModuleInfo( "bxai" ).settings.defaultProfile ?: "";
+		}
+		return "";
+	}
+
+	/**
+	 * Does this profile exist? "default" always does.
+	 *
+	 * @name The profile name
+	 */
+	static boolean function exists( required string name ) {
+		if ( arguments.name == static.DEFAULT_PROFILE ) {
+			return true;
+		}
+		return profileNames().containsNoCase( arguments.name );
+	}
+
+	/**
+	 * The names of the configured profiles, without the implicit "default"
+	 *
+	 * @return Array of profile names
+	 */
+	static array function profileNames() {
+		var profiles = getModuleInfo( "bxai" ).settings.profiles ?: {};
+		return isStruct( profiles ) ? profiles.keyArray() : [];
+	}
+
+	/**
+	 * Resolve a profile into what the BIFs need to build a request.
+	 * The returned `apiKey` is for internal use only, never show it. Use describe() for display.
+	 *
+	 * @name The profile name, empty for the default profile
+	 *
+	 * @throws ProfileNotFound if the profile does not exist
+	 *
+	 * @return { name, description, provider, params, options, apiKey }
+	 */
+	static struct function resolve( string name = "" ) {
+		var settings = getModuleInfo( "bxai" ).settings;
+		var profileName = len( arguments.name ) ? arguments.name : defaultName();
+
+		if ( profileName == static.DEFAULT_PROFILE ) {
+			return {
+				name        : static.DEFAULT_PROFILE,
+				description : "",
+				provider    : settings.provider,
+				params      : {},
+				options     : {},
+				apiKey      : ""
+			};
+		}
+
+		if ( !exists( profileName ) ) {
+			throw(
+				type    : "ProfileNotFound",
+				message : "Profile [#profileName#] is not configured. Available profiles are: [#( [ static.DEFAULT_PROFILE ] ).append( profileNames(), true ).toList()#]"
+			);
+		}
+
+		var profile = settings.profiles[ profileName ];
+		var params = duplicate( profile.params ?: {} );
+		// `model` is shorthand for params.model
+		if ( len( profile.model ?: "" ) ) {
+			params.model = profile.model;
+		}
+
+		return {
+			name        : profileName,
+			description : profile.description ?: "",
+			provider    : len( profile.provider ?: "" ) ? profile.provider : settings.provider,
+			params      : params,
+			options     : duplicate( profile.options ?: {} ),
+			apiKey      : resolveApiKey( profile )
+		};
+	}
+
+	/**
+	 * Layer a profile under the params and options of a call.
+	 * Call values win. The profile only supplies the provider and API key when the call did not,
+	 * and never gives its API key to a different provider than its own.
+	 *
+	 * @name The profile name
+	 * @params The call params
+	 * @options The call options
+	 *
+	 * @return { params, options, profile } the layered params and options, plus the resolved profile name
+	 */
+	static struct function apply( required string name, struct params = {}, struct options = {} ) {
+		var profile = resolve( arguments.name );
+		var layeredOptions = profile.options.append( arguments.options, true );
+
+		layeredOptions.provider = layeredOptions.provider ?: profile.provider;
+		if ( !len( layeredOptions.apiKey ?: "" ) && len( profile.apiKey ) && layeredOptions.provider == profile.provider ) {
+			layeredOptions.apiKey = profile.apiKey;
+		}
+		// The global apiKey belongs to the global provider. Leave it empty for any other provider so the
+		// <PROVIDER>_API_KEY convention is used instead of sending one provider's key to another.
+		if ( !layeredOptions.keyExists( "apiKey" ) && layeredOptions.provider != getModuleInfo( "bxai" ).settings.provider ) {
+			layeredOptions.apiKey = "";
+		}
+		layeredOptions.profile = profile.name;
+
+		return {
+			params  : profile.params.append( arguments.params, true ),
+			options : layeredOptions,
+			profile : profile.name
+		};
+	}
+
+	/**
+	 * Apply the profile a call asks for, if any (see profileFor()). Without a profile the params and
+	 * options come back untouched.
+	 *
+	 * @params The call params
+	 * @options The call options
+	 *
+	 * @return { params, options }
+	 */
+	static struct function applyFor( struct params = {}, struct options = {} ) {
+		var profileName = profileFor( arguments.options );
+		if ( !len( profileName ) ) {
+			return { params : arguments.params, options : arguments.options };
+		}
+		return apply( profileName, arguments.params, arguments.options );
+	}
+
+	/**
+	 * Describe a profile for display. Never contains an API key.
+	 *
+	 * @name The profile name, empty for the default profile
+	 *
+	 * @return { name, description, provider, model, params, options, apiKeyEnv, hasApiKey, isDefault }
+	 */
+	static struct function describe( string name = "" ) {
+		var settings = getModuleInfo( "bxai" ).settings;
+		var profile = resolve( arguments.name );
+		var raw = profile.name == static.DEFAULT_PROFILE ? {} : settings.profiles[ profile.name ];
+		var conventionKey = getSystemSetting( "#profile.provider.ucase()#_API_KEY", "" );
+
+		return {
+			name        : profile.name,
+			description : profile.description,
+			provider    : profile.provider,
+			model       : profile.params.model ?: ( settings.providers[ profile.provider ].params.model ?: ( settings.defaultParams.model ?: "" ) ),
+			params      : maskSecrets( profile.params ),
+			options     : maskSecrets( profile.options ),
+			apiKeyEnv   : raw.apiKeyEnv ?: "",
+			hasApiKey   : len( profile.apiKey ) > 0 || len( conventionKey ) > 0 || len( settings.apiKey ?: "" ) > 0,
+			isDefault   : profile.name == defaultName()
+		};
+	}
+
+	/**
+	 * Describe every profile, the default profile first
+	 *
+	 * @return Array of described profiles
+	 */
+	static array function list() {
+		var names = [ static.DEFAULT_PROFILE ];
+		names.append( profileNames(), true );
+		var described = [];
+		for ( var profileName in names ) {
+			described.append( describe( profileName ) );
+		}
+		return described;
+	}
+
+	/**
+	 * Describe the providers a caller can pick: the built in ones plus any named in the `providers` setting.
+	 * Never contains an API key, only whether one is available.
+	 *
+	 * @return Array of { name, isDefault, hasApiKey }
+	 */
+	static array function describeProviders() {
+		var settings = getModuleInfo( "bxai" ).settings;
+		var names = duplicate( static.PROVIDERS );
+		for ( var configured in ( isStruct( settings.providers ?: "" ) ? settings.providers.keyArray() : [] ) ) {
+			if ( !names.containsNoCase( configured ) ) {
+				names.append( configured );
+			}
+		}
+		var described = [];
+		for ( var providerName in names ) {
+			described.append( {
+				name      : providerName,
+				isDefault : providerName == settings.provider,
+				hasApiKey : len( getSystemSetting( "#providerName.ucase()#_API_KEY", "" ) ) > 0 || ( providerName == settings.provider && len( settings.apiKey ?: "" ) > 0 )
+			} );
+		}
+		return described;
+	}
+
+	/**
+	 * Validate the profile settings. Called when the module starts.
+	 *
+	 * @settings The module settings
+	 *
+	 * @throws InvalidConfiguration on the first invalid setting found
+	 */
+	static void function validate( required struct settings ) {
+		var profiles = arguments.settings.profiles ?: {};
+
+		if ( !isStruct( profiles ) ) {
+			throw( type: "InvalidConfiguration", message: "The bxai [profiles] setting must be a struct of profile name to profile." );
+		}
+
+		// A profile may not shadow a provider, since both are selected by name
+		var reservedNames = static.PROVIDERS.map( providerName => providerName.lcase() );
+		if ( isStruct( arguments.settings.providers ?: "" ) ) {
+			reservedNames.append( arguments.settings.providers.keyArray().map( providerName => providerName.lcase() ), true );
+		}
+
+		for ( var profileName in profiles.keyArray() ) {
+			var profile = profiles[ profileName ];
+
+			if ( !reFind( "^[A-Za-z][A-Za-z0-9_\-]*$", profileName ) ) {
+				throw( type: "InvalidConfiguration", message: "Profile name [#profileName#] is invalid. Use letters, numbers, underscores and dashes, starting with a letter." );
+			}
+			if ( profileName.lcase() == static.DEFAULT_PROFILE ) {
+				throw( type: "InvalidConfiguration", message: "Profile name [#profileName#] is reserved. The default profile is built from the top level provider, apiKey and defaultParams settings. Use [defaultProfile] to pick another." );
+			}
+			if ( reservedNames.contains( profileName.lcase() ) ) {
+				throw( type: "InvalidConfiguration", message: "Profile name [#profileName#] cannot be the same as a provider name." );
+			}
+			if ( !isStruct( profile ) ) {
+				throw( type: "InvalidConfiguration", message: "Profile [#profileName#] must be a struct." );
+			}
+			for ( var textKey in [ "description", "provider", "model", "apiKey", "apiKeyEnv" ] ) {
+				if ( profile.keyExists( textKey ) && !isSimpleValue( profile[ textKey ] ) ) {
+					throw( type: "InvalidConfiguration", message: "Profile [#profileName#] setting [#textKey#] must be a string." );
+				}
+			}
+			for ( var structKey in [ "params", "options" ] ) {
+				if ( profile.keyExists( structKey ) && !isStruct( profile[ structKey ] ) ) {
+					throw( type: "InvalidConfiguration", message: "Profile [#profileName#] setting [#structKey#] must be a struct." );
+				}
+			}
+			// Custom providers can be added by other modules, so an unknown provider is only a warning
+			if ( len( profile.provider ?: "" ) && !static.PROVIDERS.containsNoCase( profile.provider ) ) {
+				writeLog(
+					text : "bxAI: Profile [#profileName#] uses provider [#profile.provider#], which is not a built in provider",
+					type : "warning",
+					log  : "ai"
+				);
+			}
+		}
+
+		var defaultProfile = arguments.settings.defaultProfile ?: "";
+		if ( len( defaultProfile ) && defaultProfile != static.DEFAULT_PROFILE && !profiles.keyExists( defaultProfile ) ) {
+			throw( type: "InvalidConfiguration", message: "The [defaultProfile] setting names [#defaultProfile#], which is not a configured profile." );
+		}
+	}
+
+	/**
+	 * The API key of a profile: the env var named by `apiKeyEnv`, else a literal `apiKey`, else empty
+	 */
+	private static string function resolveApiKey( required struct profile ) {
+		if ( len( arguments.profile.apiKeyEnv ?: "" ) ) {
+			return getSystemSetting( arguments.profile.apiKeyEnv, "" );
+		}
+		return arguments.profile.apiKey ?: "";
+	}
+
+	/**
+	 * Copy a struct with the values of secret looking keys replaced by ****
+	 */
+	private static struct function maskSecrets( required struct data ) {
+		var secretPattern = static.SECRET_KEY_PATTERN;
+		return arguments.data.map( ( key, value ) => reFind( secretPattern, key ) ? "****" : value );
+	}
+
+}

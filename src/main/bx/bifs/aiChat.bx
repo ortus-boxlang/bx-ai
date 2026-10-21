@@ -14,6 +14,8 @@
  * ----------------------------------------------------------------------------------
  * AI
  */
+import bxModules.bxai.models.util.ProfileResolver;
+
 @BoxBIF
 class {
 
@@ -44,6 +46,7 @@ class {
 	 * The <code>options</code> are a struct of request options to pass to the service for the model request. Available options are:
 	 * <ul>
 	 * <li>provider:string - The provider to use for the chat. If not passed, we will use the default from the configuration.</li>
+	 * <li>profile:string - The name of a configured profile: its provider, API key, params and options are used. Call values win.</li>
 	 * <li>apiKey:string - The API Key for the provider. If not passed, we will use the default from the configuration.</li>
 	 * <li>timeout:numeric - The timeout in seconds for the request. The default is 90 seconds</li>
 	 * <li>logResponse:boolean - Log the response into the ai.log. The default is false</li>
@@ -66,6 +69,11 @@ class {
 		struct options = {},
 		struct headers = {}
 	) {
+		// Layer the requested (or default) profile under the call params and options
+		var profiled = ProfileResolver::applyFor( arguments.params, arguments.options )
+		arguments.params = profiled.params
+		arguments.options = profiled.options
+
 		// Validate returnFormat only if it's a simple string value
 		// Complex values (class instances, structs, arrays) are for structured output
 		if( isSimpleValue( arguments.options?.returnFormat ) && !static.VALID_RESPONSE_FORMATS.contains( arguments.options.returnFormat ) ){
