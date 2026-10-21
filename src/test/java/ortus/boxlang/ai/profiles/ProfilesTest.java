@@ -297,6 +297,24 @@ public class ProfilesTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "fromProfile" ) ) ).contains( "[Claude]" );
 	}
 
+	@DisplayName( "Profiles are never copied into the options of a request" )
+	@Test
+	public void testProfilesNotInRequestOptions() {
+		run( """
+		         chatRequest = aiChatRequest( "Hello" );
+		         prepared = chatRequest.prepareOptions( { timeout: 5 }, {} );
+		         isStruct = isStruct( prepared );
+		         hasProfiles = prepared.keyExists( "profiles" );
+		         keepsSettings = prepared.keyExists( "provider" );
+		         userWins = prepared.timeout == 5;
+		     """ );
+
+		assertThat( variables.getAsBoolean( Key.of( "isStruct" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "hasProfiles" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "keepsSettings" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "userWins" ) ) ).isTrue();
+	}
+
 	@DisplayName( "aiProviders lists the providers without keys" )
 	@Test
 	public void testProviders() {
