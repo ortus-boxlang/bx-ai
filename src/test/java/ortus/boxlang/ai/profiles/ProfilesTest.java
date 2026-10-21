@@ -29,7 +29,7 @@ public class ProfilesTest extends BaseIntegrationTest {
 		import bxModules.bxai.models.util.ProfileResolver;
 		settings = getModuleInfo( "bxai" ).settings;
 		settings.profiles = {
-			fast    : { provider: "mock", model: "fast-model", params: { temperature: 0 } },
+			fast    : { description: "Quick and cheap", provider: "mock", model: "fast-model", params: { temperature: 0 } },
 			planner : { provider: "mock", model: "planner-model", params: { temperature: 0.7, max_tokens: 4096 } },
 			keyed   : { provider: "mock", apiKeyEnv: "%s" }
 		};
@@ -211,6 +211,7 @@ public class ProfilesTest extends BaseIntegrationTest {
 		    "{ profiles: { \"default\": { model: \"x\" } } }",
 		    "{ profiles: { \"bad name\": { model: \"x\" } } }",
 		    "{ profiles: { fast: { params: \"not a struct\" } } }",
+		    "{ profiles: { fast: { description: { not: \"text\" } } } }",
 		    "{ profiles: { fast: { model: \"x\" } }, defaultProfile: \"missing\" }",
 		    "{ profiles: { fast: { model: \"x\" } }, providers: { fast: {} } }"
 		};
@@ -244,6 +245,9 @@ public class ProfilesTest extends BaseIntegrationTest {
 		         listing = jsonSerialize( aiProfiles() ) & jsonSerialize( aiProfile( "keyed" ) ) & jsonSerialize( aiProviders() ) & jsonSerialize( aiModel( profile: "keyed" ).getConfig() );
 		         keyed = aiProfile( "keyed" );
 		         hasKey = keyed.hasApiKey;
+		         fastDescription = aiProfile( "fast" ).description;
+		         listedDescription = aiProfiles().filter( p => p.name == "fast" ).first().description;
+		         defaultDescription = aiProfile( "default" ).description;
 		         envName = keyed.apiKeyEnv;
 		     """ );
 
@@ -251,6 +255,9 @@ public class ProfilesTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "otherKey" ) ) ).isNotEqualTo( KEY_VALUE );
 		assertThat( variables.getAsString( Key.of( "explicitKey" ) ) ).isEqualTo( "explicit" );
 		assertThat( variables.getAsString( Key.of( "listing" ) ) ).doesNotContain( KEY_VALUE );
+		assertThat( variables.getAsString( Key.of( "fastDescription" ) ) ).isEqualTo( "Quick and cheap" );
+		assertThat( variables.getAsString( Key.of( "listedDescription" ) ) ).isEqualTo( "Quick and cheap" );
+		assertThat( variables.getAsString( Key.of( "defaultDescription" ) ) ).isEmpty();
 		assertThat( variables.getAsBoolean( Key.of( "hasKey" ) ) ).isTrue();
 		assertThat( variables.getAsString( Key.of( "envName" ) ) ).isEqualTo( KEY_ENV );
 	}

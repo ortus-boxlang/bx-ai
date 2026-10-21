@@ -125,7 +125,7 @@ class {
 	 *
 	 * @throws ProfileNotFound if the profile does not exist
 	 *
-	 * @return { name, provider, params, options, apiKey }
+	 * @return { name, description, provider, params, options, apiKey }
 	 */
 	static struct function resolve( string name = "" ) {
 		var settings = getModuleInfo( "bxai" ).settings;
@@ -133,11 +133,12 @@ class {
 
 		if ( profileName == static.DEFAULT_PROFILE ) {
 			return {
-				name     : static.DEFAULT_PROFILE,
-				provider : settings.provider,
-				params   : {},
-				options  : {},
-				apiKey   : ""
+				name        : static.DEFAULT_PROFILE,
+				description : "",
+				provider    : settings.provider,
+				params      : {},
+				options     : {},
+				apiKey      : ""
 			};
 		}
 
@@ -156,11 +157,12 @@ class {
 		}
 
 		return {
-			name     : profileName,
-			provider : len( profile.provider ?: "" ) ? profile.provider : settings.provider,
-			params   : params,
-			options  : duplicate( profile.options ?: {} ),
-			apiKey   : resolveApiKey( profile )
+			name        : profileName,
+			description : profile.description ?: "",
+			provider    : len( profile.provider ?: "" ) ? profile.provider : settings.provider,
+			params      : params,
+			options     : duplicate( profile.options ?: {} ),
+			apiKey      : resolveApiKey( profile )
 		};
 	}
 
@@ -219,7 +221,7 @@ class {
 	 *
 	 * @name The profile name, empty for the default profile
 	 *
-	 * @return { name, provider, model, params, options, apiKeyEnv, hasApiKey, isDefault }
+	 * @return { name, description, provider, model, params, options, apiKeyEnv, hasApiKey, isDefault }
 	 */
 	static struct function describe( string name = "" ) {
 		var settings = getModuleInfo( "bxai" ).settings;
@@ -228,14 +230,15 @@ class {
 		var conventionKey = getSystemSetting( "#profile.provider.ucase()#_API_KEY", "" );
 
 		return {
-			name      : profile.name,
-			provider  : profile.provider,
-			model     : profile.params.model ?: ( settings.providers[ profile.provider ].params.model ?: ( settings.defaultParams.model ?: "" ) ),
-			params    : maskSecrets( profile.params ),
-			options   : maskSecrets( profile.options ),
-			apiKeyEnv : raw.apiKeyEnv ?: "",
-			hasApiKey : len( profile.apiKey ) > 0 || len( conventionKey ) > 0 || len( settings.apiKey ?: "" ) > 0,
-			isDefault : profile.name == defaultName()
+			name        : profile.name,
+			description : profile.description,
+			provider    : profile.provider,
+			model       : profile.params.model ?: ( settings.providers[ profile.provider ].params.model ?: ( settings.defaultParams.model ?: "" ) ),
+			params      : maskSecrets( profile.params ),
+			options     : maskSecrets( profile.options ),
+			apiKeyEnv   : raw.apiKeyEnv ?: "",
+			hasApiKey   : len( profile.apiKey ) > 0 || len( conventionKey ) > 0 || len( settings.apiKey ?: "" ) > 0,
+			isDefault   : profile.name == defaultName()
 		};
 	}
 
@@ -314,7 +317,7 @@ class {
 			if ( !isStruct( profile ) ) {
 				throw( type: "InvalidConfiguration", message: "Profile [#profileName#] must be a struct." );
 			}
-			for ( var textKey in [ "provider", "model", "apiKey", "apiKeyEnv" ] ) {
+			for ( var textKey in [ "description", "provider", "model", "apiKey", "apiKeyEnv" ] ) {
 				if ( profile.keyExists( textKey ) && !isSimpleValue( profile[ textKey ] ) ) {
 					throw( type: "InvalidConfiguration", message: "Profile [#profileName#] setting [#textKey#] must be a string." );
 				}
