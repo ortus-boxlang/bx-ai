@@ -1,0 +1,18 @@
+/**
+ * Test double: a rate limit store that always fails
+ */
+class implements="bxModules.bxai.models.mcp.ratelimit.IRateLimitStore" {
+
+	numeric function increment( required string key, required numeric ttlSeconds, numeric amount = 1 ) {
+		throw( type: "StoreDown", message: "store down" )
+	}
+
+	numeric function get( required string key ) {
+		throw( type: "StoreDown", message: "store down" )
+	}
+
+	void function remove( required string key ) {
+		throw( type: "StoreDown", message: "store down" )
+	}
+
+}

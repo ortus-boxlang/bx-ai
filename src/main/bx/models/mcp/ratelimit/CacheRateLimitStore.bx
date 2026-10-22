@@ -1,0 +1,62 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Cache-backed IRateLimitStore, the default. Uses the BoxLang `cache( cacheName )` BIF.
+ *
+ * Counters are changed under a lock named after the key, so the count is exact inside one JVM. The cache
+ * timeout is in whole minutes, so a counter lives for at least one minute. The limiter does not depend on
+ * that: every counter key carries its window number.
+ *
+ * For several nodes use a shared cache provider and, if you need exact counts across nodes, a store with a
+ * native atomic increment. Use a cache that does not evict early (a dedicated cache, not the default one
+ * under memory pressure), because an evicted counter is a counter that starts again at 0.
+ */
+class implements="IRateLimitStore" {
+
+	/**
+	 * The name of the cache
+	 */
+	property name="cacheName" type="string";
+
+	static {
+		final DEFAULT_CACHE_NAME = "default"
+	}
+
+	/**
+	 * @cacheName The name of the BoxLang cache to use, "default" if empty
+	 */
+	function init( string cacheName = static.DEFAULT_CACHE_NAME ) {
+		variables.cacheName = len( arguments.cacheName ) ? arguments.cacheName : static.DEFAULT_CACHE_NAME
+		variables.cache     = cache( variables.cacheName )
+		return this
+	}
+
+	numeric function increment( required string key, required numeric ttlSeconds, numeric amount = 1 ) {
+		var minutes = max( 1, ceiling( arguments.ttlSeconds / 60 ) )
+		lock name="bxai-ratelimit-#arguments.key#" type="exclusive" timeout="5" throwontimeout="true" {
+			var current = variables.cache.get( arguments.key ).orElse( 0 ) + arguments.amount
+			variables.cache.set( arguments.key, max( 0, current ), minutes, 0 )
+		}
+		return max( 0, current )
+	}
+
+	numeric function get( required string key ) {
+		return variables.cache.get( arguments.key ).orElse( 0 )
+	}
+
+	void function remove( required string key ) {
+		variables.cache.clear( arguments.key )
+	}
+
+}

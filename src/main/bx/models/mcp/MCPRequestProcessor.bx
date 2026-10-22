@@ -245,6 +245,45 @@ class {
 			return handleCORSPreflight( response, targetServer );
 		}
 
+		// Extract the API key once, X-API-Key header first and then a Bearer token
+		var apiKey = "";
+		var apiKeyChecked = false;
+		var apiKeyValid = false;
+		var authHeader = requestHeaders[ "Authorization" ] ?: "";
+		if ( requestHeaders.keyExists( "X-API-Key" ) ) {
+			apiKey = requestHeaders[ "X-API-Key" ];
+		} else if ( authHeader.findNoCase( "Bearer " ) ) {
+			apiKey = authHeader.replaceNoCase( "Bearer ", "" ).trim();
+		}
+
+		// Rate limit, before authentication so floods of failed logins are limited too
+		var rateGate = targetServer.getRateLimitGate();
+		if ( !isNull( rateGate ) ) {
+			// Only an API key the provider accepts becomes a bucket, fake keys fall back to the IP bucket
+			var verifiedKey = "";
+			if ( rateGate.getKeyType() == "apiKey" && len( apiKey ) && targetServer.hasApiKeyProvider() ) {
+				apiKeyChecked = true;
+				apiKeyValid = targetServer.verifyApiKey( apiKey, arguments.requestData );
+				verifiedKey = apiKeyValid ? apiKey : "";
+			}
+			var rate = rateGate.enforce( arguments.requestData, targetServer.getClientIP( arguments.requestData ), verifiedKey );
+			if ( !rate.allowed ) {
+				targetServer.recordSecurityFailure( "rateLimit" );
+				response.headers.append( rate.headers, true );
+				response.statusCode = rate.status;
+				response.content = jsonSerialize( {
+					"jsonrpc": "2.0",
+					"error": {
+						"code": rate.status == 429 ? MCPServer::errorCode( "RATE_LIMIT_EXCEEDED" ) : MCPServer::errorCode( "SERVER_ERROR" ),
+						"message": rate.status == 429 ? "Rate limit exceeded. Retry in #rate.retryAfter# seconds" : "Rate limiter unavailable"
+					},
+					"id": ""
+				} );
+				return response;
+			}
+			response.headers.append( rate.headers, true );
+		}
+
 		// Verify basic authentication if configured
 		if ( targetServer.hasBasicAuth() ) {
 			var authHeader = requestHeaders[ "Authorization" ] ?: "";
@@ -269,17 +308,12 @@ class {
 
 		// Verify API key if provider configured
 		if ( targetServer.hasApiKeyProvider() ) {
-			var apiKey = "";
-			var authHeader = requestHeaders[ "Authorization" ] ?: "";
-
-			// Extract API key from X-API-Key header or Bearer token
-			if ( requestHeaders.keyExists( "X-API-Key" ) ) {
-				apiKey = requestHeaders[ "X-API-Key" ];
-			} else if ( authHeader.findNoCase( "Bearer " ) ) {
-				apiKey = authHeader.replaceNoCase( "Bearer ", "" ).trim();
+			// The rate limit step may already have asked the provider
+			if ( len( apiKey ) && !apiKeyChecked ) {
+				apiKeyValid = targetServer.verifyApiKey( apiKey, arguments.requestData );
 			}
 
-			if ( !len( apiKey ) || !targetServer.verifyApiKey( apiKey, arguments.requestData ) ) {
+			if ( !len( apiKey ) || !apiKeyValid ) {
 				// Log failed API key attempt
 				static.mcpLogger.warn( "MCP API key validation failed for server: #mcpServerName#" );
 				targetServer.recordSecurityFailure( "apiKey" );

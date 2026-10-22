@@ -135,6 +135,18 @@ class {
 	];
 
 	/**
+	 * IPs or CIDR ranges of the proxies in front of this server.
+	 * Empty (default) or "*" trusts the forwarded headers from anyone, as before.
+	 * When set, forwarded headers are only honored when the connection comes from one of these.
+	 */
+	property name="trustedProxies" type="array" default=[];
+
+	/**
+	 * The rate limit gate, empty when the server has no rate limit
+	 */
+	property name="rateLimitGate" type="any" default="";
+
+	/**
 	 * Static configuration and service reference
 	 */
 	static {
@@ -198,6 +210,11 @@ class {
 		variables.maxRequestBodySize = 0
 		variables.apiKeyProvider = ""
 		variables.paused = false
+		variables.trustedProxies = []
+		variables.rateLimitGate = ""
+		variables.rateLimitOptOut = false
+
+		applyModuleDefaults()
 
 		return this
 	}
@@ -1236,6 +1253,11 @@ class {
 			)
 		}
 		variables.apiKeyProvider = arguments.provider
+		// The module default limits by apiKey: it starts now that the server can verify keys
+		var rateLimitSettings = getModuleInfo( "bxai" ).settings.mcp.server.rateLimit
+		if ( rateLimitSettings.enabled && rateLimitSettings.key == "apiKey" && !hasRateLimit() && !variables.rateLimitOptOut ) {
+			withRateLimit()
+		}
 		return this
 	}
 
@@ -1435,6 +1457,28 @@ class {
 	}
 
 	/**
+	 * Set the proxies in front of this server, so forwarded headers (X-Forwarded-For and friends) cannot be forged
+	 * by clients that reach the server directly. Used by getClientIP(), so the IP allowlist and the "ip" rate limit
+	 * both follow it.
+	 *
+	 * @proxies IPs or CIDR ranges. Empty or [ "*" ] trusts forwarded headers from anyone (only safe when clients can
+	 *          only reach the server through your proxy).
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function withTrustedProxies( required array proxies ) {
+		variables.trustedProxies = arguments.proxies.map( ip => trim( ip ).lCase() ).filter( ip => len( ip ) )
+		return this
+	}
+
+	/**
+	 * Get the configured trusted proxies
+	 */
+	array function getTrustedProxies() {
+		return variables.trustedProxies
+	}
+
+	/**
 	 * Extract the client IP address from request data.
 	 * Checks trusted proxy headers in order, then falls back to remoteAddr.
 	 *
@@ -1443,7 +1487,37 @@ class {
 	 * @return The extracted client IP address string
 	 */
 	string function getClientIP( required struct requestData ) {
-		// Check trusted proxy headers in order
+		var remoteAddr = _normalizeIPAddress( arguments.requestData.metadata?.remoteAddr ?: "" )
+
+		// With trusted proxies set, forwarded headers only count when the connection comes from a trusted proxy
+		if ( hasTrustedProxyList() ) {
+			if ( !isTrustedProxy( remoteAddr ) ) {
+				return remoteAddr
+			}
+			for ( var headerName in variables.trustedProxyHeaders ) {
+				var headerValue = arguments.requestData.headers?.get( headerName ) ?: ""
+				if ( !len( headerValue ) ) {
+					continue
+				}
+				if ( headerName == "x-forwarded-for" ) {
+					// Walk the chain from the right: the first hop that is not a trusted proxy is the client
+					var hops = headerValue.split( "," ).map( hop => _normalizeIPAddress( hop ) ).filter( hop => len( hop ) && hop != "unknown" && hop != "null" )
+					for ( var i = hops.len(); i >= 1; i-- ) {
+						if ( !isTrustedProxy( hops[ i ] ) ) {
+							return hops[ i ]
+						}
+					}
+				} else {
+					var singleIP = _extractIPFromHeader( headerValue )
+					if ( len( singleIP ) ) {
+						return singleIP
+					}
+				}
+			}
+			return remoteAddr
+		}
+
+		// No trusted proxies set (or "*"): check trusted proxy headers in order
 		for ( var headerName in variables.trustedProxyHeaders ) {
 			var headerValue = arguments.requestData.headers?.get( headerName ) ?: ""
 			if ( len( headerValue ) ) {
@@ -1455,8 +1529,115 @@ class {
 		}
 
 		// Fallback to remote address from metadata
-		var remoteAddr = arguments.requestData.metadata?.remoteAddr ?: ""
-		return _normalizeIPAddress( remoteAddr )
+		return remoteAddr
+	}
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * Rate Limiting
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Limit how often one client can call this server. Checked before authentication.
+	 *
+	 * The defaults come from the module setting `mcp.server.rateLimit`. A struct here overrides them.
+	 *
+	 * <pre>
+	 * server.withRateLimit()           // module defaults
+	 * server.withRateLimit( 100 )      // 100 requests per default window
+	 * server.withRateLimit( { limit: 100, window: 60, key: "apiKey", cacheName: "mcpLimits" } )
+	 * server.withRateLimit( false )    // no limit
+	 * </pre>
+	 *
+	 * Config keys:
+	 * - limit     Requests per window
+	 * - window    Window in seconds
+	 * - key       "ip", "apiKey" (needs withApiKeyProvider), "global", or a lambda( requestData ) => string,
+	 *             an empty result means the request is not limited
+	 * - store     "cache", "memory", a class path, or an IRateLimitStore instance
+	 * - cacheName The cache for the "cache" store
+	 * - failOpen  true lets requests in when the store fails, false answers 503
+	 *
+	 * @config false to remove the limit, a number for the limit, or a struct of settings
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function withRateLimit( any config = {} ) {
+		if ( isBoolean( arguments.config ) && !arguments.config ) {
+			variables.rateLimitGate = ""
+			variables.rateLimitOptOut = true
+			return this
+		}
+
+		var module = getModuleInfo( "bxai" ).settings.mcp.server.rateLimit
+		var cfg = {
+			limit    : module.limit,
+			window   : module.window,
+			key      : module.key,
+			store    : module.store,
+			cacheName: module.cacheName,
+			failOpen : module.failOpen
+		}
+		if ( isNumeric( arguments.config ) ) {
+			cfg.limit = arguments.config
+		} else if ( isStruct( arguments.config ) ) {
+			cfg.append( arguments.config, true )
+		} else if ( !( isBoolean( arguments.config ) && arguments.config ) ) {
+			throw( type: "InvalidArgument", message: "withRateLimit() takes false, a number or a struct" )
+		}
+
+		if ( isSimpleValue( cfg.key ) ) {
+			if ( !"ip,apiKey,global".listFindNoCase( cfg.key ) ) {
+				throw( type: "InvalidArgument", message: "Rate limit key must be ip, apiKey, global or a function, got [#cfg.key#]" )
+			}
+			// Keep the canonical casing
+			cfg.key = [ "ip", "apiKey", "global" ].filter( k => k.compareNoCase( cfg.key ) == 0 )[ 1 ]
+			if ( cfg.key == "apiKey" && !hasApiKeyProvider() ) {
+				throw( type: "InvalidArgument", message: "Rate limit key apiKey needs an API key provider, call withApiKeyProvider() first" )
+			}
+		} else if ( !isClosure( cfg.key ) && !isCustomFunction( cfg.key ) ) {
+			throw( type: "InvalidArgument", message: "Rate limit key must be ip, apiKey, global or a function" )
+		}
+
+		var store = resolveRateLimitStore( cfg.store, cfg.cacheName )
+		var limiter = new ratelimit.RateLimiter(
+			limit    : cfg.limit,
+			window   : cfg.window,
+			store    : store,
+			keyPrefix: "bxai:mcp:ratelimit:#variables.serverName#"
+		)
+		variables.rateLimitGate = new ratelimit.RateLimitGate(
+			limiter  : limiter,
+			key      : cfg.key,
+			failOpen : cfg.failOpen,
+			mcpServer: this
+		)
+		static.mcpLogger.info(
+			"Rate limit on MCP server [#variables.serverName#]: #cfg.limit# requests per #cfg.window#s by #isSimpleValue( cfg.key ) ? cfg.key : 'custom key'#"
+		)
+		return this
+	}
+
+	/**
+	 * Does this server have a rate limit
+	 */
+	boolean function hasRateLimit() {
+		return !isSimpleValue( variables.rateLimitGate )
+	}
+
+	/**
+	 * The RateLimiter, for status( key ) and reset( key ). Null when there is no rate limit.
+	 */
+	function getRateLimiter() {
+		return hasRateLimit() ? variables.rateLimitGate.getLimiter() : javacast( "null", "" )
+	}
+
+	/**
+	 * The rate limit gate used by the request processor. Null when there is no rate limit.
+	 */
+	function getRateLimitGate() {
+		return hasRateLimit() ? variables.rateLimitGate : javacast( "null", "" )
 	}
 
 	/**
@@ -1604,7 +1785,11 @@ class {
 	 * @return Complete stats struct
 	 */
 	struct function getStats() {
-		return variables.stats.getStats()
+		var allStats = variables.stats.getStats()
+		if ( hasRateLimit() ) {
+			allStats[ "rateLimit" ] = variables.rateLimitGate.getStats()
+		}
+		return allStats
 	}
 
 	/**
@@ -1623,6 +1808,9 @@ class {
 	 */
 	MCPServer function resetStats() {
 		variables.stats.reset()
+		if ( hasRateLimit() ) {
+			variables.rateLimitGate.resetStats()
+		}
 		return this
 	}
 
@@ -1658,7 +1846,7 @@ class {
 	/**
 	 * Record a security failure (basic auth, API key, body size)
 	 *
-	 * @type One of: "basicAuth", "apiKey", "bodySize"
+	 * @type One of: "basicAuth", "apiKey", "bodySize", "ipFilter", "rateLimit"
 	 *
 	 * @return This instance for chaining
 	 */
@@ -1879,6 +2067,59 @@ class {
 		}
 
 		return response
+	}
+
+	// ---------------------------------------------------------------------------------------------------------
+	// Private rate limit and proxy helpers
+	// ---------------------------------------------------------------------------------------------------------
+
+	/**
+	 * Apply `mcp.server.*` module settings to a new server
+	 */
+	private void function applyModuleDefaults() {
+		var serverSettings = getModuleInfo( "bxai" ).settings.mcp.server
+		if ( serverSettings.trustedProxies.len() ) {
+			withTrustedProxies( serverSettings.trustedProxies )
+		}
+		// With the apiKey key the limit starts once withApiKeyProvider() is called
+		if ( serverSettings.rateLimit.enabled && serverSettings.rateLimit.key != "apiKey" ) {
+			withRateLimit()
+		}
+	}
+
+	/**
+	 * Build the store of a rate limit from its setting
+	 */
+	private any function resolveRateLimitStore( required any store, string cacheName = "" ) {
+		if ( isObject( arguments.store ) ) {
+			return arguments.store
+		}
+		switch ( lCase( arguments.store ) ) {
+			case "cache":
+				return new ratelimit.CacheRateLimitStore( arguments.cacheName )
+			case "memory":
+				return new ratelimit.MemoryRateLimitStore()
+		}
+		if ( arguments.store.find( "." ) ) {
+			return new "#arguments.store#"( cacheName: arguments.cacheName )
+		}
+		throw( type: "InvalidArgument", message: "Unknown rate limit store [#arguments.store#]. Use cache, memory, a class path or a store instance" )
+	}
+
+	private boolean function hasTrustedProxyList() {
+		return variables.trustedProxies.len() > 0 && !variables.trustedProxies.contains( "*" )
+	}
+
+	private boolean function isTrustedProxy( required string ip ) {
+		if ( !len( arguments.ip ) ) {
+			return false
+		}
+		for ( var entry in variables.trustedProxies ) {
+			if ( entry == arguments.ip || ( entry.find( "/" ) && isCIDRMatch( arguments.ip, entry ) ) ) {
+				return true
+			}
+		}
+		return false
 	}
 
 	// ---------------------------------------------------------------------------------------------------------
