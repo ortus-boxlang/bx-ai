@@ -30,6 +30,7 @@ Welcome to the **BoxLang AI Module** 🚀 The official AI library for BoxLang th
 ## ✨ Key Features
 
 - 🔌 **16+ AI Providers** - Single API for OpenAI, Claude, AWS Bedrock, Gemini, Grok, MiniMax, Ollama, DeepSeek, and more
+- 🧩 **Profiles** - Name a provider, model, params and key once (`fast`, `planner`), then pick it per call, per agent or per run
 - 🤖 **AI Agents** - Autonomous agents with memory, tools, sub-agents, and multi-step reasoning
 - 🔒 **Multi-Tenant Memory** - Enterprise-grade isolation with 20+ memory types (standard + vector)
 - 🧬 **Vector Memory & RAG** - 12 vector databases with semantic search (ChromaDB, Pinecone, PostgreSQL, OpenSearch, etc.)
@@ -123,6 +124,23 @@ Below is the full reference of every setting you can place under `settings` in `
                     }
                 },
 
+                "profiles": {
+                    "fast": {
+                        "description": "Cheap and quick",
+                        "provider": "openai",
+                        "model": "gpt-4.1-mini",
+                        "params": { "temperature": 0 },
+                        "apiKeyEnv": "OPENAI_API_KEY"
+                    }
+                },
+                "defaultProfile": "",
+
+                "embeddings": {
+                    "defaultProvider": "",
+                    "defaultModel": "",
+                    "defaultApiKey": ""
+                },
+
                 "timeout": 90,
 
                 "logRequest": false,
@@ -149,6 +167,9 @@ Below is the full reference of every setting you can place under `settings` in `
 | `memory.provider` | `string` | `"window"` | Default memory type: `window`, `cache`, `file`, `session`, `summary`, `jdbc`, `hybrid`, or any vector provider |
 | `memory.config` | `struct` | `{}` | Provider-specific memory configuration (e.g. `maxMessages`, `cacheName`) |
 | `providers` | `struct` | `{}` | Per-provider overrides — keys are provider names, values have `params` and `options` structs |
+| `profiles` | `struct` | `{}` | Named combinations of `provider`, `model`, `params`, `options`, `apiKeyEnv` (or `apiKey`) and a `description`. Select with `options.profile` or `profile`. A name cannot be a provider name or `default`. See [Profiles](https://ai.ortusbooks.com/main-components/profiles) |
+| `defaultProfile` | `string` | `""` | Profile used when a call names no provider. Empty means `default`, the top level `provider`, `apiKey` and `defaultParams` |
+| `embeddings` | `struct` | `{}` | `defaultProvider`, `defaultModel` and `defaultApiKey` for `aiEmbed()`. Empty values use the default provider |
 | `timeout` | `numeric` | `90` | Default HTTP request timeout in seconds |
 | `logRequest` | `boolean` | `false` | Log outgoing AI requests to `ai.log` |
 | `logRequestToConsole` | `boolean` | `false` | Print outgoing AI requests to the console (useful for debugging) |
@@ -775,6 +796,7 @@ result = aiChat( "What's the weather?", { tools: [ weatherTool ] }, {
 } )
 
 // Assert exactly what was sent (post-sanitization!)
+// Each entry has model, messages and params (temperature, max_tokens, ...)
 import bxModules.bxai.models.providers.MockService;
 sent = MockService::getRecorded()
 ```
@@ -944,7 +966,7 @@ A gateway extending `BaseGateway` gets `onGatewayConnect`/`onGatewayDisconnect` 
 
 | Function | Purpose | Parameters | Return Type | Async Support |
 |----------|---------|------------|-------------|---------------|
-| `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options`, `mcpServers=[]`, `skills=[]`, `availableSkills=[]` | AiAgent Object (supports `runAsync()`) | ✅ |
+| `aiAgent()` | Create autonomous AI agent | `name`, `description`, `instructions`, `model`, `memory`, `tools`, `subAgents`, `params`, `options`, `mcpServers=[]`, `skills=[]`, `availableSkills=[]`, `profile` | AiAgent Object (supports `runAsync()`; `withProfile()` switches profile) | ✅ |
 | `aiAgentRegistry()` | Get the singleton AI Agent Registry | _(none)_ | AIAgentRegistry Object | N/A |
 | `aiChat()` | Chat with AI provider | `messages`, `params={}`, `options={}` | String/Array/Struct | ❌ |
 | `aiChatAsync()` | Async chat with AI provider | `messages`, `params={}`, `options={}` | BoxLang Future | ✅ |
@@ -960,9 +982,12 @@ A gateway extending `BaseGateway` gets `onGatewayConnect`/`onGatewayDisconnect` 
 | `aiImage()` | Generate images from a text prompt | `prompt`, `params={}`, `options={}` | AiImageResponse Object | N/A |
 | `aiMemory()` | Create memory instance | `memory`, `key`, `userId`, `conversationId`, `config={}` | IAiMemory Object | N/A |
 | `aiMessage()` | Build message object | `message` | ChatMessage Object | N/A |
-| `aiModel()` | Create AI model wrapper | `provider`, `apiKey`, `tools`, `mcpServers=[]`, `skills=[]` | AiModel Object | N/A |
+| `aiModel()` | Create AI model wrapper | `provider`, `apiKey`, `tools`, `mcpServers=[]`, `skills=[]`, `profile` | AiModel Object | N/A |
 | `aiPopulate()` | Populate class/struct from JSON | `target`, `data` | Populated Object | N/A |
-| `aiService()` | Create AI service provider | `provider`, `apiKey` | IService Object | N/A |
+| `aiProfile()` | Describe one profile, never returns an API key | `name=""` | Struct | N/A |
+| `aiProfiles()` | List the configured profiles, the default first | _(none)_ | Array of Structs | N/A |
+| `aiProviders()` | List the providers you can select | _(none)_ | Array of Structs | N/A |
+| `aiService()` | Create AI service provider | `provider`, `apiKey`, `profile` | IService Object | N/A |
 | `aiSkill()` | Create or discover AI skills | `path`, `name`, `description`, `content`, `recurse=true` | AiSkill / Array | N/A |
 | `aiGlobalSkills()` | Get the globally shared skill pool | _(none)_ | Array of AiSkill | N/A |
 | `aiSpeak()` | Convert text to speech (TTS) | `text`, `params={}`, `options={}` | AiSpeechResponse / File path | N/A |
