@@ -54,7 +54,8 @@ class implements="IRateLimitStore" {
 	numeric function increment( required string key, required numeric ttlSeconds, numeric amount = 1 ) {
 		var minutes = max( 1, ceiling( arguments.ttlSeconds / 60 ) )
 		lock name="bxai-ratelimit-#arguments.key#" type="exclusive" timeout="5" throwontimeout="true" {
-			var current = variables.cache.get( arguments.key ).orElse( 0 ) + arguments.amount
+			// getOrSet creates a new counter at 0 with its ttl, an existing one keeps its value
+			var current = variables.cache.getOrSet( arguments.key, () => 0, minutes, 0 ) + arguments.amount
 			variables.cache.set( arguments.key, max( 0, current ), minutes, 0 )
 		}
 		return max( 0, current )
