@@ -1383,7 +1383,7 @@ println( product.inStock ); // true (boolean!)
 ```
 src/main/bx/
 ├── ModuleConfig.bx          # Module descriptor, settings, 53 interceptor points
-├── bifs/                    # 27 Global BIFs (aiChat, aiMessage, aiService, aiTool, etc.)
+├── bifs/                    # 38 Global BIFs (aiChat, aiMessage, aiService, aiTool, aiProfiles, etc.)
 ├── models/
 │   ├── AiAgent.bx          # Agent system (630 lines) - multi-memory, tools, sub-agents
 │   ├── AiMessage.bx        # Fluent message builder with OnMissingMethod for roles
