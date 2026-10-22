@@ -22,7 +22,7 @@
  * native atomic increment. Use a cache that does not evict early (a dedicated cache, not the default one
  * under memory pressure), because an evicted counter is a counter that starts again at 0.
  */
-class implements="IRateLimitStore" {
+class implements="IRateLimitStore,IClearableRateLimitStore" {
 
 	/**
 	 * The name of the cache
@@ -79,6 +79,15 @@ class implements="IRateLimitStore" {
 	 */
 	void function remove( required string key ) {
 		variables.cache.clear( arguments.key )
+	}
+
+	/**
+	 * Delete every counter whose key starts with the prefix. It looks at every key of the cache, so it is for admin actions.
+	 *
+	 * @prefix The start of the counter keys
+	 */
+	void function clear( required string prefix ) {
+		variables.cache.getKeys().filter( k => k.startsWith( prefix ) ).each( k => variables.cache.clear( k ) )
 	}
 
 }
