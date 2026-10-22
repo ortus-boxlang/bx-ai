@@ -213,6 +213,7 @@ class {
 		variables.trustedProxies = []
 		variables.rateLimitGate = ""
 		variables.rateLimitOptOut = false
+		variables.rateLimitEnabled = true
 
 		applyModuleDefaults()
 
@@ -1553,11 +1554,16 @@ class {
 	 * Config keys:
 	 * - limit     Requests per window
 	 * - window    Window in seconds
+	 * - limits    Several limits at once, an array of { limit, window }, for example 60 per minute and 1000 per hour.
+	 *             Used instead of limit and window. A request has to pass all of them.
 	 * - key       "ip", "apiKey" (needs withApiKeyProvider), "global", or a lambda( requestData ) => string,
 	 *             an empty result means the request is not limited
 	 * - store     "cache", "memory", a class path, or an IRateLimitStore instance
 	 * - cacheName The cache for the "cache" store
 	 * - failOpen  true lets requests in when the store fails, false answers 503
+	 * - retention Days of history (per client, per day) kept in the cache, 0 for none. Default from the module setting.
+	 * - historyFlushSeconds Seconds between writes of the history to the cache
+	 * - historyMaxClients   Clients kept per day, the smallest are folded into "(other)"
 	 *
 	 * @config false to remove the limit, a number for the limit, or a struct of settings
 	 *
@@ -1572,12 +1578,15 @@ class {
 
 		var module = getModuleInfo( "bxai" ).settings.mcp.server.rateLimit
 		var cfg = {
-			limit    : module.limit,
-			window   : module.window,
-			key      : module.key,
-			store    : module.store,
-			cacheName: module.cacheName,
-			failOpen : module.failOpen
+			limit              : module.limit,
+			window             : module.window,
+			key                : module.key,
+			store              : module.store,
+			cacheName          : module.cacheName,
+			failOpen           : module.failOpen,
+			retention          : module.retentionDays,
+			historyFlushSeconds: module.historyFlushSeconds,
+			historyMaxClients  : module.historyMaxClients
 		}
 		if ( isNumeric( arguments.config ) ) {
 			cfg.limit = arguments.config
@@ -1600,44 +1609,147 @@ class {
 			throw( type: "InvalidArgument", message: "Rate limit key must be ip, apiKey, global or a function" )
 		}
 
+		if ( !isNumeric( cfg.retention ) || cfg.retention < 0 || cfg.retention > 365 ) {
+			throw( type: "InvalidArgument", message: "Rate limit retention is a number of days from 0 to 365, got [#cfg.retention#]" )
+		}
+		if ( !isNumeric( cfg.historyFlushSeconds ) || cfg.historyFlushSeconds < 5 ) {
+			throw( type: "InvalidArgument", message: "Rate limit historyFlushSeconds must be at least 5, got [#cfg.historyFlushSeconds#]" )
+		}
+		if ( !isNumeric( cfg.historyMaxClients ) || cfg.historyMaxClients < 50 || cfg.historyMaxClients > 5000 ) {
+			throw( type: "InvalidArgument", message: "Rate limit historyMaxClients is a number from 50 to 5000, got [#cfg.historyMaxClients#]" )
+		}
+
+		// One limit, or several: limits wins over limit and window
+		var limits = cfg.keyExists( "limits" ) && isArray( cfg.limits ) && cfg.limits.len() ? cfg.limits : [ { limit: cfg.limit, window: cfg.window } ]
+
 		var store = resolveRateLimitStore( cfg.store, cfg.cacheName )
-		var limiter = new ratelimit.RateLimiter(
-			limit    : cfg.limit,
-			window   : cfg.window,
+		var limiter = new ratelimit.RateLimitSet(
+			limits   : limits,
 			store    : store,
 			keyPrefix: "bxai:mcp:ratelimit:#variables.serverName#"
+		)
+		// The busiest minute against the limit of the shortest window, scaled to a minute
+		var perMinute = limiter.getLimit() * 60 / limiter.getWindow()
+		var history = new ratelimit.RateLimitHistory(
+			serverName   : variables.serverName,
+			cacheName    : cfg.cacheName,
+			retentionDays: cfg.retention,
+			flushSeconds : cfg.historyFlushSeconds,
+			maxClients   : cfg.historyMaxClients,
+			perMinute    : perMinute
 		)
 		variables.rateLimitGate = new ratelimit.RateLimitGate(
 			limiter  : limiter,
 			key      : cfg.key,
 			failOpen : cfg.failOpen,
-			mcpServer: this
+			mcpServer: this,
+			history  : history
 		)
+		variables.rateLimitEnabled = true
+		variables.rateLimitOptOut = false
 		static.mcpLogger.info(
-			"Rate limit on MCP server [#variables.serverName#]: #cfg.limit# requests per #cfg.window#s by #isSimpleValue( cfg.key ) ? cfg.key : 'custom key'#"
+			"Rate limit on MCP server [#variables.serverName#]: #limiter.getLimits().map( l => '#l.limit# per #l.window#s' ).toList( ', ' )# by #isSimpleValue( cfg.key ) ? cfg.key : 'custom key'#, history #cfg.retention# days"
 		)
 		return this
 	}
 
 	/**
-	 * Does this server have a rate limit
+	 * Is a rate limit configured on this server, on or off
 	 */
 	boolean function hasRateLimit() {
 		return !isSimpleValue( variables.rateLimitGate )
 	}
 
 	/**
-	 * The RateLimiter, for status( key ) and reset( key ). Null when there is no rate limit.
+	 * Is the rate limit configured and checking requests
+	 */
+	boolean function isRateLimitEnabled() {
+		return hasRateLimit() && variables.rateLimitEnabled
+	}
+
+	/**
+	 * Turn the rate limit on. A limit that was turned off with disableRateLimit() is checked again. With no limit
+	 * configured, the module defaults (mcp.server.rateLimit) are used.
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function enableRateLimit() {
+		if ( hasRateLimit() ) {
+			variables.rateLimitEnabled = true
+			variables.rateLimitOptOut  = false
+			static.mcpLogger.info( "Rate limit of MCP server [#variables.serverName#] turned on" )
+		} else {
+			withRateLimit()
+		}
+		return this
+	}
+
+	/**
+	 * Turn the rate limit off without losing its configuration, counters or history. Requests are not checked while it is off.
+	 * Use enableRateLimit() to turn it on again, or withRateLimit( false ) to remove it.
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function disableRateLimit() {
+		if ( hasRateLimit() && variables.rateLimitEnabled ) {
+			variables.rateLimitEnabled = false
+			static.mcpLogger.info( "Rate limit of MCP server [#variables.serverName#] turned off" )
+		}
+		return this
+	}
+
+	/**
+	 * Delete the counters of every client, so all of them have their requests back. Counters of a store that cannot
+	 * clear them (see IClearableRateLimitStore) expire by themselves within two windows.
+	 *
+	 * @return true when the store cleared them, false when there is no rate limit or the store cannot
+	 */
+	boolean function resetRateLimit() {
+		return hasRateLimit() ? variables.rateLimitGate.getLimiter().clearCounters() : false
+	}
+
+	/**
+	 * Clear the rate limit stats and the history of every day, in memory and in the cache
+	 *
+	 * @return This instance for fluent method chaining
+	 */
+	function resetRateLimitStats() {
+		if ( hasRateLimit() ) {
+			variables.rateLimitGate.resetStats()
+		}
+		return this
+	}
+
+	/**
+	 * What the rate limit has seen, for reports and top consumers. All nodes that share the cache are included.
+	 *
+	 * @options days (default 1, today included) and top (default 20, the busiest clients)
+	 *
+	 * @return { since, days: [ { day, requests, blocked } ], topConsumers: [ { client, type, requests, blocked, peakPerMinute, pctOfLimit, lastBlockedAt } ], nodes, retentionDays }
+	 *         An empty report when there is no rate limit.
+	 */
+	struct function getRateLimitReport( struct options = {} ) {
+		if ( !hasRateLimit() ) {
+			return { "since": "", "days": [], "topConsumers": [], "nodes": 0, "retentionDays": 0 }
+		}
+		return variables.rateLimitGate.getHistory().report(
+			min( 365, max( 1, arguments.options.days ?: 1 ) ),
+			min( 200, max( 1, arguments.options.top ?: 20 ) )
+		)
+	}
+
+	/**
+	 * The rate limiter, for status( key ) and reset( key ). Null when there is no rate limit.
 	 */
 	function getRateLimiter() {
 		return hasRateLimit() ? variables.rateLimitGate.getLimiter() : javacast( "null", "" )
 	}
 
 	/**
-	 * The rate limit gate used by the request processor. Null when there is no rate limit.
+	 * The rate limit gate used by the request processor. Null when there is no rate limit or it is turned off.
 	 */
 	function getRateLimitGate() {
-		return hasRateLimit() ? variables.rateLimitGate : javacast( "null", "" )
+		return isRateLimitEnabled() ? variables.rateLimitGate : javacast( "null", "" )
 	}
 
 	/**
@@ -1788,6 +1900,7 @@ class {
 		var allStats = variables.stats.getStats()
 		if ( hasRateLimit() ) {
 			allStats[ "rateLimit" ] = variables.rateLimitGate.getStats()
+			allStats.rateLimit[ "enabled" ] = variables.rateLimitEnabled
 		}
 		return allStats
 	}

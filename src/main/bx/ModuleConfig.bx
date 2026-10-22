@@ -179,7 +179,14 @@ class {
 						// The cache used by the cache store. Use a dedicated one so counters are not evicted early.
 						cacheName : "default",
 						// When the store fails: true lets requests in, false answers 503
-						failOpen : true
+						failOpen : true,
+						// Days of history (per client, per day: requests, blocked, busiest minute) kept in the cache, 0 for none, at most 365.
+						// It is what getRateLimitReport() and the top consumers read, and it survives a restart.
+						retentionDays : 7,
+						// Seconds between writes of the history to the cache, at least 5
+						historyFlushSeconds : 30,
+						// Clients kept per day, from 50 to 5000. The smallest are folded into "(other)", totals stay exact.
+						historyMaxClients : 500
 					}
 				},
 				// MCP servers that run as a child process and talk over stdin/stdout: MCP( { command : [ ... ] } )

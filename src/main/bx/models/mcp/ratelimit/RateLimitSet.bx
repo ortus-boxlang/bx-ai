@@ -1,0 +1,189 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * One or more rate limits on the same client, for example 60 per minute and 1000 per hour. Each limit is a RateLimiter
+ * with its own window. A request has to pass all of them: when one refuses, the others are given their request back and
+ * the client has to wait for the longest of the waits.
+ */
+class {
+
+	/**
+	 * The RateLimiters, shortest window first
+	 */
+	property name="limiters" type="array";
+
+	/**
+	 * Start of all the counter keys
+	 */
+	property name="keyPrefix" type="string";
+
+	/**
+	 * @limits    Array of { limit, window } structs, the windows have to be different
+	 * @store     The IRateLimitStore to keep the counters in
+	 * @keyPrefix Start of every counter key
+	 * @clock     Function that returns the time in epoch seconds. Only tests change it.
+	 */
+	function init(
+		required array limits,
+		required any store,
+		string keyPrefix = "bxai:mcp:ratelimit",
+		any clock
+	) {
+		if ( !arguments.limits.len() ) {
+			throw( type: "InvalidArgument", message: "A rate limit needs at least one limit" )
+		}
+		variables.store     = arguments.store
+		variables.keyPrefix = arguments.keyPrefix
+		var seen = {}
+		var built = []
+		for ( var item in arguments.limits ) {
+			if ( !isStruct( item ) || !item.keyExists( "limit" ) || !item.keyExists( "window" ) ) {
+				throw( type: "InvalidArgument", message: "Each rate limit needs a limit and a window, for example { limit: 60, window: 60 }" )
+			}
+			if ( seen.keyExists( item.window ) ) {
+				throw( type: "InvalidArgument", message: "Two rate limits have the same window [#item.window#]" )
+			}
+			seen[ item.window ] = true
+			var args = {
+				limit    : item.limit,
+				window   : item.window,
+				store    : arguments.store,
+				keyPrefix: "#arguments.keyPrefix#:w#item.window#"
+			}
+			if ( !isNull( arguments.clock ) ) {
+				args.clock = arguments.clock
+			}
+			built.append( new RateLimiter( argumentCollection: args ) )
+		}
+		built.sort( ( a, b ) => a.getWindow() - b.getWindow() )
+		variables.limiters = built
+		return this
+	}
+
+	/**
+	 * Count one request for a client against every limit and say if it is allowed.
+	 *
+	 * @bucketKey Who is asking, hashed before it is stored
+	 *
+	 * @return { allowed, limit, remaining, resetAt, retryAfter, firstBlock }. The numbers are those of the limit
+	 *         the client is closest to, or for a refusal the one with the longest wait.
+	 */
+	struct function check( required string bucketKey ) {
+		var results = variables.limiters.map( l => l.check( bucketKey ) )
+		var refused = results.filter( r => !r.allowed )
+
+		if ( !refused.len() ) {
+			// The limit with the least room left, as a share of its limit
+			var tight = results[ 1 ]
+			for ( var r in results ) {
+				if ( r.remaining / r.limit < tight.remaining / tight.limit ) {
+					tight = r
+				}
+			}
+			return tight
+		}
+
+		// Give the request back to the limits that had let it through
+		for ( var i = 1; i <= results.len(); i++ ) {
+			if ( results[ i ].allowed ) {
+				variables.limiters[ i ].release( bucketKey )
+			}
+		}
+		var longest = refused[ 1 ]
+		for ( var r in refused ) {
+			if ( r.retryAfter > longest.retryAfter ) {
+				longest = r
+			}
+		}
+		longest.firstBlock = refused.filter( r => r.firstBlock ).len() > 0
+		return longest
+	}
+
+	/**
+	 * Where a client stands, without counting a request
+	 *
+	 * @bucketKey Who is asking
+	 *
+	 * @return { limit, remaining, resetAt, limits } where limits has the same numbers for every limit and its window
+	 */
+	struct function status( required string bucketKey ) {
+		var all = variables.limiters.map( l => {
+			var s = l.status( bucketKey )
+			s[ "window" ] = l.getWindow()
+			return s
+		} )
+		var tight = all[ 1 ]
+		for ( var s in all ) {
+			if ( s.remaining / s.limit < tight.remaining / tight.limit ) {
+				tight = s
+			}
+		}
+		return { "limit": tight.limit, "remaining": tight.remaining, "resetAt": tight.resetAt, "limits": all }
+	}
+
+	/**
+	 * Forget a client: it has all its requests back
+	 *
+	 * @bucketKey Who to forget
+	 */
+	void function reset( required string bucketKey ) {
+		variables.limiters.each( l => l.reset( bucketKey ) )
+	}
+
+	/**
+	 * Delete every counter of this set, when the store can do it
+	 *
+	 * @return true when the store cleared them, false when it cannot and the counters expire by themselves
+	 */
+	boolean function clearCounters() {
+		if ( isInstanceOf( variables.store, "bxModules.bxai.models.mcp.ratelimit.IClearableRateLimitStore" ) ) {
+			variables.store.clear( variables.keyPrefix & ":" )
+			return true
+		}
+		return false
+	}
+
+	/**
+	 * A short stable id of a client, safe to log
+	 *
+	 * @bucketKey The client key
+	 */
+	string function keyHash( required string bucketKey ) {
+		return variables.limiters[ 1 ].keyHash( arguments.bucketKey )
+	}
+
+	/**
+	 * The limit of the shortest window
+	 */
+	numeric function getLimit() {
+		return variables.limiters[ 1 ].getLimit()
+	}
+
+	/**
+	 * The shortest window in seconds
+	 */
+	numeric function getWindow() {
+		return variables.limiters[ 1 ].getWindow()
+	}
+
+	/**
+	 * Every limit, shortest window first
+	 *
+	 * @return Array of { limit, window }
+	 */
+	array function getLimits() {
+		return variables.limiters.map( l => { return { "limit": l.getLimit(), "window": l.getWindow() } } )
+	}
+
+}

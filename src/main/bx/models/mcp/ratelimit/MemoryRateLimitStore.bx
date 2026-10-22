@@ -16,7 +16,7 @@
  * node, for tests, and for when no cache should be involved. Expired counters are swept now and then, so
  * memory stays bounded by the number of active clients.
  */
-class implements="IRateLimitStore" {
+class implements="IRateLimitStore,IClearableRateLimitStore" {
 
 	static {
 		// Sweep the expired counters every this many writes
@@ -101,6 +101,15 @@ class implements="IRateLimitStore" {
 	 */
 	private string function getStoreId() {
 		return variables.storeId
+	}
+
+	/**
+	 * Delete every counter whose key starts with the prefix
+	 *
+	 * @prefix The start of the counter keys
+	 */
+	void function clear( required string prefix ) {
+		variables.counters.keyArray().filter( k => k.startsWith( prefix ) ).each( k => variables.counters.delete( k ) )
 	}
 
 }

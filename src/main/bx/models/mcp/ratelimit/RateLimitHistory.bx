@@ -1,0 +1,365 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * What the rate limit of one MCP server has seen, per client and per UTC day, for reports and top consumers.
+ *
+ * Requests only change numbers in memory. About every `flushSeconds` the next request writes the document of the day
+ * to the BoxLang cache with a time to live of `retentionDays`, so it survives a restart and other tools can read it.
+ * One document per server, node and day, so nodes never overwrite each other. A day keeps at most `maxClients`
+ * clients: when it is full the smallest ones are folded into `(other)`, so the totals stay exact and the size is bounded.
+ *
+ * With `retentionDays` 0 nothing is written to the cache and only today is kept, in memory.
+ */
+class {
+
+	static {
+		// The part of the cache key before the server name. It does not start like the counter keys.
+		final KEY_ROOT = "bxai:mcp:ratelimit-history:"
+		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" )
+	}
+
+	/**
+	 * @serverName    The MCP server name
+	 * @cacheName     The BoxLang cache for the documents, "default" if empty
+	 * @retentionDays Days of history kept in the cache, 0 for none
+	 * @flushSeconds  Seconds between writes to the cache
+	 * @maxClients    Clients kept per day
+	 * @perMinute     Requests per minute the limit allows, to say how close a client came. 0 when unknown.
+	 * @clock         Function that returns the time in epoch seconds. Only tests change it.
+	 */
+	function init(
+		required string serverName,
+		string cacheName = "default",
+		numeric retentionDays = 7,
+		numeric flushSeconds = 30,
+		numeric maxClients = 500,
+		numeric perMinute = 0,
+		any clock
+	) {
+		variables.serverName    = arguments.serverName
+		variables.retentionDays = arguments.retentionDays
+		variables.flushSeconds  = arguments.flushSeconds
+		variables.maxClients    = arguments.maxClients
+		variables.perMinute     = arguments.perMinute
+		variables.cache         = cache( len( arguments.cacheName ) ? arguments.cacheName : "default" )
+		variables.node          = createObject( "java", "java.net.InetAddress" ).getLocalHost().getHostName()
+		variables.doc           = {}
+		variables.docDay        = -1
+		variables.lastFlush     = 0
+		variables.dirty         = false
+		if ( isNull( arguments.clock ) ) {
+			variables.clock = () => createObject( "java", "java.lang.System" ).currentTimeMillis() / 1000
+		} else {
+			variables.clock = arguments.clock
+		}
+		return this
+	}
+
+	/**
+	 * Days of history kept in the cache
+	 */
+	numeric function getRetentionDays() {
+		return variables.retentionDays
+	}
+
+	/**
+	 * Count one request of a client
+	 *
+	 * @label   The client as shown: an IP, or a short hash
+	 * @type    ip, apiKey, global or custom
+	 * @allowed Was the request let through
+	 */
+	void function record( required string label, required string type, required boolean allowed ) {
+		var now = variables.clock()
+		var day = int( now / 86400 )
+		var minute = int( now / 60 )
+		var doFlush = false
+		var closing = ""
+
+		lock name="bxai-ratelimit-history-#variables.serverName#" type="exclusive" timeout="2" throwontimeout="false" {
+			if ( day != variables.docDay ) {
+				// A new day: the old one is written, the new one starts from what the cache holds, if this node restarted
+				if ( variables.docDay >= 0 && variables.dirty ) {
+					closing = duplicate( variables.doc )
+				}
+				variables.doc     = loadDay( day )
+				variables.docDay  = day
+				variables.dirty   = false
+			}
+
+			var id = arguments.type & ":" & arguments.label
+			var clients = variables.doc.clients
+			if ( !clients.keyExists( id ) ) {
+				if ( clients.len() >= variables.maxClients ) {
+					fold()
+				}
+				clients[ id ] = { "client": arguments.label, "type": arguments.type, "requests": 0, "blocked": 0, "peak": 0, "minute": 0, "minuteCount": 0, "lastBlockedAt": 0 }
+			}
+			var c = clients[ id ]
+			c.requests++
+			variables.doc.requests++
+			if ( c.minute != minute ) {
+				c.minute      = minute
+				c.minuteCount = 0
+			}
+			c.minuteCount++
+			if ( c.minuteCount > c.peak ) {
+				c.peak = c.minuteCount
+			}
+			if ( !arguments.allowed ) {
+				c.blocked++
+				c.lastBlockedAt = now * 1000
+				variables.doc.blocked++
+			}
+			variables.doc.updated = now * 1000
+			variables.dirty = true
+
+			if ( variables.retentionDays > 0 && now - variables.lastFlush >= variables.flushSeconds ) {
+				variables.lastFlush = now
+				doFlush = true
+			}
+		}
+
+		if ( isStruct( closing ) ) {
+			writeDoc( closing )
+		}
+		if ( doFlush ) {
+			flush()
+		}
+	}
+
+	/**
+	 * Write the document of the day to the cache now
+	 */
+	void function flush() {
+		if ( variables.retentionDays <= 0 ) {
+			return
+		}
+		var copy = ""
+		lock name="bxai-ratelimit-history-#variables.serverName#" type="exclusive" timeout="2" throwontimeout="false" {
+			if ( variables.dirty ) {
+				copy = duplicate( variables.doc )
+				variables.dirty = false
+			}
+		}
+		if ( isStruct( copy ) ) {
+			writeDoc( copy )
+		}
+	}
+
+	/**
+	 * The busiest clients of today on this node
+	 *
+	 * @count How many
+	 *
+	 * @return Array of { client, type, requests, blocked, peakPerMinute, pctOfLimit, lastBlockedAt }, the most blocked first
+	 */
+	array function top( numeric count = 20 ) {
+		var rows = []
+		lock name="bxai-ratelimit-history-#variables.serverName#" type="readonly" timeout="2" throwontimeout="false" {
+			if ( variables.docDay == int( variables.clock() / 86400 ) ) {
+				rows = variables.doc.clients.reduce( ( acc, id, c ) => acc.append( toRow( c ) ), [] )
+			}
+		}
+		return ranked( rows, arguments.count )
+	}
+
+	/**
+	 * The history of the last days, all nodes together
+	 *
+	 * @days  How many days, today included
+	 * @count How many top consumers
+	 *
+	 * @return { since, days: [ { day, requests, blocked } ], topConsumers: [ { client, type, requests, blocked, peakPerMinute, pctOfLimit, lastBlockedAt } ] (most requests first), nodes, retentionDays }
+	 */
+	struct function report( numeric days = 1, numeric count = 20 ) {
+		var today = int( variables.clock() / 86400 )
+		var first = today - max( 1, arguments.days ) + 1
+		var ownKey = docKey( today )
+		var docs = []
+		var nodes = {}
+
+		// What other nodes and earlier days left in the cache
+		if ( variables.retentionDays > 0 ) {
+			var prefix = static.KEY_ROOT & variables.serverName & ":"
+			for ( var key in variables.cache.getKeys().filter( k => k.startsWith( prefix ) ) ) {
+				if ( key == ownKey ) {
+					continue
+				}
+				var found = variables.cache.get( key )
+				if ( found.isPresent() ) {
+					var d = found.get()
+					if ( isStruct( d ) && d.day >= first && d.day <= today ) {
+						docs.append( d )
+					}
+				}
+			}
+		}
+		// Today on this node comes from memory, it is newer than the cache
+		lock name="bxai-ratelimit-history-#variables.serverName#" type="readonly" timeout="2" throwontimeout="false" {
+			if ( variables.docDay == today ) {
+				docs.append( duplicate( variables.doc ) )
+			}
+		}
+
+		var byDay = {}
+		var consumers = {}
+		for ( var d in docs ) {
+			nodes[ d.node ] = true
+			if ( !byDay.keyExists( d.day ) ) {
+				byDay[ d.day ] = { "requests": 0, "blocked": 0 }
+			}
+			byDay[ d.day ].requests += d.requests
+			byDay[ d.day ].blocked += d.blocked
+			for ( var id in d.clients ) {
+				var c = d.clients[ id ]
+				if ( !consumers.keyExists( id ) ) {
+					consumers[ id ] = { "client": c.client, "type": c.type, "requests": 0, "blocked": 0, "peak": 0, "lastBlockedAt": 0 }
+				}
+				var t = consumers[ id ]
+				t.requests += c.requests
+				t.blocked += c.blocked
+				t.peak = max( t.peak, c.peak )
+				t.lastBlockedAt = max( t.lastBlockedAt, c.lastBlockedAt )
+			}
+		}
+
+		var dayRows = byDay.keyArray().sort( "numeric" ).map( n => {
+			return {
+				"day"     : createObject( "java", "java.time.LocalDate" ).ofEpochDay( n ).toString(),
+				"requests": byDay[ n ].requests,
+				"blocked" : byDay[ n ].blocked
+			}
+		} )
+
+		return {
+			"since"         : dayRows.len() ? dayRows[ 1 ].day : "",
+			"days"          : dayRows,
+			"topConsumers"  : ranked( consumers.reduce( ( acc, id, c ) => acc.append( toRow( c ) ), [] ), arguments.count, "requests" ),
+			"nodes"         : nodes.len(),
+			"retentionDays" : variables.retentionDays
+		}
+	}
+
+	/**
+	 * Forget everything: today in memory and every document of this server in the cache
+	 */
+	void function clear() {
+		lock name="bxai-ratelimit-history-#variables.serverName#" type="exclusive" timeout="2" throwontimeout="false" {
+			variables.doc    = {}
+			variables.docDay = -1
+			variables.dirty  = false
+		}
+		var prefix = static.KEY_ROOT & variables.serverName & ":"
+		variables.cache.getKeys().filter( k => k.startsWith( prefix ) ).each( k => variables.cache.clear( k ) )
+	}
+
+	// ---------------------------------------------------------------------------------------------------------
+	// Private
+	// ---------------------------------------------------------------------------------------------------------
+
+	/**
+	 * The cache key of the document of a day on this node
+	 *
+	 * @day The day number, days since 1970-01-01 UTC
+	 */
+	private string function docKey( required numeric day ) {
+		return static.KEY_ROOT & variables.serverName & ":" & arguments.day & ":" & variables.node
+	}
+
+	/**
+	 * The document of a day: what the cache holds for this node, or a new one
+	 *
+	 * @day The day number
+	 */
+	private struct function loadDay( required numeric day ) {
+		if ( variables.retentionDays > 0 ) {
+			try {
+				var found = variables.cache.get( docKey( arguments.day ) )
+				if ( found.isPresent() && isStruct( found.get() ) ) {
+					return duplicate( found.get() )
+				}
+			} catch ( any e ) {
+				static.mcpLogger.debug( "Rate limit history could not be read: #e.message#" )
+			}
+		}
+		return { "server": variables.serverName, "day": arguments.day, "node": variables.node, "requests": 0, "blocked": 0, "clients": {}, "other": { "requests": 0, "blocked": 0 }, "updated": 0 }
+	}
+
+	/**
+	 * Write a document to the cache. Failures are only logged, a request never fails because of history.
+	 *
+	 * @document The document
+	 */
+	private void function writeDoc( required struct document ) {
+		try {
+			variables.cache.set( docKey( arguments.document.day ), arguments.document, variables.retentionDays * 1440, 0 )
+		} catch ( any e ) {
+			static.mcpLogger.debug( "Rate limit history could not be written: #e.message#" )
+		}
+	}
+
+	/**
+	 * The day is full: fold the smallest tenth of the clients into "other". Totals do not change.
+	 */
+	private void function fold() {
+		var clients = variables.doc.clients
+		var order = clients.keyArray()
+		order.sort( ( a, b ) => {
+			var x = clients[ a ]
+			var y = clients[ b ]
+			return x.blocked != y.blocked ? x.blocked - y.blocked : x.requests - y.requests
+		} )
+		var drop = max( 1, ceiling( order.len() / 10 ) )
+		for ( var i = 1; i <= drop; i++ ) {
+			variables.doc.other.requests += clients[ order[ i ] ].requests
+			variables.doc.other.blocked += clients[ order[ i ] ].blocked
+			clients.delete( order[ i ] )
+		}
+	}
+
+	/**
+	 * A client of the document as the report shows it
+	 *
+	 * @c The client record
+	 */
+	private struct function toRow( required struct c ) {
+		return {
+			"client"       : arguments.c.client,
+			"type"         : arguments.c.type,
+			"requests"     : arguments.c.requests,
+			"blocked"      : arguments.c.blocked,
+			"peakPerMinute": arguments.c.peak,
+			"pctOfLimit"   : variables.perMinute > 0 ? round( arguments.c.peak * 100 / variables.perMinute ) : 0,
+			"lastBlockedAt": arguments.c.lastBlockedAt
+		}
+	}
+
+	/**
+	 * The clients sorted, cut to a count
+	 *
+	 * @rows  The client rows
+	 * @count How many to keep
+	 * @by    "blocked" sorts by blocked then requests, "requests" by requests then blocked
+	 */
+	private array function ranked( required array rows, required numeric count, string by = "blocked" ) {
+		if ( arguments.by == "requests" ) {
+			arguments.rows.sort( ( a, b ) => a.requests != b.requests ? b.requests - a.requests : b.blocked - a.blocked )
+		} else {
+			arguments.rows.sort( ( a, b ) => a.blocked != b.blocked ? b.blocked - a.blocked : b.requests - a.requests )
+		}
+		return arguments.rows.len() > arguments.count ? arguments.rows.slice( 1, arguments.count ) : arguments.rows
+	}
+
+}

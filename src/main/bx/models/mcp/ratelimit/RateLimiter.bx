@@ -84,7 +84,7 @@ class {
 	 *
 	 * @bucketKey Who is asking: an IP, an API key, anything. It is hashed before it is stored.
 	 *
-	 * @return { allowed, limit, remaining, resetAt, retryAfter, firstBlock }
+	 * @return { allowed, limit, window, remaining, resetAt, retryAfter, firstBlock }
 	 *   - remaining  requests left in the window, 0 when refused
 	 *   - resetAt    epoch seconds when the client has all its requests back (an estimate while allowed)
 	 *   - retryAfter seconds to wait, 0 when allowed
@@ -105,6 +105,7 @@ class {
 			return {
 				"allowed"   : true,
 				"limit"     : variables.limit,
+				"window"    : variables.window,
 				"remaining" : max( 0, int( variables.limit - estimated ) ),
 				"resetAt"   : ceiling( now + ( variables.window * ( 1 - elapsed ) ) ),
 				"retryAfter": 0,
@@ -122,11 +123,22 @@ class {
 		return {
 			"allowed"   : false,
 			"limit"     : variables.limit,
+			"window"    : variables.window,
 			"remaining" : 0,
 			"resetAt"   : ceiling( now + retryAfter ),
 			"retryAfter": retryAfter,
 			"firstBlock": firstBlock
 		}
+	}
+
+	/**
+	 * Give back one request that check() let through, used when another limit of the same client refused it
+	 *
+	 * @bucketKey Who asked
+	 */
+	void function release( required string bucketKey ) {
+		var windowIndex = int( variables.clock() / variables.window )
+		variables.store.increment( counterKey( arguments.bucketKey, windowIndex ), variables.window * 2, -1 )
 	}
 
 	/**
