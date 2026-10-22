@@ -193,6 +193,15 @@ class {
 	// Private: stats and the log budget
 	// ---------------------------------------------------------------------------------------------------------
 
+	/**
+	 * Record a blocked request: the top blocked list, the minute summary, and the warning and event while the log budget lasts
+	 *
+	 * @shownKey   The client as shown in logs: the IP, or a short hash
+	 * @type       The key type
+	 * @result     The RateLimiter result
+	 * @requestData The request
+	 * @bucket     The full bucket key
+	 */
 	private void function recordBlocked(
 		required string shownKey,
 		required string type,

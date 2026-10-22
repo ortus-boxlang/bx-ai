@@ -42,6 +42,15 @@ class implements="IRateLimitStore" {
 		return this
 	}
 
+	/**
+	 * Add to a counter under a lock and return the new value, never below 0. The counter expires after ttlSeconds.
+	 *
+	 * @key        The counter key
+	 * @ttlSeconds Seconds the counter lives
+	 * @amount     What to add, negative to undo
+	 *
+	 * @return The new value
+	 */
 	numeric function increment( required string key, required numeric ttlSeconds, numeric amount = 1 ) {
 		var minutes = max( 1, ceiling( arguments.ttlSeconds / 60 ) )
 		lock name="bxai-ratelimit-#arguments.key#" type="exclusive" timeout="5" throwontimeout="true" {
@@ -51,10 +60,22 @@ class implements="IRateLimitStore" {
 		return max( 0, current )
 	}
 
+	/**
+	 * Read a counter
+	 *
+	 * @key The counter key
+	 *
+	 * @return The value, 0 when there is none or it expired
+	 */
 	numeric function get( required string key ) {
 		return variables.cache.get( arguments.key ).orElse( 0 )
 	}
 
+	/**
+	 * Delete a counter
+	 *
+	 * @key The counter key
+	 */
 	void function remove( required string key ) {
 		variables.cache.clear( arguments.key )
 	}

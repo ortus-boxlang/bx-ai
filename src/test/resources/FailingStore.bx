@@ -3,14 +3,37 @@
  */
 class implements="bxModules.bxai.models.mcp.ratelimit.IRateLimitStore" {
 
+	/**
+	 * Always fails, to test failOpen
+	 *
+	 * @key        The counter key
+	 * @ttlSeconds The ttl
+	 * @amount     What to add
+	 *
+	 * @throws StoreDown always
+	 */
 	numeric function increment( required string key, required numeric ttlSeconds, numeric amount = 1 ) {
 		throw( type: "StoreDown", message: "store down" )
 	}
 
+	/**
+	 * Always fails
+	 *
+	 * @key The counter key
+	 *
+	 * @throws StoreDown always
+	 */
 	numeric function get( required string key ) {
 		throw( type: "StoreDown", message: "store down" )
 	}
 
+	/**
+	 * Always fails
+	 *
+	 * @key The counter key
+	 *
+	 * @throws StoreDown always
+	 */
 	void function remove( required string key ) {
 		throw( type: "StoreDown", message: "store down" )
 	}

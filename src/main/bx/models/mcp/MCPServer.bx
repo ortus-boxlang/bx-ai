@@ -2106,10 +2106,22 @@ class {
 		throw( type: "InvalidArgument", message: "Unknown rate limit store [#arguments.store#]. Use cache, memory, a class path or a store instance" )
 	}
 
+	/**
+	 * Are there trusted proxies to check (not empty and not "*")
+	 *
+	 * @return true when forwarded headers must be checked against the list
+	 */
 	private boolean function hasTrustedProxyList() {
 		return variables.trustedProxies.len() > 0 && !variables.trustedProxies.contains( "*" )
 	}
 
+	/**
+	 * Is an address one of the trusted proxies, by exact match or CIDR range
+	 *
+	 * @ip The address to check
+	 *
+	 * @return true when it is a trusted proxy
+	 */
 	private boolean function isTrustedProxy( required string ip ) {
 		if ( !len( arguments.ip ) ) {
 			return false

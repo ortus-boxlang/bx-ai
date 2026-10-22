@@ -39,9 +39,11 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 	                                      import bxModules.bxai.models.mcp.ratelimit.CacheRateLimitStore;
 
 	                                      clock = { now : 1200 };
+	                                      /** A RateLimiter on a fake clock */
 	                                      function newLimiter( limit = 10, window = 60, store = new MemoryRateLimitStore() ) {
 	                                      	return new RateLimiter( limit: limit, window: window, store: store, clock: () => clock.now );
 	                                      }
+	                                      /** A request as the transport builds it */
 	                                      function req( ip = "1.2.3.4", headers = {}, method = "POST", serverName = "rl", extra = {} ) {
 	                                      	return {
 	                                      		serverName : serverName,
@@ -55,11 +57,13 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 	                                      		metadata   : { remoteAddr : ip }
 	                                      	}.append( extra );
 	                                      }
+	                                      /** The numbers 1 to n as an array */
 	                                      function nums( n ) {
 	                                      	var a = [];
 	                                      	for ( var i = 1; i <= n; i++ ) { a.append( i ); }
 	                                      	return a;
 	                                      }
+	                                      /** The type of the error a function throws, "none" when it does not */
 	                                      function errType( f ) {
 	                                      	try {
 	                                      		f();
@@ -68,24 +72,47 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 	                                      		return e.type;
 	                                      	}
 	                                      }
+	                                      /** Run a request through the HTTP transport */
 	                                      function call( data ) {
 	                                      	return MCPRequestProcessor::processWithTransport( MCPRequestProcessor::getHttpTransport(), data );
 	                                      }
 	                                      """;
 
+	/**
+	 * Remove the servers a test created
+	 */
 	@AfterEach
 	public void clearServers() {
 		runtime.executeSource( "bxModules.bxai.models.mcp.MCPServer::clearAllInstances()", context );
 	}
 
+	/**
+	 * Run a BoxLang script after the shared helpers
+	 *
+	 * @param script The BoxLang source
+	 */
 	private void run( String script ) {
 		runtime.executeSource( HELPERS + script, context );
 	}
 
+	/**
+	 * Read a script variable as an int
+	 *
+	 * @param name The variable name
+	 *
+	 * @return The value
+	 */
 	private int num( String name ) {
 		return ( ( Number ) get( name ) ).intValue();
 	}
 
+	/**
+	 * Read a script variable
+	 *
+	 * @param name The variable name
+	 *
+	 * @return The value
+	 */
 	private Object get( String name ) {
 		return variables.get( Key.of( name ) );
 	}
@@ -94,6 +121,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 	// The limiter
 	// ------------------------------------------------------------------------------------------------
 
+	/**
+	 * The limiter allows the limit, refuses the next request and does not count the refusal
+	 */
 	@Test
 	@DisplayName( "The limiter allows the limit, refuses the next request and does not count the refusal" )
 	public void testLimiterBasics() {
@@ -114,6 +144,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( num( "statusRemaining" ) ).isEqualTo( 0 );
 	}
 
+	/**
+	 * Retry-After is exact and the client is let in again then
+	 */
 	@Test
 	@DisplayName( "Retry-After is exact and the client is let in again then" )
 	public void testLimiterRetryAfter() {
@@ -134,6 +167,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( get( "nowAllowed" ) ).isEqualTo( true );
 	}
 
+	/**
+	 * Clients do not share counters and reset gives a client its requests back
+	 */
 	@Test
 	@DisplayName( "Clients do not share counters and reset gives a client its requests back" )
 	public void testLimiterIsolationAndReset() {
@@ -150,6 +186,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( get( "aAgain" ) ).isEqualTo( true );
 	}
 
+	/**
+	 * The previous window counts less as time goes on and bad settings throw
+	 */
 	@Test
 	@DisplayName( "The previous window counts less as time goes on and bad settings throw" )
 	public void testLimiterSlidingAndValidation() {
@@ -172,6 +211,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( get( "hashHidesKey" ) ).isEqualTo( true );
 	}
 
+	/**
+	 * Many threads on one bucket never get more than the limit
+	 */
 	@Test
 	@DisplayName( "Many threads on one bucket never get more than the limit" )
 	public void testLimiterConcurrency() {
@@ -187,6 +229,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 	// The stores
 	// ------------------------------------------------------------------------------------------------
 
+	/**
+	 * Memory and cache stores count, undo and remove
+	 */
 	@Test
 	@DisplayName( "Memory and cache stores count, undo and remove" )
 	public void testStores() {
@@ -223,6 +268,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 	// The server through the request processor
 	// ------------------------------------------------------------------------------------------------
 
+	/**
+	 * Blocked requests get 429, JSON-RPC -32002 and the rate limit headers
+	 */
 	@Test
 	@DisplayName( "Blocked requests get 429, JSON-RPC -32002 and the rate limit headers" )
 	public void testProcessorBlocks() {
@@ -256,6 +304,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( num( "otherStatus" ) ).isEqualTo( 200 );
 	}
 
+	/**
+	 * A server without a rate limit is not limited, and false removes one
+	 */
 	@Test
 	@DisplayName( "A server without a rate limit is not limited, and false removes one" )
 	public void testNoLimitAndOptOut() {
@@ -270,6 +321,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( get( "off" ) ).isEqualTo( true );
 	}
 
+	/**
+	 * The limit runs before authentication and a CORS preflight is not counted
+	 */
 	@Test
 	@DisplayName( "The limit runs before authentication and a CORS preflight is not counted" )
 	public void testBeforeAuthAndPreflight() {
@@ -291,6 +345,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( num( "okAfterPreflights" ) ).isEqualTo( 200 );
 	}
 
+	/**
+	 * The 429 keeps the CORS headers
+	 */
 	@Test
 	@DisplayName( "The 429 keeps the CORS headers" )
 	public void testBlockedKeepsCors() {
@@ -306,6 +363,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( headers.containsKey( Key.of( "Access-Control-Allow-Origin" ) ) ).isTrue();
 	}
 
+	/**
+	 * Key apiKey: a verified key is its own bucket, fake keys fall back to the IP bucket
+	 */
 	@Test
 	@DisplayName( "Key apiKey: a verified key is its own bucket, fake keys fall back to the IP bucket" )
 	public void testApiKeyKey() {
@@ -336,6 +396,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( get( "noProvider" ) ).isEqualTo( true );
 	}
 
+	/**
+	 * Key apiKey asks the provider once per request
+	 */
 	@Test
 	@DisplayName( "Key apiKey asks the provider once per request" )
 	public void testApiKeyProviderCalledOnce() {
@@ -350,6 +413,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( num( "providerCalls" ) ).isEqualTo( 1 );
 	}
 
+	/**
+	 * Key global shares one bucket and a lambda key can group or exempt
+	 */
 	@Test
 	@DisplayName( "Key global shares one bucket and a lambda key can group or exempt" )
 	public void testGlobalAndLambdaKeys() {
@@ -376,6 +442,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( num( "exempt" ) ).isEqualTo( 5 );
 	}
 
+	/**
+	 * stdio has no IP: the ip key is one shared bucket
+	 */
 	@Test
 	@DisplayName( "stdio has no IP: the ip key is one shared bucket" )
 	public void testNoIp() {
@@ -387,6 +456,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( ( ( Number ) codes.get( 2 ) ).intValue() ).isEqualTo( 429 );
 	}
 
+	/**
+	 * Custom store: a class path works, a failing store lets requests in or answers 503
+	 */
 	@Test
 	@DisplayName( "Custom store: a class path works, a failing store lets requests in or answers 503" )
 	public void testCustomStoreAndFailOpen() {
@@ -412,6 +484,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( num( "errors" ) ).isEqualTo( 3 );
 	}
 
+	/**
+	 * Stats count allowed and blocked, with the top blocked bounded
+	 */
 	@Test
 	@DisplayName( "Stats count allowed and blocked, with the top blocked bounded" )
 	public void testStats() {
@@ -432,6 +507,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( ( ( ortus.boxlang.runtime.types.Array ) rate.get( Key.of( "topBlocked" ) ) ).size() ).isAtMost( 20 );
 	}
 
+	/**
+	 * A flood of clients writes few log lines and fires few events, the stats stay exact
+	 */
 	@Test
 	@DisplayName( "A flood of clients writes few log lines and fires few events, the stats stay exact" )
 	public void testFloodBudget() {
@@ -449,6 +527,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( ( ( Number ) get( "events" ) ).intValue() ).isAtLeast( 1 );
 	}
 
+	/**
+	 * Defaults come from the module setting and an explicit struct overrides them
+	 */
 	@Test
 	@DisplayName( "Defaults come from the module setting and an explicit struct overrides them" )
 	public void testModuleDefaults() {
@@ -474,6 +555,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( get( "offByDefault" ) ).isEqualTo( true );
 	}
 
+	/**
+	 * Bad settings throw InvalidArgument
+	 */
 	@Test
 	@DisplayName( "Bad settings throw InvalidArgument" )
 	public void testValidation() {
@@ -497,6 +581,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 	// Trusted proxies
 	// ------------------------------------------------------------------------------------------------
 
+	/**
+	 * Without trusted proxies the forwarded header is used, as before
+	 */
 	@Test
 	@DisplayName( "Without trusted proxies the forwarded header is used, as before" )
 	public void testProxiesDefault() {
@@ -509,6 +596,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( get( "star" ) ).isEqualTo( "203.0.113.5" );
 	}
 
+	/**
+	 * With trusted proxies a forged header from anyone else is ignored
+	 */
 	@Test
 	@DisplayName( "With trusted proxies a forged header from anyone else is ignored" )
 	public void testProxiesStrict() {
@@ -535,6 +625,9 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		assertThat( num( "c2" ) ).isEqualTo( 429 );
 	}
 
+	/**
+	 * Trusted proxies come from the module setting
+	 */
 	@Test
 	@DisplayName( "Trusted proxies come from the module setting" )
 	public void testProxiesFromSetting() {

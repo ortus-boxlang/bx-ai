@@ -205,10 +205,26 @@ class {
 		return max( 1, ceiling( untilWindowEnd + ( excessLeft * variables.window / arguments.current ) ) )
 	}
 
+	/**
+	 * The store key of a client counter in one window
+	 *
+	 * @bucketKey  The client key
+	 * @windowIndex The window number
+	 *
+	 * @return The hashed store key
+	 */
 	private string function counterKey( required string bucketKey, required numeric windowIndex ) {
 		return "#variables.keyPrefix#:#keyHash( arguments.bucketKey )#:#arguments.windowIndex#"
 	}
 
+	/**
+	 * The store key of the "already blocked" mark of a client in one window
+	 *
+	 * @bucketKey  The client key
+	 * @windowIndex The window number
+	 *
+	 * @return The hashed store key
+	 */
 	private string function blockKey( required string bucketKey, required numeric windowIndex ) {
 		return "#variables.keyPrefix#:#keyHash( arguments.bucketKey )#:blocked:#arguments.windowIndex#"
 	}
