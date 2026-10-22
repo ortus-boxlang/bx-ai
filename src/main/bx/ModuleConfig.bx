@@ -159,6 +159,29 @@ class {
 			// MCP Clients
 			// --------------------------------------------------------------------------
 			mcp : {
+				// MCP servers you build with mcpServer() / MCPServer()
+				server : {
+					// IPs or CIDR ranges of the proxies in front of your servers, for example [ "10.0.0.0/8" ].
+					// When set, X-Forwarded-For and similar headers are only trusted from these proxies.
+					// Empty or [ "*" ] trusts them from anyone, so set it unless clients can only reach you through your proxy.
+					trustedProxies : [],
+					// Limit how often one client can call a server. Off by default.
+					rateLimit : {
+						// true limits every MCP server you create, with no code change
+						enabled : false,
+						// Requests allowed per window and the window in seconds
+						limit : 60,
+						window : 60,
+						// Who is limited: ip, apiKey (needs withApiKeyProvider) or global. In code it can also be a lambda.
+						key : "ip",
+						// Where the counters live: cache, memory, a class path or an IRateLimitStore instance
+						store : "cache",
+						// The cache used by the cache store. Use a dedicated one so counters are not evicted early.
+						cacheName : "default",
+						// When the store fails: true lets requests in, false answers 503
+						failOpen : true
+					}
+				},
 				// MCP servers that run as a child process and talk over stdin/stdout: MCP( { command : [ ... ] } )
 				stdio : {
 					// Executable names a stdio server may use, for example [ "bxplaywright", "npx" ]
@@ -418,6 +441,7 @@ class {
 			"onMCPRequest",
 			"onMCPResponse",
 			"onMCPError",
+			"onMCPRateLimitHit",
 			// MCP Client Events
 			"onMCPClientRequest",
 			"onMCPClientResponse",

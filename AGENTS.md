@@ -583,7 +583,7 @@ browser.close();
   - **Core Properties**:
     - Identity: `serverName`, `description`, `version`
     - Security: `corsAllowedOrigins`, `basicAuthUsername`, `basicAuthPassword`, `apiKeyProvider`
-    - Limits: `maxRequestBodySize`, `rateLimitPerMinute`
+    - Limits: `maxRequestBodySize`, `withRateLimit()` (sliding window, `ip`/`apiKey`/`global`/lambda key, cache store), `withTrustedProxies()`
     - Callbacks: `onRequest`, `onResponse`, `onError`
     - Resources: `tools`, `resources`, `prompts` (registration maps)
     - Monitoring: `stats` (MCPServerStats with request counts, errors, latency)

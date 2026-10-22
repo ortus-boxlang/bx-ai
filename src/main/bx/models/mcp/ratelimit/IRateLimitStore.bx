@@ -1,0 +1,50 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Where the counters of an MCP server rate limit live.
+ *
+ * The rate limiter only needs three things: add to a counter atomically, read it, and remove it.
+ * The default store is the BoxLang cache (CacheRateLimitStore). To use something else (a database, Redis
+ * with a native INCR), implement this interface and pass the class path or an instance as the `store`
+ * of `withRateLimit()`.
+ */
+interface {
+
+	/**
+	 * Add `amount` to the counter of a key and return the new value, as one atomic step.
+	 * A counter that does not exist starts at 0. It may disappear after `ttlSeconds`.
+	 *
+	 * @key        The counter key
+	 * @ttlSeconds How long the counter has to live at least, in seconds
+	 * @amount     What to add, 1 by default. -1 undoes a count.
+	 *
+	 * @return The value of the counter after the change
+	 */
+	numeric function increment( required string key, required numeric ttlSeconds, numeric amount = 1 );
+
+	/**
+	 * The value of a counter, 0 if there is none
+	 *
+	 * @key The counter key
+	 */
+	numeric function get( required string key );
+
+	/**
+	 * Remove a counter. Does nothing if there is none.
+	 *
+	 * @key The counter key
+	 */
+	void function remove( required string key );
+
+}

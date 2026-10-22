@@ -1,0 +1,309 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * The rate limit of one MCP server: who is limited (the key), what happens when the store fails, the stats,
+ * and the logging with a flood budget.
+ *
+ * Logging never follows the traffic. A flood from thousands of clients writes at most `MAX_LOG_LINES`
+ * warnings per minute, then one summary line, and the rest only changes the stats.
+ */
+class {
+
+	/**
+	 * The RateLimiter doing the counting
+	 */
+	property name="limiter" type="any";
+
+	/**
+	 * "ip", "apiKey", "global" or "custom"
+	 */
+	property name="keyType" type="string";
+
+	/**
+	 * true: a store failure lets the request in. false: it answers 503.
+	 */
+	property name="failOpen" type="boolean";
+
+	static {
+		// Warning lines (and onMCPRateLimitHit events) allowed per minute, per server
+		final MAX_LOG_LINES = 10
+		// Blocked clients kept in the stats
+		final MAX_TOP_BLOCKED = 20
+		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" )
+		AtomicLong = createObject( "java", "java.util.concurrent.atomic.AtomicLong" )
+	}
+
+	/**
+	 * @limiter   The RateLimiter
+	 * @key       "ip", "apiKey", "global" or a lambda( requestData ) => string
+	 * @failOpen  Store failure policy
+	 * @mcpServer The MCPServer this gate protects
+	 * @clock     Function returning epoch seconds, for tests
+	 */
+	function init(
+		required any limiter,
+		required any key,
+		boolean failOpen = true,
+		required any mcpServer,
+		any clock
+	) {
+		variables.limiter   = arguments.limiter
+		variables.failOpen  = arguments.failOpen
+		variables.mcpServer = arguments.mcpServer
+		if ( isNull( arguments.clock ) ) {
+			variables.clock = () => createObject( "java", "java.lang.System" ).currentTimeMillis() / 1000
+		} else {
+			variables.clock = arguments.clock
+		}
+		if ( isSimpleValue( arguments.key ) ) {
+			variables.keyType = arguments.key
+			variables.keyFn   = ""
+		} else {
+			variables.keyType = "custom"
+			variables.keyFn   = arguments.key
+		}
+
+		variables.allowedCount    = static.AtomicLong.init( 0 )
+		variables.blockedCount    = static.AtomicLong.init( 0 )
+		variables.storeErrorCount = static.AtomicLong.init( 0 )
+		variables.topBlocked      = {}
+
+		// Log budget of the current minute, changed under a lock
+		variables.logMinute   = 0
+		variables.logLines    = 0
+		variables.suppressed  = 0
+		variables.minuteBlocks = 0
+		variables.minuteClients = {}
+		variables.errorMinute = -1
+		return this
+	}
+
+	/**
+	 * Count a request and decide.
+	 *
+	 * @requestData      The request data of the transport
+	 * @clientIP         The client IP, "" when the transport has none (stdio)
+	 * @verifiedApiKey   The API key of the request if the server's provider accepted it, else ""
+	 *
+	 * @return { allowed, skipped, headers, retryAfter, status }
+	 *   - skipped true when the key lambda returned nothing, the request is not limited and has no headers
+	 *   - status  the HTTP status to answer when allowed is false: 429, or 503 when the store failed
+	 */
+	struct function enforce( required struct requestData, string clientIP = "", string verifiedApiKey = "" ) {
+		var bucket = ""
+		var type   = variables.keyType
+
+		try {
+			switch ( variables.keyType ) {
+				case "ip":
+					bucket = "ip:" & ( len( arguments.clientIP ) ? arguments.clientIP : "unknown" )
+					break
+				case "apiKey":
+					if ( len( arguments.verifiedApiKey ) ) {
+						bucket = "apiKey:" & arguments.verifiedApiKey
+					} else {
+						type   = "ip"
+						bucket = "ip:" & ( len( arguments.clientIP ) ? arguments.clientIP : "unknown" )
+					}
+					break
+				case "global":
+					bucket = "global"
+					break
+				default:
+					var custom = variables.keyFn( arguments.requestData )
+					if ( isNull( custom ) || !len( toString( custom ) ) ) {
+						return { "allowed": true, "skipped": true, "headers": {}, "retryAfter": 0, "status": 200 }
+					}
+					bucket = "custom:" & toString( custom )
+			}
+			var result = variables.limiter.check( bucket )
+		} catch ( any e ) {
+			variables.storeErrorCount.incrementAndGet()
+			logError( e.message )
+			if ( variables.failOpen ) {
+				return { "allowed": true, "skipped": true, "headers": {}, "retryAfter": 0, "status": 200 }
+			}
+			return { "allowed": false, "skipped": false, "headers": {}, "retryAfter": 0, "status": 503 }
+		}
+
+		var headers = {
+			"X-RateLimit-Limit"    : result.limit,
+			"X-RateLimit-Remaining": result.remaining,
+			"X-RateLimit-Reset"    : result.resetAt
+		}
+
+		if ( result.allowed ) {
+			variables.allowedCount.incrementAndGet()
+			return { "allowed": true, "skipped": false, "headers": headers, "retryAfter": 0, "status": 200 }
+		}
+
+		headers[ "Retry-After" ] = result.retryAfter
+		variables.blockedCount.incrementAndGet()
+		var shownKey = type == "ip" ? listRest( bucket, ":" ) : variables.limiter.keyHash( bucket ).left( 12 )
+		recordBlocked( shownKey, type, result, arguments.requestData, bucket )
+
+		return { "allowed": false, "skipped": false, "headers": headers, "retryAfter": result.retryAfter, "status": 429 }
+	}
+
+	/**
+	 * The numbers for getStats()
+	 */
+	struct function getStats() {
+		var top = []
+		lock name="bxai-ratelimit-stats-#variables.mcpServer.getServerName()#" type="readonly" timeout="2" throwontimeout="false" {
+			top = variables.topBlocked.reduce( ( acc, id, row ) => acc.append( { "client": id, "blocked": row.count, "lastBlockedAt": row.lastBlockedAt } ), [] )
+		}
+		top.sort( ( a, b ) => b.blocked - a.blocked )
+		return {
+			"keyType"    : variables.keyType,
+			"limit"      : variables.limiter.getLimit(),
+			"window"     : variables.limiter.getWindow(),
+			"allowed"    : variables.allowedCount.get(),
+			"blocked"    : variables.blockedCount.get(),
+			"storeErrors": variables.storeErrorCount.get(),
+			"topBlocked" : top
+		}
+	}
+
+	/**
+	 * Clear the numbers
+	 */
+	function resetStats() {
+		variables.allowedCount.set( 0 )
+		variables.blockedCount.set( 0 )
+		variables.storeErrorCount.set( 0 )
+		lock name="bxai-ratelimit-stats-#variables.mcpServer.getServerName()#" type="exclusive" timeout="2" throwontimeout="false" {
+			variables.topBlocked = {}
+		}
+		return this
+	}
+
+	// ---------------------------------------------------------------------------------------------------------
+	// Private: stats and the log budget
+	// ---------------------------------------------------------------------------------------------------------
+
+	/**
+	 * Record a blocked request: the top blocked list, the minute summary, and the warning and event while the log budget lasts
+	 *
+	 * @shownKey   The client as shown in logs: the IP, or a short hash
+	 * @type       The key type
+	 * @result     The RateLimiter result
+	 * @requestData The request
+	 * @bucket     The full bucket key
+	 */
+	private void function recordBlocked(
+		required string shownKey,
+		required string type,
+		required struct result,
+		required struct requestData,
+		required string bucket
+	) {
+		var minute  = int( variables.clock() / 60 )
+		var doLog   = false
+		var summary = ""
+
+		lock name="bxai-ratelimit-log-#variables.mcpServer.getServerName()#" type="exclusive" timeout="2" throwontimeout="false" {
+			// Top blocked clients, bounded
+			var stamp = now()
+			if ( variables.topBlocked.keyExists( arguments.shownKey ) ) {
+				variables.topBlocked[ arguments.shownKey ].count++
+				variables.topBlocked[ arguments.shownKey ].lastBlockedAt = stamp
+			} else {
+				if ( variables.topBlocked.len() >= static.MAX_TOP_BLOCKED ) {
+					var lowest = ""
+					var lowestCount = 0
+					for ( var id in variables.topBlocked ) {
+						if ( !len( lowest ) || variables.topBlocked[ id ].count < lowestCount ) {
+							lowest      = id
+							lowestCount = variables.topBlocked[ id ].count
+						}
+					}
+					variables.topBlocked.delete( lowest )
+				}
+				variables.topBlocked[ arguments.shownKey ] = { "count": 1, "lastBlockedAt": stamp }
+			}
+
+			// A new minute: close the last one
+			if ( minute != variables.logMinute ) {
+				if ( variables.suppressed > 0 ) {
+					summary = "Rate limit summary for MCP server [#variables.mcpServer.getServerName()#]: #variables.minuteBlocks# requests blocked from #variables.minuteClients.len()# clients, #variables.suppressed# warning lines suppressed"
+				}
+				variables.logMinute     = minute
+				variables.logLines      = 0
+				variables.suppressed    = 0
+				variables.minuteBlocks  = 0
+				variables.minuteClients = {}
+			}
+
+			variables.minuteBlocks++
+			if ( variables.minuteClients.len() < 10000 ) {
+				variables.minuteClients[ arguments.shownKey ] = true
+			}
+
+			if ( arguments.result.firstBlock ) {
+				if ( variables.logLines < static.MAX_LOG_LINES ) {
+					variables.logLines++
+					doLog = true
+				} else {
+					variables.suppressed++
+				}
+			}
+		}
+
+		if ( len( summary ) ) {
+			static.mcpLogger.info( summary )
+		}
+		if ( !doLog ) {
+			return
+		}
+
+		static.mcpLogger.warn(
+			"MCP server [#variables.mcpServer.getServerName()#] rate limit hit by #arguments.type# [#arguments.shownKey#]: limit #arguments.result.limit# per #variables.limiter.getWindow()#s, retry in #arguments.result.retryAfter#s"
+		)
+		try {
+			BoxAnnounce( "onMCPRateLimitHit", {
+				mcpServer  : variables.mcpServer,
+				serverName : variables.mcpServer.getServerName(),
+				key        : arguments.shownKey,
+				keyType    : arguments.type,
+				limit      : arguments.result.limit,
+				window     : variables.limiter.getWindow(),
+				retryAfter : arguments.result.retryAfter,
+				requestData: arguments.requestData
+			} )
+		} catch ( any e ) {
+			static.mcpLogger.debug( "onMCPRateLimitHit interceptor failed: #e.message#" )
+		}
+	}
+
+	/**
+	 * Store and key lambda errors, at most one log line a minute
+	 */
+	private void function logError( required string message ) {
+		var minute = int( variables.clock() / 60 )
+		var doLog  = false
+		lock name="bxai-ratelimit-log-#variables.mcpServer.getServerName()#" type="exclusive" timeout="2" throwontimeout="false" {
+			if ( minute != variables.errorMinute ) {
+				variables.errorMinute = minute
+				doLog = true
+			}
+		}
+		if ( doLog ) {
+			static.mcpLogger.error(
+				"MCP server [#variables.mcpServer.getServerName()#] rate limiter error, #variables.failOpen ? 'letting requests through' : 'answering 503'#: #arguments.message#"
+			)
+		}
+	}
+
+}

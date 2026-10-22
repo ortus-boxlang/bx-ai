@@ -1,0 +1,106 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * In-memory IRateLimitStore. Counters live in this JVM only and are lost on restart. Good for a single
+ * node, for tests, and for when no cache should be involved. Expired counters are swept now and then, so
+ * memory stays bounded by the number of active clients.
+ */
+class implements="IRateLimitStore" {
+
+	static {
+		// Sweep the expired counters every this many writes
+		final SWEEP_EVERY = 1000
+	}
+
+	/**
+	 * Create an empty store
+	 */
+	function init() {
+		// key => { count, expiresAt in milliseconds }
+		variables.counters = {}
+		variables.writes   = 0
+		variables.storeId  = createUUID()
+		return this
+	}
+
+	/**
+	 * Add to a counter under a lock and return the new value, never below 0. The counter expires after ttlSeconds.
+	 *
+	 * @key        The counter key
+	 * @ttlSeconds Seconds the counter lives
+	 * @amount     What to add, negative to undo
+	 *
+	 * @return The new value
+	 */
+	numeric function increment( required string key, required numeric ttlSeconds, numeric amount = 1 ) {
+		var nowMillis = createObject( "java", "java.lang.System" ).currentTimeMillis()
+		lock name="bxai-ratelimit-memory-#hash( arguments.key )#-#getStoreId()#" type="exclusive" timeout="5" throwontimeout="true" {
+			var existing = variables.counters[ arguments.key ] ?: { count: 0, expiresAt: 0 }
+			var current  = ( existing.expiresAt > nowMillis ? existing.count : 0 ) + arguments.amount
+			variables.counters[ arguments.key ] = {
+				count    : max( 0, current ),
+				expiresAt: nowMillis + ( arguments.ttlSeconds * 1000 )
+			}
+		}
+		variables.writes++
+		if ( variables.writes % static.SWEEP_EVERY == 0 ) {
+			sweep( nowMillis )
+		}
+		return max( 0, current )
+	}
+
+	/**
+	 * Read a counter
+	 *
+	 * @key The counter key
+	 *
+	 * @return The value, 0 when there is none or it expired
+	 */
+	numeric function get( required string key ) {
+		var existing = variables.counters[ arguments.key ] ?: { count: 0, expiresAt: 0 }
+		return existing.expiresAt > createObject( "java", "java.lang.System" ).currentTimeMillis() ? existing.count : 0
+	}
+
+	/**
+	 * Delete a counter
+	 *
+	 * @key The counter key
+	 */
+	void function remove( required string key ) {
+		variables.counters.delete( arguments.key )
+	}
+
+	/**
+	 * Drop the counters that have expired
+	 */
+	private void function sweep( required numeric nowMillis ) {
+		lock name="bxai-ratelimit-memory-sweep-#getStoreId()#" type="exclusive" timeout="5" throwontimeout="true" {
+			variables.counters.keyArray().each( key => {
+				if ( ( variables.counters[ key ]?.expiresAt ?: 0 ) <= nowMillis ) {
+					variables.counters.delete( key )
+				}
+			} )
+		}
+	}
+
+	/**
+	 * The id of this store, part of the lock names so two stores do not share locks
+	 *
+	 * @return The store id
+	 */
+	private string function getStoreId() {
+		return variables.storeId
+	}
+
+}

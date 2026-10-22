@@ -1,0 +1,232 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Sliding window counter rate limiter for MCP servers.
+ *
+ * Each client (a bucket key) gets `limit` requests per `window` seconds. The time is cut in fixed windows and
+ * each window has a counter in the store. The count that matters is the current window plus the part of the
+ * previous window that still overlaps the last `window` seconds:
+ *
+ *   estimated = previous * ( 1 - elapsedFraction ) + current
+ *
+ * That is one cheap counter per window, no burst at the window edge like a plain fixed window, and a retry
+ * time that can be computed exactly. A request that is refused is not counted.
+ *
+ * This class does not know about MCP, requests or logging. MCPServer.withRateLimit() builds it.
+ */
+class {
+
+	/**
+	 * Requests allowed in a window
+	 */
+	property name="limit" type="numeric";
+
+	/**
+	 * Window length in seconds
+	 */
+	property name="window" type="numeric";
+
+	/**
+	 * Where the counters live, an IRateLimitStore
+	 */
+	property name="store" type="any";
+
+	/**
+	 * Start of all the counter keys, so servers and apps sharing one cache do not mix their counters
+	 */
+	property name="keyPrefix" type="string";
+
+	/**
+	 * @limit     Requests allowed in a window
+	 * @window    Window length in seconds
+	 * @store     The IRateLimitStore to keep the counters in
+	 * @keyPrefix Start of every counter key
+	 * @clock     Function that returns the time in epoch seconds. Only tests change it.
+	 */
+	function init(
+		required numeric limit,
+		required numeric window,
+		required any store,
+		string keyPrefix = "bxai:mcp:ratelimit",
+		any clock
+	) {
+		if ( arguments.limit < 1 ) {
+			throw( type: "InvalidArgument", message: "The rate limit must be at least 1 request, got [#arguments.limit#]" )
+		}
+		if ( arguments.window < 1 ) {
+			throw( type: "InvalidArgument", message: "The rate limit window must be at least 1 second, got [#arguments.window#]" )
+		}
+		variables.limit     = arguments.limit
+		variables.window    = arguments.window
+		variables.store     = arguments.store
+		variables.keyPrefix = arguments.keyPrefix
+		if ( isNull( arguments.clock ) ) {
+			variables.clock = () => createObject( "java", "java.lang.System" ).currentTimeMillis() / 1000
+		} else {
+			variables.clock = arguments.clock
+		}
+		return this
+	}
+
+	/**
+	 * Count one request for a client and say if it is allowed.
+	 *
+	 * @bucketKey Who is asking: an IP, an API key, anything. It is hashed before it is stored.
+	 *
+	 * @return { allowed, limit, remaining, resetAt, retryAfter, firstBlock }
+	 *   - remaining  requests left in the window, 0 when refused
+	 *   - resetAt    epoch seconds when the client has all its requests back (an estimate while allowed)
+	 *   - retryAfter seconds to wait, 0 when allowed
+	 *   - firstBlock true for the first refusal of this client in this window, for logging once
+	 */
+	struct function check( required string bucketKey ) {
+		var now         = variables.clock()
+		var windowIndex = int( now / variables.window )
+		var elapsed     = ( now - ( windowIndex * variables.window ) ) / variables.window
+		var ttl         = variables.window * 2
+		var currentKey  = counterKey( arguments.bucketKey, windowIndex )
+
+		var current  = variables.store.increment( currentKey, ttl )
+		var previous = variables.store.get( counterKey( arguments.bucketKey, windowIndex - 1 ) )
+		var estimated = ( previous * ( 1 - elapsed ) ) + current
+
+		if ( estimated <= variables.limit ) {
+			return {
+				"allowed"   : true,
+				"limit"     : variables.limit,
+				"remaining" : max( 0, int( variables.limit - estimated ) ),
+				"resetAt"   : ceiling( now + ( variables.window * ( 1 - elapsed ) ) ),
+				"retryAfter": 0,
+				"firstBlock": false
+			}
+		}
+
+		// Refused: take the request back out of the counter, a refusal does not count
+		variables.store.increment( currentKey, ttl, -1 )
+
+		var retryAfter = secondsUntilAllowed( previous, current - 1, elapsed )
+		// One mark per client and window, so the caller can log the first refusal only
+		var firstBlock = variables.store.increment( blockKey( arguments.bucketKey, windowIndex ), ttl ) == 1
+
+		return {
+			"allowed"   : false,
+			"limit"     : variables.limit,
+			"remaining" : 0,
+			"resetAt"   : ceiling( now + retryAfter ),
+			"retryAfter": retryAfter,
+			"firstBlock": firstBlock
+		}
+	}
+
+	/**
+	 * Where a client stands, without counting a request
+	 *
+	 * @bucketKey Who is asking
+	 *
+	 * @return { limit, remaining, resetAt }
+	 */
+	struct function status( required string bucketKey ) {
+		var now         = variables.clock()
+		var windowIndex = int( now / variables.window )
+		var elapsed     = ( now - ( windowIndex * variables.window ) ) / variables.window
+		var estimated   = ( variables.store.get( counterKey( arguments.bucketKey, windowIndex - 1 ) ) * ( 1 - elapsed ) )
+			+ variables.store.get( counterKey( arguments.bucketKey, windowIndex ) )
+
+		return {
+			"limit"    : variables.limit,
+			"remaining": max( 0, int( variables.limit - estimated ) ),
+			"resetAt"  : ceiling( now + ( variables.window * ( 1 - elapsed ) ) )
+		}
+	}
+
+	/**
+	 * Forget a client: it has all its requests back
+	 *
+	 * @bucketKey Who to forget
+	 */
+	void function reset( required string bucketKey ) {
+		var windowIndex = int( variables.clock() / variables.window )
+		for ( var offset in [ 0, -1 ] ) {
+			variables.store.remove( counterKey( arguments.bucketKey, windowIndex + offset ) )
+		}
+		variables.store.remove( blockKey( arguments.bucketKey, windowIndex ) )
+	}
+
+	/**
+	 * A short stable id of a client, safe to log. The same hash is used in the store keys.
+	 *
+	 * @bucketKey The client key
+	 */
+	string function keyHash( required string bucketKey ) {
+		return hash( arguments.bucketKey, "SHA-256" ).left( 32 ).lcase()
+	}
+
+	/**
+	 * Seconds until a refused client can be let in again, if it sends nothing in between.
+	 *
+	 * The estimate falls with time. Until the window ends it falls by previous / window per second, then the
+	 * current window becomes the previous one and it falls by current / window per second.
+	 *
+	 * @previous Count of the previous window
+	 * @current  Count of the current window, without the refused request
+	 * @elapsed  How far in the current window we are, 0 to 1
+	 */
+	private numeric function secondsUntilAllowed( required numeric previous, required numeric current, required numeric elapsed ) {
+		// How much the estimate has to fall for one more request to fit
+		var estimate = ( arguments.previous * ( 1 - arguments.elapsed ) ) + arguments.current
+		var excess   = estimate + 1 - variables.limit
+		if ( excess <= 0 ) {
+			return 1
+		}
+
+		var untilWindowEnd = variables.window * ( 1 - arguments.elapsed )
+		var fallInWindow   = arguments.previous * ( 1 - arguments.elapsed )
+
+		if ( arguments.previous > 0 && excess <= fallInWindow ) {
+			return max( 1, ceiling( excess * variables.window / arguments.previous ) )
+		}
+
+		// Needs the next window too, where the current count falls instead
+		var excessLeft = excess - fallInWindow
+		if ( arguments.current <= 0 ) {
+			return max( 1, ceiling( untilWindowEnd ) )
+		}
+		return max( 1, ceiling( untilWindowEnd + ( excessLeft * variables.window / arguments.current ) ) )
+	}
+
+	/**
+	 * The store key of a client counter in one window
+	 *
+	 * @bucketKey  The client key
+	 * @windowIndex The window number
+	 *
+	 * @return The hashed store key
+	 */
+	private string function counterKey( required string bucketKey, required numeric windowIndex ) {
+		return "#variables.keyPrefix#:#keyHash( arguments.bucketKey )#:#arguments.windowIndex#"
+	}
+
+	/**
+	 * The store key of the "already blocked" mark of a client in one window
+	 *
+	 * @bucketKey  The client key
+	 * @windowIndex The window number
+	 *
+	 * @return The hashed store key
+	 */
+	private string function blockKey( required string bucketKey, required numeric windowIndex ) {
+		return "#variables.keyPrefix#:#keyHash( arguments.bucketKey )#:blocked:#arguments.windowIndex#"
+	}
+
+}

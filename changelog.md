@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 Added
 
+- **MCP server rate limiting**: limit how often one client can call an MCP server you build with `mcpServer()`. `server.withRateLimit( 100 )` or `withRateLimit( { limit: 100, window: 60, key: "ip", store: "cache", cacheName: "mcpLimits", failOpen: true } )`, `withRateLimit( false )` to turn it off. It is a sliding window counter, checked before authentication, so floods of failed logins are limited too. A CORS preflight is not counted.
+  - `key` is `"ip"` (default), `"apiKey"` (only a key the API key provider accepts is its own bucket, fake keys fall back to the IP), `"global"`, or a lambda `( requestData ) => string` (an empty result means no limit for that request). Keys are hashed before they are stored or logged, IPs are logged plain.
+  - Blocked requests get `429`, JSON-RPC error `-32002` and `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining` and `X-RateLimit-Reset` (the `X-RateLimit-*` headers are also sent on allowed requests). A store failure lets the request through (`failOpen: true`) or answers `503`.
+  - Counters live in a BoxLang cache by default (`cacheName`, use a dedicated one), or in `"memory"`, or in your own class that implements `IRateLimitStore` (`increment`, `get`, `remove`).
+  - Flood safe logging: blocked requests are never logged one by one. At most 10 warnings a minute per server, then one summary line, and `onMCPRateLimitHit` (new event) shares that budget. `getStats()` has `security.rateLimitFailures` and a `rateLimit` section (allowed, blocked, store errors, top 20 blocked clients) with exact totals.
+  - Settings `mcp.server.rateLimit` (`enabled` false by default, `limit` 60, `window` 60, `key`, `store`, `cacheName`, `failOpen`) set the defaults for every MCP server.
+- **Trusted proxies for MCP servers**: `server.withTrustedProxies( [ "10.0.0.0/8" ] )` and the `mcp.server.trustedProxies` setting. When set, `X-Forwarded-For` and similar headers are only honored when the connection comes from a trusted proxy, and the chain is read from the right. It applies to the IP allowlist and the `ip` rate limit. Empty or `[ "*" ]` keeps the old behavior, trusting the headers from anyone.
+
 - **Manual releases**: the `Release` workflow can be run by hand (Actions, Run workflow) from `development` or `main`, with a `snapshot` input. It never runs the tests. Unchecked it makes a release (changelog, tag, publish, GitHub release, version bump), checked it makes a `-snapshot` build, whatever the branch, with no tag, release or version bump.
 - The live MiniMax tests are manual now: they only run with `AI_TESTS_MINIMAX=true`.
 
