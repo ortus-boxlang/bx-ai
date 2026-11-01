@@ -58,7 +58,8 @@ class {
 	static struct function fromObject( required any target ){
 		// If it's a simple value, assume a class path
 		if( isSimpleValue( arguments.target ) ){
-			arguments.target = new #arguments.target#()
+			// Quoted form: works on every BoxLang version (new #expr#() needs BoxLang 1.19, BL-2781)
+			arguments.target = new "#arguments.target#"()
 		}
 
 		// Delegate based on type

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 
+- **`SchemaBuilder::fromObject()` given a class path string** (`SchemaBuilder::fromObject( "models.Person" )`) failed with `The requested key [new] was not located`. It created the class with `new #path#()`, which BoxLang reads as a variable named `new` until 1.19; it now uses `new "#path#"()`, which works on every version.
 - **Mistral speech** no longer sends a `voice` field. Mistral only knows `voice_id` and answered "voice is not supported for speech v1" when a voice name (or the voice of another provider, such as OpenAI's `nova`) reached it. A UUID is still sent as `voice_id`, any other voice is dropped and the first preset voice is used.
 
 ### 🥊 Added
