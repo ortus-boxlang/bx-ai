@@ -1341,4 +1341,449 @@ public class SuspendResumeIntegrationTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "toolNotCalled" ) ) ).isTrue();
 	}
 
+	// ---- Rewritten toolArgs must survive a batch suspension (per provider) ----------------
+	// A resume NEVER re-fires beforeToolCall, so the resume ledger's `toolArgs` is the only
+	// surviving record of a pass-1 `ctx.toolArgs` rewrite. Before the ledger carried it, every
+	// resumed batch re-derived its arguments from the raw assistant tool call and silently ran
+	// the model's ORIGINAL arguments instead of the middleware-approved ones.
+	// One per provider, each in that provider's native tool-call shape.
+
+	@DisplayName( "ClaudeService: a suspended batch records the middleware-rewritten toolArgs in its resume ledger, and the resume runs them" )
+	@Test
+	public void testClaudeSuspendedLedgerCarriesRewrittenToolArgs() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+		        aCity = ""
+		        bRuns = 0
+		        toolA = aiTool( "toolA", "Tool A", ( string city = "DEFAULT" ) => { aCity = city; return "A:" & city } )
+		        toolB = aiTool( "toolB", "Tool B", ( string city = "DEFAULT" ) => { bRuns++; return "B:" & city } )
+
+		        provider = aiService( "claude", { apiKey: "dummy-key" } )
+
+		        wrapCalls = 0
+		        llmMw = {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                if ( wrapCalls == 1 ) {
+		                    return {
+		                        "content": [
+		                            { "type": "tool_use", "id": "call_a", "name": "toolA", "input": { "city": "ORIGINAL" } },
+		                            { "type": "tool_use", "id": "call_b", "name": "toolB", "input": { "city": "ORIGINAL" } }
+		                        ],
+		                        "stop_reason": "tool_use",
+		                        "usage": { "input_tokens": 5, "output_tokens": 5 }
+		                    }
+		                }
+		                return {
+		                    "content": [ { "type": "text", "text": "both done" } ],
+		                    "stop_reason": "end_turn",
+		                    "usage": { "input_tokens": 5, "output_tokens": 5 }
+		                }
+		            }
+		        }
+
+		        // toolA's arguments are rewritten in pass 1; toolB needs a human, so the WHOLE
+		        // batch suspends before either tool runs.
+		        rewriteMw = {
+		            "beforeToolCall": ( ctx ) => {
+		                if ( ctx.toolName == "toolA" ) {
+		                    ctx.toolArgs = { "city": "SAFE" }
+		                    return AiMiddlewareResult::continue()
+		                }
+		                return AiMiddlewareResult::defer( { toolName: ctx.toolName, toolArgs: ctx.toolArgs } )
+		            }
+		        }
+
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "run both" ),
+		            { model: "claude-sonnet-4-5", tools: [ toolA, toolB ] },
+		            { provider: "claude" }
+		        )
+		        chatRequest.addMiddleware( rewriteMw )
+		        chatRequest.addMiddleware( llmMw )
+
+		        suspendedResult = provider.chat( chatRequest )
+		        suspended     = isObject( suspendedResult ) && suspendedResult.isSuspended()
+		        suspendData   = suspended ? suspendedResult.getData() : {}
+		        ledger        = suspendData.resumeLedger ?: []
+		        ledgerLen     = ledger.len()
+		        aStatus       = ledgerLen ? ( ledger[ 1 ].status ?: "" ) : ""
+		        aLedgerCity   = ledgerLen ? ( ledger[ 1 ].toolArgs.city ?: "" ) : ""
+		        bStatus       = ledgerLen > 1 ? ( ledger[ 2 ].status ?: "" ) : ""
+		        neitherRanYet = aCity == "" && bRuns == 0
+		        calledLLMOnce = wrapCalls == 1
+
+		        // ---- resume: approve the pending call ------------------------------------------
+		        finalLedger = ledger
+		        finalLedger[ 2 ].status = "execute"
+
+		        resumeRequest = aiChatRequest(
+		            aiMessage().user( "run both" ),
+		            { model: "claude-sonnet-4-5", tools: [ toolA, toolB ] },
+		            {
+		                provider: "claude",
+		                _resumeContext: {
+		                    assistantMessage: suspendData.assistantMessage,
+		                    resumeLedger    : finalLedger
+		                }
+		            }
+		        )
+		        resumeRequest.addMiddleware( llmMw )
+		        answer = provider.chat( resumeRequest )
+		        resumeAddedOneLLMCall = wrapCalls == 2
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "suspended" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "ledgerLen" ) ) ).isEqualTo( 2 );
+		assertThat( variables.get( Key.of( "aStatus" ) ).toString() ).isEqualTo( "execute" );
+		assertThat( variables.get( Key.of( "aLedgerCity" ) ).toString() ).isEqualTo( "SAFE" );
+		assertThat( variables.get( Key.of( "bStatus" ) ).toString() ).isEqualTo( "pending" );
+		assertThat( variables.getAsBoolean( Key.of( "neitherRanYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "calledLLMOnce" ) ) ).isTrue();
+		// Without the ledger's toolArgs the resume re-derived them from tool_use.input and toolA
+		// ran with "ORIGINAL" — the rewrite the non-suspended path had honoured was lost.
+		assertThat( variables.get( Key.of( "aCity" ) ).toString() ).isEqualTo( "SAFE" );
+		assertThat( variables.getAsInteger( Key.of( "bRuns" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsBoolean( Key.of( "resumeAddedOneLLMCall" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "both done" );
+	}
+
+	@DisplayName( "OpenAIService: a suspended batch records the middleware-rewritten toolArgs in its resume ledger, and the resume runs them" )
+	@Test
+	public void testOpenAISuspendedLedgerCarriesRewrittenToolArgs() {
+		// The middleware REPLACES ctx.toolArgs outright (the case OpenAIService used to drop: its
+		// pass 1 stored the struct parsed from `function.arguments` before beforeToolCall fired and
+		// pass 2 re-parsed the string, so only in-place mutation ever reached the tool). The native
+		// `function.arguments` string is deliberately left saying "ORIGINAL": that is what the
+		// resume falls back to when the ledger carries no toolArgs, so "SAFE" can only come from
+		// the ledger.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.AiMiddlewareResult;
+
+		        aCity = ""
+		        bRuns = 0
+		        toolA = aiTool( "toolA", "Tool A", ( string city = "DEFAULT" ) => { aCity = city; return "A:" & city } )
+		        toolB = aiTool( "toolB", "Tool B", ( string city = "DEFAULT" ) => { bRuns++; return "B:" & city } )
+
+		        provider = aiService( "openai", { apiKey: "dummy-key" } )
+		        usage    = { "prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8 }
+
+		        wrapCalls = 0
+		        llmMw = {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                if ( wrapCalls == 1 ) {
+		                    return {
+		                        "choices": [ {
+		                            "index": 0,
+		                            "message": {
+		                                "role": "assistant",
+		                                "content": "",
+		                                "tool_calls": [
+		                                    { "id": "call_a", "type": "function", "function": { "name": "toolA", "arguments": '{"city":"ORIGINAL"}' } },
+		                                    { "id": "call_b", "type": "function", "function": { "name": "toolB", "arguments": '{"city":"ORIGINAL"}' } }
+		                                ]
+		                            },
+		                            "finish_reason": "tool_calls"
+		                        } ],
+		                        "usage": usage
+		                    }
+		                }
+		                return {
+		                    "choices": [ { "index": 0, "message": { "role": "assistant", "content": "both done" }, "finish_reason": "stop" } ],
+		                    "usage": usage
+		                }
+		            }
+		        }
+
+		        rewriteMw = {
+		            "beforeToolCall": ( ctx ) => {
+		                if ( ctx.toolName == "toolA" ) {
+		                    ctx.toolArgs = { city: "SAFE" }
+		                    return AiMiddlewareResult::continue()
+		                }
+		                return AiMiddlewareResult::defer( { toolName: ctx.toolName, toolArgs: ctx.toolArgs } )
+		            }
+		        }
+
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "run both" ),
+		            { model: "gpt-4o-mini", tools: [ toolA, toolB ] },
+		            { provider: "openai" }
+		        )
+		        chatRequest.addMiddleware( rewriteMw )
+		        chatRequest.addMiddleware( llmMw )
+
+		        suspendedResult = provider.chat( chatRequest )
+		        suspended     = isObject( suspendedResult ) && suspendedResult.isSuspended()
+		        suspendData   = suspended ? suspendedResult.getData() : {}
+		        ledger        = suspendData.resumeLedger ?: []
+		        ledgerLen     = ledger.len()
+		        aStatus       = ledgerLen ? ( ledger[ 1 ].status ?: "" ) : ""
+		        aLedgerCity   = ledgerLen ? ( ledger[ 1 ].toolArgs.city ?: "" ) : ""
+		        bStatus       = ledgerLen > 1 ? ( ledger[ 2 ].status ?: "" ) : ""
+		        neitherRanYet = aCity == "" && bRuns == 0
+		        calledLLMOnce = wrapCalls == 1
+
+		        // The native slot still says ORIGINAL — proving the resume below reads the ledger
+		        nativeStillOriginal = findNoCase( "ORIGINAL", suspendData.assistantMessage.tool_calls[ 1 ].function.arguments ) > 0
+
+		        // ---- resume: approve the pending call ------------------------------------------
+		        finalLedger = ledger
+		        finalLedger[ 2 ].status = "execute"
+
+		        resumeRequest = aiChatRequest(
+		            aiMessage().user( "run both" ),
+		            { model: "gpt-4o-mini", tools: [ toolA, toolB ] },
+		            {
+		                provider: "openai",
+		                _resumeContext: {
+		                    assistantMessage: suspendData.assistantMessage,
+		                    resumeLedger    : finalLedger
+		                }
+		            }
+		        )
+		        resumeRequest.addMiddleware( llmMw )
+		        answer = provider.chat( resumeRequest )
+		        resumeAddedOneLLMCall = wrapCalls == 2
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "suspended" ) ) ).isTrue();
+		assertThat( variables.getAsInteger( Key.of( "ledgerLen" ) ) ).isEqualTo( 2 );
+		assertThat( variables.get( Key.of( "aStatus" ) ).toString() ).isEqualTo( "execute" );
+		assertThat( variables.get( Key.of( "aLedgerCity" ) ).toString() ).isEqualTo( "SAFE" );
+		assertThat( variables.get( Key.of( "bStatus" ) ).toString() ).isEqualTo( "pending" );
+		assertThat( variables.getAsBoolean( Key.of( "neitherRanYet" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "calledLLMOnce" ) ) ).isTrue();
+		assertThat( variables.getAsBoolean( Key.of( "nativeStillOriginal" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "aCity" ) ).toString() ).isEqualTo( "SAFE" );
+		assertThat( variables.getAsInteger( Key.of( "bRuns" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsBoolean( Key.of( "resumeAddedOneLLMCall" ) ) ).isTrue();
+		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "both done" );
+	}
+
+	@DisplayName( "Backward compatibility: a resume ledger with no toolArgs field still runs the tool with the assistant message's native arguments" )
+	@Test
+	public void testResumeLedgerWithoutToolArgsFallsBackToNativeArgs() {
+		// A checkpoint written by an older build has ledger entries of the pre-fix shape
+		// ({ toolName, status }) with no toolArgs at all. The `?:` fallback must re-derive the
+		// arguments from the assistant message's tool call rather than invoking with {} — which
+		// would have silently replaced every argument with its schema default.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        seenCity = ""
+		        probe = aiTool( "probe", "Probe a city", ( string city = "DEFAULT" ) => { seenCity = city; return "ok:" & city } )
+
+		        provider = aiService( "claude", { apiKey: "dummy-key" } )
+
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "probe" ),
+		            { model: "claude-sonnet-4-5", tools: [ probe ] },
+		            {
+		                provider: "claude",
+		                _resumeContext: {
+		                    assistantMessage: {
+		                        "role": "assistant",
+		                        "content": [
+		                            { "type": "tool_use", "id": "call_a", "name": "probe", "input": { "city": "NATIVE" } }
+		                        ]
+		                    },
+		                    // Legacy ledger entry: no toolArgs, no editedArgs
+		                    resumeLedger: [ { toolName: "probe", status: "execute" } ]
+		                }
+		            }
+		        )
+
+		        wrapCalls = 0
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                return {
+		                    "content": [ { "type": "text", "text": "done" } ],
+		                    "stop_reason": "end_turn",
+		                    "usage": { "input_tokens": 5, "output_tokens": 5 }
+		                }
+		            }
+		        } )
+
+		        answer         = provider.chat( chatRequest )
+		        onlyFollowUpLLM = wrapCalls == 1
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "seenCity" ) ).toString() ).isEqualTo( "NATIVE" );
+		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "done" );
+		assertThat( variables.getAsBoolean( Key.of( "onlyFollowUpLLM" ) ) ).isTrue();
+	}
+
+	@DisplayName( "OpenAIService: a zero-argument tool call whose function.arguments is \"\" runs with {} instead of throwing" )
+	@Test
+	public void testOpenAIEmptyArgumentsStringRunsToolWithEmptyStruct() {
+		// A no-argument tool comes back from OpenAI-compatible providers with `arguments` as ""
+		// (some send "" rather than "{}"). jsonDeserialize( "" ) throws, so the whole turn died on
+		// a perfectly valid tool call — and the same string reached three other parse sites.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        pings = 0
+		        ping  = aiTool( "ping", "Ping", () => { pings++; return "pong" } )
+
+		        provider = aiService( "openai", { apiKey: "dummy-key" } )
+		        usage    = { "prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8 }
+
+		        wrapCalls = 0
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "ping please" ),
+		            { model: "gpt-4o-mini", tools: [ ping ] },
+		            { provider: "openai" }
+		        )
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                if ( wrapCalls == 1 ) {
+		                    return {
+		                        "choices": [ {
+		                            "index": 0,
+		                            "message": {
+		                                "role": "assistant",
+		                                "content": "",
+		                                "tool_calls": [
+		                                    { "id": "call_p", "type": "function", "function": { "name": "ping", "arguments": "" } }
+		                                ]
+		                            },
+		                            "finish_reason": "tool_calls"
+		                        } ],
+		                        "usage": usage
+		                    }
+		                }
+		                return {
+		                    "choices": [ { "index": 0, "message": { "role": "assistant", "content": "pinged" }, "finish_reason": "stop" } ],
+		                    "usage": usage
+		                }
+		            }
+		        } )
+
+		        answer = provider.chat( chatRequest )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "pings" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "pinged" );
+	}
+
+	@DisplayName( "OpenAIService: a resume ledger with no toolArgs and an empty native arguments string still resumes" )
+	@Test
+	public void testOpenAIResumeWithEmptyNativeArgumentsString() {
+		// The resume fallback re-parses `function.arguments` when the ledger entry carries no
+		// toolArgs (a checkpoint from an older build). With "" on the wire that fallback threw, so
+		// an approved tool call could never be finished at all.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        pings = 0
+		        ping  = aiTool( "ping", "Ping", () => { pings++; return "pong" } )
+
+		        provider = aiService( "openai", { apiKey: "dummy-key" } )
+
+		        chatRequest = aiChatRequest(
+		            aiMessage().user( "ping please" ),
+		            { model: "gpt-4o-mini", tools: [ ping ] },
+		            {
+		                provider: "openai",
+		                _resumeContext: {
+		                    assistantMessage: {
+		                        "role": "assistant",
+		                        "content": "",
+		                        "tool_calls": [
+		                            { "id": "call_p", "type": "function", "function": { "name": "ping", "arguments": "" } }
+		                        ]
+		                    },
+		                    resumeLedger: [ { toolName: "ping", status: "execute" } ]
+		                }
+		            }
+		        )
+
+		        wrapCalls = 0
+		        chatRequest.addMiddleware( {
+		            "wrapLLMCall": ( ctx, handler ) => {
+		                wrapCalls++
+		                return {
+		                    "choices": [ { "index": 0, "message": { "role": "assistant", "content": "pinged" }, "finish_reason": "stop" } ],
+		                    "usage": { "prompt_tokens": 5, "completion_tokens": 3, "total_tokens": 8 }
+		                }
+		            }
+		        } )
+
+		        answer          = provider.chat( chatRequest )
+		        onlyFollowUpLLM = wrapCalls == 1
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsInteger( Key.of( "pings" ) ) ).isEqualTo( 1 );
+		assertThat( variables.get( Key.of( "answer" ) ).toString() ).isEqualTo( "pinged" );
+		assertThat( variables.getAsBoolean( Key.of( "onlyFollowUpLLM" ) ) ).isTrue();
+	}
+
+	@DisplayName( "An 'edit' decision with no editedData executes the tool with the ledger's own toolArgs, not {}" )
+	@Test
+	public void testEditDecisionWithoutEditedDataKeepsLedgerArgs() {
+		// resume( "edit" ) with nothing to apply used to write editedArgs = {} on the ledger, and
+		// the provider's resume path then invoked the tool with NO arguments — every value silently
+		// replaced by its schema default. With the slot left unset the ledger's toolArgs stand.
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        import bxModules.bxai.models.middleware.core.HumanInTheLoopMiddleware;
+		        import bxModules.bxai.models.runnables.AiModel;
+
+		        seenCity = ""
+		        weather  = aiTool( "get_weather", "Get the weather", ( string city = "DEFAULT" ) => {
+		            seenCity = city
+		            return "sunny in " & city
+		        } )
+
+		        mockSvc = aiService( "mock" )
+		        mockSvc.setResponses( [
+		            { toolCalls: [ { name: "get_weather", arguments: { city: "LEDGER-CITY" } } ] },
+		            "done."
+		        ] )
+
+		        checkpointer = aiMemory( "cache" )
+		        agent = aiAgent(
+		            model       : new AiModel( service: mockSvc ),
+		            tools       : [ weather ],
+		            middleware  : [ new HumanInTheLoopMiddleware( toolsRequiringApproval: [ "get_weather" ], mode: "web" ) ],
+		            checkpointer: checkpointer,
+		            checkpointTTL: 5
+		        )
+
+		        agent.run( "weather?", {}, { threadId: "edit-no-data" } )
+
+		        // "edit" with NO editedData at all
+		        answer = agent.resume( "edit", "edit-no-data" )
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "seenCity" ) ).toString() ).isEqualTo( "LEDGER-CITY" );
+	}
 }
