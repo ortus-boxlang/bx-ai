@@ -172,7 +172,7 @@ class extends="AiBaseRequest" {
 	}
 
 	/**
-	 * Set the AI model to use (e.g. "gpt-image-1", "dall-e-3", "imagen-3.0-generate-008").
+	 * Set the AI model to use (e.g. "gpt-image-2.5-flare", "gpt-image-2.5-sunburst", "imagen-3.0-generate-008").
 	 *
 	 * @model The model name
 	 */
@@ -341,7 +341,7 @@ class extends="AiBaseRequest" {
 	}
 
 	/**
-	 * Set provider output compression level (OpenAI gpt-image-1 option).
+	 * Set provider output compression level (OpenAI GPT Image option).
 	 *
 	 * @value Compression value to send as output_compression
 	 */

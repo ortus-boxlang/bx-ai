@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 
+- **OpenAI image default model**: `gpt-image-1` was shut down by OpenAI on 2026-10-23, so `aiImage()` with the OpenAI provider failed with `The model 'gpt-image-1' does not exist`. The default is now `gpt-image-2.5-flare`. Pass `model: "gpt-image-2.5-sunburst"` for OpenAI's most capable image model.
 - **BoxLang cache timeouts are in seconds**, but several stores passed minutes, so entries expired 60 times too early: the HITL `CacheDecisionStore` (a grant that should last 10 minutes lived 10 seconds) and `CacheMemory.saveState()` checkpoints (`ttl` is minutes, the cache got the minutes as seconds). Both now convert to seconds.
 - **IP normalization of MCP servers** counted the characters instead of the colons of an address, so a port was never removed from `192.168.1.1:8080` and the IPv6 address `::1` became `1`. Bracketed IPv6 (`[::1]:8080`) is now handled too.
 
