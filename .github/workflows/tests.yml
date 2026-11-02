@@ -19,6 +19,9 @@ jobs:
   tests:
     name: Tests ${{ github.event.repository.name }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      checks: write
     env:
       DB_USER: root
       DB_PASSWORD: root
@@ -100,6 +103,46 @@ jobs:
             ./gradlew shadowJar test --stacktrace --console=plain
           fi
 
+      # Publishes a "Test Report" check run with every test, its error and stack trace,
+      # annotations on the PR diff, and a summary on the workflow run page
+      - name: Publish Test Report
+        if: always()
+        uses: dorny/test-reporter@v2
+        with:
+          name: Test Report (${{ matrix.os }}, JDK ${{ matrix.jdkVersion }})
+          path: "build/test-results/test/**/*.xml"
+          reporter: java-junit
+          list-suites: all
+          list-tests: failed
+          fail-on-error: false
+          fail-on-empty: false
+
+      # Also print the failed tests at the end of the log, so they are not buried in the Gradle output
+      - name: Print Failed Tests
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import glob
+          import xml.etree.ElementTree as ET
+
+          failed = []
+          total = 0
+          for path in glob.glob("build/test-results/test/**/*.xml", recursive=True):
+              for case in ET.parse(path).getroot().iter("testcase"):
+                  total += 1
+                  problem = case.find("failure")
+                  if problem is None:
+                      problem = case.find("error")
+                  if problem is not None:
+                      failed.append((case.get("classname"), case.get("name"), problem.get("message") or (problem.text or "").strip()[:500]))
+
+          print(f"{total} tests, {len(failed)} failed")
+          for suite, name, message in failed:
+              # Annotations need encoded newlines, or only the first line of the message shows
+              message = message.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+              print(f"::error title={suite} > {name}::{message}")
+          EOF
+
       - name: Upload Test Results
         if: always()
         uses: actions/upload-artifact@v7
@@ -120,25 +163,3 @@ jobs:
           SLACK_TITLE: "${{ env.MODULE_ID }} Build Failure"
           SLACK_USERNAME: CI
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK_URL }}
-
-  publish-test-results:
-    name: Publish Test Results
-    runs-on: ubuntu-latest
-    needs: tests
-    if: always()
-    permissions:
-      checks: write
-      pull-requests: write
-      contents: read
-      issues: read
-    steps:
-      - name: Download Artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-
-      - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
-        with:
-          files: |
-            artifacts/**/*.xml
