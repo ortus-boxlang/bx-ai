@@ -163,6 +163,53 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 				respond( exchange, "application/json", ( "{\"audio_data\":\"" + b64( "MP3DATA" ) + "\"}" ).getBytes( StandardCharsets.UTF_8 ) );
 			} );
 		}
+		// Mistral voices by name, on a custom base URL (deprecated v1 list shape: items)
+		for ( String base : new String[] { "/mistralnamed", "/mistralunknown" } ) {
+			stub.createContext( base + "/audio/voices", exchange -> {
+				int call = hits.computeIfAbsent( base + "/audio/voices", k -> new AtomicInteger() ).incrementAndGet();
+				exchange.getRequestBody().readAllBytes();
+				String uri = exchange.getRequestURI().toString();
+				seenHeader.put( base + ".voices.uri." + call, uri );
+				String json = uri.contains( "query=" )
+				    ? "{\"items\":[{\"id\":\"55555555-5555-5555-5555-555555555555\",\"name\":\"Paul\",\"type\":\"preset\"},"
+				        + "{\"id\":\"66666666-6666-6666-6666-666666666666\",\"name\":\"Paula\",\"type\":\"preset\"}]}"
+				    : "{\"items\":[{\"id\":\"33333333-3333-3333-3333-333333333333\",\"name\":\"first-preset\",\"type\":\"preset\"}]}";
+				respond( exchange, "application/json", json.getBytes( StandardCharsets.UTF_8 ) );
+			} );
+			stub.createContext( base + "/audio/speech", exchange -> {
+				record( exchange, base.substring( 1 ) );
+				respond( exchange, "application/json", ( "{\"audio_data\":\"" + b64( "MP3DATA" ) + "\"}" ).getBytes( StandardCharsets.UTF_8 ) );
+			} );
+		}
+		// Mistral API layout: speech under /v1, voices under /v2 with the { data: [] } shape
+		stub.createContext( "/mistralapi/v2/audio/voices", exchange -> {
+			exchange.getRequestBody().readAllBytes();
+			seenHeader.put( "/mistralapi.voices.uri", exchange.getRequestURI().toString() );
+			respond( exchange, "application/json",
+			    "{\"data\":[{\"id\":\"77777777-7777-7777-7777-777777777777\",\"name\":\"v2-preset\",\"type\":\"preset\"}],\"next_page_token\":null}"
+			        .getBytes( StandardCharsets.UTF_8 ) );
+		} );
+		stub.createContext( "/mistralapi/v1/audio/speech", exchange -> {
+			record( exchange, "mistralapi" );
+			respond( exchange, "application/json", ( "{\"audio_data\":\"" + b64( "MP3DATA" ) + "\"}" ).getBytes( StandardCharsets.UTF_8 ) );
+		} );
+		// Mistral errors: a 400 with Mistral's error body, and a 200 that carries no audio
+		stub.createContext( "/mistralerr/audio/speech", exchange -> {
+			exchange.getRequestBody().readAllBytes();
+			respondStatus( exchange, 400, "application/json",
+			    "{\"object\":\"error\",\"message\":\"voice is not supported for speech v1\",\"type\":\"invalid_request_error\",\"code\":\"3051\"}" );
+		} );
+		stub.createContext( "/mistralnoaudio/audio/speech", exchange -> {
+			exchange.getRequestBody().readAllBytes();
+			respond( exchange, "application/json", "{\"unexpected\":true}".getBytes( StandardCharsets.UTF_8 ) );
+		} );
+		for ( String base : new String[] { "/mistralerr", "/mistralnoaudio" } ) {
+			stub.createContext( base + "/audio/voices", exchange -> {
+				exchange.getRequestBody().readAllBytes();
+				respond( exchange, "application/json",
+				    "{\"items\":[{\"id\":\"33333333-3333-3333-3333-333333333333\",\"name\":\"first-preset\"}]}".getBytes( StandardCharsets.UTF_8 ) );
+			} );
+		}
 		// Voice lookup that fails: speech must still be attempted
 		stub.createContext( "/mistralbad/audio/voices", exchange -> {
 			hits.computeIfAbsent( "/mistralbad/audio/voices", k -> new AtomicInteger() ).incrementAndGet();
@@ -590,6 +637,102 @@ public class SpeechProvidersTest extends BaseIntegrationTest {
 			assertThat( body ).doesNotContain( "\"voice\":" );
 			assertThat( body ).contains( "\"voice_id\":\"33333333-3333-3333-3333-333333333333\"" );
 		}
+	}
+
+	@DisplayName( "Mistral translates a voice name to its voice_id, case-insensitive and exact, and caches it" )
+	@Test
+	public void testMistralVoiceNameToVoiceId() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			aiSpeak( "Hi", {}, { provider: "mistral", apiKey: "mk", voice: "paul", baseURL: "%s/mistralnamed" } )
+			aiSpeak( "Hi again", {}, { provider: "mistral", apiKey: "mk", voice: "PAUL", baseURL: "%s/mistralnamed" } )
+			""".formatted( stubURL, stubURL ),
+			context
+		);
+		// @formatter:on
+
+		String body = seenBody.get( "mistralnamed" );
+		// "Paul", not "Paula": the match is exact
+		assertThat( body ).contains( "\"voice_id\":\"55555555-5555-5555-5555-555555555555\"" );
+		assertThat( body ).doesNotContain( "\"voice\":" );
+		assertThat( seenHeader.get( "/mistralnamed.voices.uri.1" ) ).contains( "query=paul" );
+		assertThat( seenHeader.get( "/mistralnamed.voices.uri.1" ) ).contains( "type=all" );
+		// One lookup for both calls: the name is cached, case-insensitive
+		assertThat( hits.get( "/mistralnamed/audio/voices" ).get() ).isEqualTo( 1 );
+	}
+
+	@DisplayName( "Mistral uses Voxtral TTS 3 by default and the v2 voices list on the Mistral API layout" )
+	@Test
+	public void testMistralDefaultModelAndV2Voices() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			response = aiSpeak( "Hi", {}, { provider: "mistral", apiKey: "mk", baseURL: "%s/mistralapi/v1" } )
+			size = response.getSize()
+			""".formatted( stubURL ),
+			context
+		);
+		// @formatter:on
+
+		String body = seenBody.get( "mistralapi" );
+		assertThat( body ).contains( "\"model\":\"voxtral-mini-tts-3-0\"" );
+		assertThat( body ).contains( "\"voice_id\":\"77777777-7777-7777-7777-777777777777\"" );
+		assertThat( seenHeader.get( "/mistralapi.voices.uri" ) ).contains( "page_size=1" );
+		assertThat( seenHeader.get( "/mistralapi.voices.uri" ) ).contains( "type=preset" );
+		assertThat( variables.get( Key.of( "size" ) ) ).isEqualTo( 7 );
+	}
+
+	@DisplayName( "A voice name with no Mistral match is looked up once, then the preset voice is used" )
+	@Test
+	public void testMistralUnknownNameIsCached() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			aiSpeak( "Hi", {}, { provider: "mistral", apiKey: "mk", voice: "alloy", baseURL: "%s/mistralunknown" } )
+			aiSpeak( "Hi", {}, { provider: "mistral", apiKey: "mk", voice: "alloy", baseURL: "%s/mistralunknown" } )
+			""".formatted( stubURL, stubURL ),
+			context
+		);
+		// @formatter:on
+
+		// The stub's name search only returns Paul and Paula, so "alloy" has no match and the preset is sent
+		String body = seenBody.get( "mistralunknown" );
+		assertThat( body ).contains( "\"voice_id\":\"33333333-3333-3333-3333-333333333333\"" );
+		assertThat( body ).doesNotContain( "\"voice\":" );
+		// Two calls: one name search and one preset lookup in total, both cached
+		assertThat( hits.get( "/mistralunknown/audio/voices" ).get() ).isEqualTo( 2 );
+	}
+
+	@DisplayName( "Mistral speech errors carry the HTTP status and Mistral's message, a response without audio is a ProviderError" )
+	@Test
+	public void testMistralErrors() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			badRequest = ""
+			noAudio = ""
+			noAudioType = ""
+			try {
+				aiSpeak( "Hi", {}, { provider: "mistral", apiKey: "mk", baseURL: "%s/mistralerr" } )
+			} catch( any e ) {
+				badRequest = e.message
+			}
+			try {
+				aiSpeak( "Hi", {}, { provider: "mistral", apiKey: "mk", baseURL: "%s/mistralnoaudio" } )
+			} catch( any e ) {
+				noAudio = e.message
+				noAudioType = e.type
+			}
+			""".formatted( stubURL, stubURL ),
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "badRequest" ) ) ).contains( "400" );
+		assertThat( variables.getAsString( Key.of( "badRequest" ) ) ).contains( "voice is not supported for speech v1" );
+		assertThat( variables.getAsString( Key.of( "noAudioType" ) ) ).isEqualTo( "ProviderError" );
+		assertThat( variables.getAsString( Key.of( "noAudio" ) ) ).contains( "non-audio response" );
 	}
 
 	@DisplayName( "A failed Mistral preset lookup does not block the speech request" )

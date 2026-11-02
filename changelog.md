@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **IP normalization of MCP servers** counted the characters instead of the colons of an address, so a port was never removed from `192.168.1.1:8080` and the IPv6 address `::1` became `1`. Bracketed IPv6 (`[::1]:8080`) is now handled too.
 
 - **`SchemaBuilder::fromObject()` given a class path string** (`SchemaBuilder::fromObject( "models.Person" )`) failed with `The requested key [new] was not located`. It created the class with `new #path#()`, which BoxLang reads as a variable named `new` until 1.19; it now uses `new "#path#"()`, which works on every version.
-- **Mistral speech** no longer sends a `voice` field. Mistral only knows `voice_id` and answered "voice is not supported for speech v1" when a voice name (or the voice of another provider, such as OpenAI's `nova`) reached it. A UUID is still sent as `voice_id`, any other voice is dropped and the first preset voice is used.
+- **Mistral speech** no longer sends a `voice` field. Mistral only knows `voice_id` and answered "voice is not supported for speech v1" (HTTP 400, code 3051) when a voice name (or the voice of another provider, such as OpenAI's `nova`) reached it. The public `voice` setting is translated: a UUID is sent as `voice_id`, the name of one of the account's voices is looked up in the account's voices (exact, case-insensitive, cached) and its id is sent, and a name with no match is dropped so the first preset voice is used. The default model is now Voxtral TTS 3, `voxtral-mini-tts-3-0` (`voxtral-mini-tts-2603` is deprecated and retires on 2027-04-30). Voice lookups use `GET /v2/audio/voices`, the v1 list is deprecated.
 
 ### 🥊 Added
 
