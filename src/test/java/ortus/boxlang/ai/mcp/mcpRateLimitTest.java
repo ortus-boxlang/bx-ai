@@ -585,15 +585,21 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 	 * Without trusted proxies the forwarded header is used, as before
 	 */
 	@Test
-	@DisplayName( "Without trusted proxies the forwarded header is used, as before" )
+	@DisplayName( "Without trusted proxies the forwarded header is ignored, [ * ] trusts it from anyone" )
 	public void testProxiesDefault() {
 		run( """
 		     srv = mcpServer( "p" );
 		     ip = srv.getClientIP( req( "10.0.0.1", { "x-forwarded-for": "203.0.113.5, 10.0.0.1" } ) );
 		     star = mcpServer( "p2" ).withTrustedProxies( [ "*" ] ).getClientIP( req( "10.0.0.1", { "x-forwarded-for": "203.0.113.5, 10.0.0.1" } ) );
+		     // A forged header cannot make a new bucket by default
+		     srv.withRateLimit( { limit: 1, window: 60, store: "memory" } );
+		     c1 = call( req( "198.51.100.9", { "x-forwarded-for": "1.1.1.1" }, "POST", "p" ) ).statusCode;
+		     c2 = call( req( "198.51.100.9", { "x-forwarded-for": "2.2.2.2" }, "POST", "p" ) ).statusCode;
 		     """ );
-		assertThat( get( "ip" ) ).isEqualTo( "203.0.113.5" );
+		assertThat( get( "ip" ) ).isEqualTo( "10.0.0.1" );
 		assertThat( get( "star" ) ).isEqualTo( "203.0.113.5" );
+		assertThat( num( "c1" ) ).isEqualTo( 200 );
+		assertThat( num( "c2" ) ).isEqualTo( 429 );
 	}
 
 	/**
@@ -642,6 +648,61 @@ public class mcpRateLimitTest extends BaseIntegrationTest {
 		     """ );
 		var proxies = ( ortus.boxlang.runtime.types.Array ) get( "proxies" );
 		assertThat( proxies.size() ).isEqualTo( 1 );
+	}
+
+	/**
+	 * The cache store keeps a counter for its ttl in seconds, the BoxLang cache unit
+	 */
+	@Test
+	@DisplayName( "The cache store keeps a counter for ttlSeconds, the BoxLang cache timeout unit" )
+	public void testCacheStoreTimeoutInSeconds() {
+		run( """
+		     store = new CacheRateLimitStore( "default" );
+		     k1 = "bxai:test:#createUUID()#";
+		     k2 = "bxai:test:#createUUID()#";
+		     store.increment( k1, 120 );
+		     store.increment( k2, 2.5 );
+		     t1 = cache( "default" ).getCachedObjectMetadata( k1 ).timeout;
+		     t2 = cache( "default" ).getCachedObjectMetadata( k2 ).timeout;
+		     store.remove( k1 );
+		     store.remove( k2 );
+		     """ );
+		assertThat( ( ( Number ) get( "t1" ) ).longValue() ).isEqualTo( 120L );
+		assertThat( ( ( Number ) get( "t2" ) ).longValue() ).isEqualTo( 3L );
+	}
+
+	/**
+	 * Key apiKey: refused requests never reach the API key provider
+	 */
+	@Test
+	@DisplayName( "Key apiKey: a flood of fake keys is refused before the API key provider runs" )
+	public void testApiKeyFloodSkipsProvider() {
+		run( """
+		     calls = { n : 0 };
+		     mcpServer( "rl" )
+		     	.withApiKeyProvider( ( key, rd ) => { calls.n++; return key.startsWith( "good-" ); } )
+		     	.withRateLimit( { limit: 2, window: 60, store: "memory", key: "apiKey" } );
+		     codes = nums( 10 ).map( i => call( req( "6.6.6.6", { "X-API-Key": "fake-#i#" } ) ).statusCode );
+		     floodCalls = calls.n;
+		     // A known good key is limited on its own bucket without asking the provider again in the limit step
+		     calls.n = 0;
+		     good = nums( 3 ).map( i => call( req( "7.7.7.7", { "X-API-Key": "good-a" } ) ).statusCode );
+		     goodCalls = calls.n;
+		     """ );
+		var codes = ( ortus.boxlang.runtime.types.Array ) get( "codes" );
+		assertThat( ( ( Number ) codes.get( 0 ) ).intValue() ).isEqualTo( 401 );
+		assertThat( ( ( Number ) codes.get( 1 ) ).intValue() ).isEqualTo( 401 );
+		for ( int i = 2; i < 10; i++ ) {
+			assertThat( ( ( Number ) codes.get( i ) ).intValue() ).isEqualTo( 429 );
+		}
+		// Only the two requests the limit let in reached the provider
+		assertThat( num( "floodCalls" ) ).isEqualTo( 2 );
+		var good = ( ortus.boxlang.runtime.types.Array ) get( "good" );
+		assertThat( ( ( Number ) good.get( 0 ) ).intValue() ).isEqualTo( 200 );
+		assertThat( ( ( Number ) good.get( 1 ) ).intValue() ).isEqualTo( 200 );
+		assertThat( ( ( Number ) good.get( 2 ) ).intValue() ).isEqualTo( 429 );
+		// Asked once per request it let in (the limit step the first time, then authentication), never for the refusal
+		assertThat( num( "goodCalls" ) ).isEqualTo( 2 );
 	}
 
 }

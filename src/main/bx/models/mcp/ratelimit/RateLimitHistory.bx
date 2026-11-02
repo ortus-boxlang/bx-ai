@@ -26,7 +26,6 @@ class {
 	static {
 		// The part of the cache key before the server name. It does not start like the counter keys.
 		final KEY_ROOT = "bxai:mcp:ratelimit-history:"
-		mcpLogger = getBoxRuntime().getLoggingService().getLogger( "mcp" )
 	}
 
 	/**
@@ -291,22 +290,23 @@ class {
 					return duplicate( found.get() )
 				}
 			} catch ( any e ) {
-				static.mcpLogger.debug( "Rate limit history could not be read: #e.message#" )
+				// History is best effort and never logged, so a failing cache cannot fill the logs
 			}
 		}
 		return { "server": variables.serverName, "day": arguments.day, "node": variables.node, "requests": 0, "blocked": 0, "clients": {}, "other": { "requests": 0, "blocked": 0 }, "updated": 0 }
 	}
 
 	/**
-	 * Write a document to the cache. Failures are only logged, a request never fails because of history.
+	 * Write a document to the cache. Failures are ignored and not logged, a request never fails because of history.
 	 *
 	 * @document The document
 	 */
 	private void function writeDoc( required struct document ) {
 		try {
-			variables.cache.set( docKey( arguments.document.day ), arguments.document, variables.retentionDays * 1440, 0 )
+			// BoxLang cache timeouts are in seconds
+			variables.cache.set( docKey( arguments.document.day ), arguments.document, variables.retentionDays * 86400, 0 )
 		} catch ( any e ) {
-			static.mcpLogger.debug( "Rate limit history could not be written: #e.message#" )
+			// History is best effort and never logged, so a failing cache cannot fill the logs
 		}
 	}
 

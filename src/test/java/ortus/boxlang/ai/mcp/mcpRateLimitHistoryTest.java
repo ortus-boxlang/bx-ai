@@ -485,4 +485,23 @@ public class mcpRateLimitHistoryTest extends BaseIntegrationTest {
 		assertThat( get( "badClients" ) ).isEqualTo( "InvalidArgument" );
 	}
 
+	/**
+	 * The history documents live retentionDays in seconds, the BoxLang cache unit
+	 */
+	@Test
+	@DisplayName( "History documents live retentionDays days in the cache, in seconds" )
+	public void testRetentionTimeoutInSeconds() {
+		run( """
+		     name = uniq( "ret" );
+		     history = newHistory( name, 7 );
+		     history.record( "1.2.3.4", "ip", true );
+		     history.flush();
+		     docKeys = cache( "default" ).getKeys().filter( k => k.findNoCase( "ratelimit-history:" & name ) );
+		     timeout = cache( "default" ).getCachedObjectMetadata( docKeys.first() ).timeout;
+		     docKeys.each( k => cache( "default" ).clear( k ) );
+		     """ );
+		// 7 days = 604800 seconds
+		assertThat( ( ( Number ) get( "timeout" ) ).longValue() ).isEqualTo( 604800L );
+	}
+
 }

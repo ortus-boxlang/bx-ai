@@ -162,4 +162,26 @@ public class DecisionStoreTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "expiredIsNotGranted" ) ) ).isTrue();
 	}
 
+	@DisplayName( "CacheDecisionStore: a grant with an expiry lives that many seconds in the cache" )
+	@Test
+	public void testCacheDecisionStoreTimeoutInSeconds() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				store = aiDecisionStore( "cache" )
+				identity = "user-" & createUUID()
+				store.grant( identity, "sendEmail", "", dateAdd( "s", 600, now() ) )
+				timeout = cache( "default" ).getCachedObjectMetadata( "bxai:decisionGrant:" & identity & ":sendEmail:" ).timeout
+				store.revoke( identity, "sendEmail" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		// About 600 seconds, not 10 (the minutes)
+		var timeout = ( ( Number ) variables.get( Key.of( "timeout" ) ) ).longValue();
+		assertThat( timeout ).isAtLeast( 590L );
+		assertThat( timeout ).isAtMost( 600L );
+	}
+
 }

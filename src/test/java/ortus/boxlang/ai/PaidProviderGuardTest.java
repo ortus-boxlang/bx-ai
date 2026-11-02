@@ -34,6 +34,8 @@ public class PaidProviderGuardTest {
 		assertThat( PaidProviderGuard.isMissingKey( new RuntimeException( "Missing Authentication header" ) ) ).isTrue();
 		assertThat( PaidProviderGuard.isMissingKey( new RuntimeException( "login fail: Please carry the API secret key" ) ) ).isTrue();
 		assertThat( PaidProviderGuard.isMissingKey( new RuntimeException( "wrapper", new RuntimeException( "Invalid API Key" ) ) ) ).isTrue();
+		// Grok
+		assertThat( PaidProviderGuard.isMissingKey( new RuntimeException( "Bad credentials." ) ) ).isTrue();
 	}
 
 	@Test

@@ -259,14 +259,26 @@ class {
 		// Rate limit, before authentication so floods of failed logins are limited too
 		var rateGate = targetServer.getRateLimitGate();
 		if ( !isNull( rateGate ) ) {
-			// Only an API key the provider accepts becomes a bucket, fake keys fall back to the IP bucket
-			var verifiedKey = "";
-			if ( rateGate.getKeyType() == "apiKey" && len( apiKey ) && targetServer.hasApiKeyProvider() ) {
-				apiKeyChecked = true;
-				apiKeyValid = targetServer.verifyApiKey( apiKey, arguments.requestData );
-				verifiedKey = apiKeyValid ? apiKey : "";
+			var clientIP = targetServer.getClientIP( arguments.requestData );
+			var rate = {};
+			if ( rateGate.getKeyType() == "apiKey" && len( apiKey ) && targetServer.hasApiKeyProvider() && !rateGate.isKnownApiKey( apiKey ) ) {
+				// An unknown key is counted on the IP bucket first, so a flood of fake keys is refused
+				// before the API key provider runs. Only a key the provider accepts becomes its own bucket.
+				rate = rateGate.enforce( arguments.requestData, clientIP, "" );
+				if ( rate.allowed ) {
+					apiKeyChecked = true;
+					apiKeyValid = targetServer.verifyApiKey( apiKey, arguments.requestData );
+					if ( apiKeyValid ) {
+						// From now on the key is limited on its own bucket, starting with this request
+						rateGate.rememberApiKey( apiKey );
+						rate = rateGate.enforce( arguments.requestData, clientIP, apiKey );
+					}
+				}
+			} else {
+				// A known key is limited on its own bucket without calling the provider, authentication checks it below
+				var knownKey = rateGate.getKeyType() == "apiKey" && len( apiKey ) && targetServer.hasApiKeyProvider() ? apiKey : "";
+				rate = rateGate.enforce( arguments.requestData, clientIP, knownKey );
 			}
-			var rate = rateGate.enforce( arguments.requestData, targetServer.getClientIP( arguments.requestData ), verifiedKey );
 			if ( !rate.allowed ) {
 				targetServer.recordSecurityFailure( "rateLimit" );
 				response.headers.append( rate.headers, true );
