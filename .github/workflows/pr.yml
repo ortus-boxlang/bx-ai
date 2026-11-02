@@ -46,15 +46,13 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v7
 
+      # Java formatting only, the same as the snapshot workflow. The CommandBox `format:check` step is gone:
+      # box.json has no such script, and the action could not start (host JAVA_HOME inside its container).
       - name: Setup Java
         uses: actions/setup-java@v6
         with:
           distribution: "temurin"
           java-version: 21
-
-      - uses: Ortus-Solutions/commandbox-action@v1.0.3
-        with:
-          cmd: run-script format:check
 
       - name: Verify Code Formatting
         run: ./gradlew spotlessCheck

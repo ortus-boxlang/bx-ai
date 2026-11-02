@@ -475,4 +475,31 @@ public class aiImageTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "capturedCompression" ) ) ).isEqualTo( 75 );
 	}
 
+	@Test
+	@DisplayName( "The OpenAI default image model is gpt-image-2.5-flare (gpt-image-1 was shut down)" )
+	public void testOpenAIDefaultImageModel() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        capture = { on: true, model: "" };
+		        BoxRegisterInterceptor( function( data ) {
+		            if ( capture.on ) {
+		                capture.model = data.dataPacket.model ?: "";
+		                throw( type: "StopImage", message: "stop before the network" );
+		            }
+		        }, "onAIImageRequest" );
+		        try {
+		            try { aiImage( "a red circle", {}, { provider: "openai", apiKey: "sk-test" } ); } catch( StopImage e ) {}
+		        } finally {
+		            capture.on = false;
+		        }
+		        model = capture.model;
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsString( Key.of( "model" ) ) ).isEqualTo( "gpt-image-2.5-flare" );
+	}
+
 }
