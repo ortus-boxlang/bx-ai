@@ -162,8 +162,9 @@ class {
 				// MCP servers you build with mcpServer() / MCPServer()
 				server : {
 					// IPs or CIDR ranges of the proxies in front of your servers, for example [ "10.0.0.0/8" ].
-					// When set, X-Forwarded-For and similar headers are only trusted from these proxies.
-					// Empty or [ "*" ] trusts them from anyone, so set it unless clients can only reach you through your proxy.
+					// Empty (the default): X-Forwarded-For and similar headers are never trusted, the client IP is the connection address.
+					// When set, those headers are only trusted from these proxies.
+					// [ "*" ] trusts them from anyone, only safe when clients can only reach you through your proxy.
 					trustedProxies : [],
 					// Limit how often one client can call a server. Off by default.
 					rateLimit : {

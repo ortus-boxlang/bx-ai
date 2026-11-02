@@ -726,6 +726,8 @@ class extends="AiBaseRunnable" {
 	 */
 	AiAgent function setModel( required AiModel model ) {
 		variables.aiModel = arguments.model.withTools( variables.tools )
+		// The agent's profile is the profile of its model: empty when the model was not built from one
+		variables.profile = arguments.model.getProfile() ?: ""
 		return this
 	}
 
@@ -742,8 +744,8 @@ class extends="AiBaseRunnable" {
 	 */
 	AiAgent function withProfile( required string name ) {
 		var previous = variables.profile
-		// Keep every tool the current model has: the agent's own, sub-agent tools, skill and MCP tools
-		variables.aiModel = buildProfileModel( arguments.name ).withTools( variables.aiModel.getTools() )
+		// Keep everything the current model carries except its provider settings: tools, middleware, skills and MCP servers
+		variables.aiModel = carryOver( buildProfileModel( arguments.name ), true )
 		variables.profile = arguments.name
 		BoxAnnounce( "onAIProfileSwitch", { agent: this, from: previous, to: arguments.name, scope: "agent" } )
 		return this
@@ -764,6 +766,33 @@ class extends="AiBaseRunnable" {
 	}
 
 	/**
+	 * Give a new profile model what the agent's current model carries besides its provider settings:
+	 * tools (the agent's own, sub-agent, skill and MCP tools), middleware, skills and MCP servers.
+	 * The model's own params and options are not carried, they belong to the old provider.
+	 * Middleware is shared, not attached again.
+	 *
+	 * @newModel  The model built from the profile
+	 * @permanent true when the agent switches for good: the new model also takes over the MCP clients the old one
+	 *            owns, so closeMCPServers() still closes them. false for a single run: skills are copied so the run
+	 *            cannot change the agent's own model.
+	 */
+	private AiModel function carryOver( required AiModel newModel, required boolean permanent ) {
+		var current = variables.aiModel
+		arguments.newModel.withTools( current.getTools() )
+		arguments.newModel.setMiddleware( current.getMiddleware() )
+		arguments.newModel.setMcpServers( current.getMcpServers() )
+		if ( arguments.permanent ) {
+			arguments.newModel.setSkills( current.getSkills() )
+			arguments.newModel.setAvailableSkills( current.getAvailableSkills() )
+			arguments.newModel.setOwnedMCPClients( current.getOwnedMCPClients() )
+		} else {
+			arguments.newModel.setSkills( duplicate( current.getSkills(), false ) )
+			arguments.newModel.setAvailableSkills( duplicate( current.getAvailableSkills(), false ) )
+		}
+		return arguments.newModel
+	}
+
+	/**
 	 * The model for one run: the agent's own, or a temporary one when options.profile names another profile.
 	 * The agent itself is not changed, so the next run uses its own profile again.
 	 *
@@ -774,7 +803,7 @@ class extends="AiBaseRunnable" {
 		if ( !len( requested ) || requested == variables.profile ) {
 			return variables.aiModel
 		}
-		var runModel = buildProfileModel( requested ).withTools( variables.aiModel.getTools() )
+		var runModel = carryOver( buildProfileModel( requested ), false )
 		BoxAnnounce( "onAIProfileSwitch", { agent: this, from: variables.profile, to: requested, scope: "run" } )
 		return runModel
 	}

@@ -60,8 +60,9 @@ class implements="IDecisionStore" {
 		}
 
 		if ( !isNull( arguments.expiresAt ) ) {
-			var ttlMinutes = dateDiff( "n", now(), arguments.expiresAt )
-			variables.cache.set( buildKey( arguments.identity, arguments.toolName, arguments.scope ), record, max( ttlMinutes, 1 ), 0 )
+			// BoxLang cache timeouts are in seconds
+			var ttlSeconds = dateDiff( "s", now(), arguments.expiresAt )
+			variables.cache.set( buildKey( arguments.identity, arguments.toolName, arguments.scope ), record, max( ttlSeconds, 1 ), 0 )
 		} else {
 			variables.cache.set( buildKey( arguments.identity, arguments.toolName, arguments.scope ), record )
 		}

@@ -336,4 +336,126 @@ public class ProfilesTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "hasOpenAI" ) ) ).isTrue();
 	}
 
+	@DisplayName( "aiEmbed: the embeddings defaults win over defaultProfile, a chat profile" )
+	@Test
+	public void testEmbedDefaultsBeatDefaultProfile() {
+		run( """
+		         settings.defaultProfile = "fast";
+		         settings.embeddings.defaultProvider = "claude";
+		         picked = "";
+		         try {
+		             aiEmbed( "Hello" );
+		         } catch( any e ) {
+		             picked = e.message;
+		         }
+		     """ );
+
+		// Claude has no embeddings, so the error names the provider that was picked: claude, not the mock of "fast"
+		assertThat( variables.getAsString( Key.of( "picked" ) ) ).contains( "[Claude]" );
+	}
+
+	@DisplayName( "aiEmbed: the embeddings provider keeps the global apiKey when it is the global provider" )
+	@Test
+	public void testEmbedKeepsGlobalKey() {
+		run( """
+		         capture = { on: true, key: "none" };
+		         BoxRegisterInterceptor( function( data ) {
+		             if ( capture.on ) {
+		                 capture.key = data.service.getApiKey();
+		                 throw( type: "StopEmbed", message: "stop before the network" );
+		             }
+		         }, "beforeAIEmbed" );
+		         oldProvider = settings.provider;
+		         oldKey = settings.apiKey;
+		         conventionKeySet = len( getSystemSetting( "VOYAGE_API_KEY", "" ) ) > 0;
+		         try {
+		             settings.provider = "voyage";
+		             settings.apiKey = "global-voyage-key";
+		             settings.embeddings.defaultProvider = "voyage";
+		             try { aiEmbed( "Hello" ); } catch( StopEmbed e ) {}
+		             sameProviderKey = capture.key;
+
+		             // Another embeddings provider never receives the global key
+		             settings.embeddings.defaultProvider = "openai";
+		             capture.key = "none";
+		             try { aiEmbed( "Hello" ); } catch( StopEmbed e ) {}
+		             otherProviderKey = capture.key;
+		         } finally {
+		             capture.on = false;
+		             settings.provider = oldProvider;
+		             settings.apiKey = oldKey;
+		         }
+		     """ );
+
+		if ( !variables.getAsBoolean( Key.of( "conventionKeySet" ) ) ) {
+			assertThat( variables.getAsString( Key.of( "sameProviderKey" ) ) ).isEqualTo( "global-voyage-key" );
+		}
+		assertThat( variables.getAsString( Key.of( "otherProviderKey" ) ) ).isNotEqualTo( "global-voyage-key" );
+	}
+
+	@DisplayName( "A profile's params and options are only layered for its own provider" )
+	@Test
+	public void testApplyOtherProvider() {
+		run( """
+		         settings.profiles.fast.options = { timeout: 7 };
+		         own = ProfileResolver::apply( "fast", {}, {} );
+		         other = ProfileResolver::apply( "fast", { top_p: 0.3 }, { provider: "ollama" } );
+		         ownModel = own.params.model;
+		         ownTimeout = own.options.timeout;
+		         otherHasModel = other.params.keyExists( "model" );
+		         otherHasTimeout = other.options.keyExists( "timeout" );
+		         otherProvider = other.options.provider;
+		         otherTopP = other.params.top_p;
+		     """ );
+
+		assertThat( variables.getAsString( Key.of( "ownModel" ) ) ).isEqualTo( "fast-model" );
+		assertThat( variables.getAsNumber( Key.of( "ownTimeout" ) ).intValue() ).isEqualTo( 7 );
+		assertThat( variables.getAsBoolean( Key.of( "otherHasModel" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "otherHasTimeout" ) ) ).isFalse();
+		assertThat( variables.getAsString( Key.of( "otherProvider" ) ) ).isEqualTo( "ollama" );
+		assertThat( variables.getAsNumber( Key.of( "otherTopP" ) ).doubleValue() ).isEqualTo( 0.3 );
+	}
+
+	@DisplayName( "setModel() gives the agent the profile of its new model" )
+	@Test
+	public void testAgentSetModelSyncsProfile() {
+		run( """
+		         agent = aiAgent( name: "setter", profile: "fast" );
+		         agent.setModel( aiModel( provider: "mock" ) );
+		         afterSet = agent.getProfile();
+
+		         // A run on "fast" now builds the fast model, it is no longer the agent's own profile
+		         agent.run( "one", {}, { profile: "fast" } );
+		         runModel = MockService::getRecorded().last().model;
+
+		         agent.setModel( aiModel( profile: "planner" ) );
+		         afterProfileModel = agent.getProfile();
+		     """ );
+
+		assertThat( variables.getAsString( Key.of( "afterSet" ) ) ).isEmpty();
+		assertThat( variables.getAsString( Key.of( "runModel" ) ) ).isEqualTo( "fast-model" );
+		assertThat( variables.getAsString( Key.of( "afterProfileModel" ) ) ).isEqualTo( "planner" );
+	}
+
+	@DisplayName( "withProfile() and a run profile keep the model's middleware and skills" )
+	@Test
+	public void testAgentProfileKeepsMiddleware() {
+		run( """
+		         seen = { count: 0 };
+		         model = aiModel( profile: "fast" ).withMiddleware( { beforeLLMCall: ( ctx ) => { seen.count++; } } );
+		         agent = aiAgent( name: "keeper", model: model );
+		         before = agent.getAiModel().listMiddleware().len();
+
+		         agent.run( "one", {}, { profile: "planner" } );
+		         agent.withProfile( "planner" );
+		         after = agent.getAiModel().listMiddleware().len();
+		         agent.run( "two" );
+		         switchedModel = MockService::getRecorded().last().model;
+		     """ );
+
+		assertThat( variables.getAsNumber( Key.of( "before" ) ).intValue() ).isEqualTo( 1 );
+		assertThat( variables.getAsNumber( Key.of( "after" ) ).intValue() ).isEqualTo( 1 );
+		assertThat( variables.getAsString( Key.of( "switchedModel" ) ) ).isEqualTo( "planner-model" );
+	}
+
 }

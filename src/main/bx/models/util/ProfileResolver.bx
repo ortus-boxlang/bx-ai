@@ -169,7 +169,7 @@ class {
 	/**
 	 * Layer a profile under the params and options of a call.
 	 * Call values win. The profile only supplies the provider and API key when the call did not,
-	 * and never gives its API key to a different provider than its own.
+	 * and never gives its API key, params (including its model) or options to a different provider than its own.
 	 *
 	 * @name The profile name
 	 * @params The call params
@@ -179,9 +179,13 @@ class {
 	 */
 	static struct function apply( required string name, struct params = {}, struct options = {} ) {
 		var profile = resolve( arguments.name );
-		var layeredOptions = profile.options.append( arguments.options, true );
+		// The profile's params (and model) and options only belong to its own provider, like in aiService() and aiModel()
+		var requestedProvider = arguments.options.provider ?: "";
+		var ownProvider = !len( requestedProvider ) || requestedProvider == profile.provider;
+		var layeredOptions = ownProvider ? profile.options.append( arguments.options, true ) : duplicate( arguments.options );
+		var layeredParams = ownProvider ? profile.params.append( arguments.params, true ) : arguments.params;
 
-		layeredOptions.provider = layeredOptions.provider ?: profile.provider;
+		layeredOptions.provider = len( requestedProvider ) ? requestedProvider : profile.provider;
 		if ( !len( layeredOptions.apiKey ?: "" ) && len( profile.apiKey ) && layeredOptions.provider == profile.provider ) {
 			layeredOptions.apiKey = profile.apiKey;
 		}
@@ -193,7 +197,7 @@ class {
 		layeredOptions.profile = profile.name;
 
 		return {
-			params  : profile.params.append( arguments.params, true ),
+			params  : layeredParams,
 			options : layeredOptions,
 			profile : profile.name
 		};

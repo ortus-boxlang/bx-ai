@@ -123,7 +123,7 @@ class {
 	property name="allowedIPs" type="array" default=[];
 
 	/**
-	 * Ordered list of proxy headers to check for client IP extraction.
+	 * Ordered list of proxy headers to check for client IP extraction, only used when trustedProxies is set.
 	 * Headers are checked in order; first valid IP found is used.
 	 * Falls back to metadata.remoteAddr if no proxy headers contain a valid IP.
 	 */
@@ -136,8 +136,9 @@ class {
 
 	/**
 	 * IPs or CIDR ranges of the proxies in front of this server.
-	 * Empty (default) or "*" trusts the forwarded headers from anyone, as before.
+	 * Empty (default): forwarded headers are never trusted, the client IP is the address of the connection.
 	 * When set, forwarded headers are only honored when the connection comes from one of these.
+	 * [ "*" ] trusts forwarded headers from anyone, only safe when clients can only reach you through your proxy.
 	 */
 	property name="trustedProxies" type="array" default=[];
 
@@ -1458,12 +1459,12 @@ class {
 	}
 
 	/**
-	 * Set the proxies in front of this server, so forwarded headers (X-Forwarded-For and friends) cannot be forged
-	 * by clients that reach the server directly. Used by getClientIP(), so the IP allowlist and the "ip" rate limit
-	 * both follow it.
+	 * Set the proxies in front of this server. Forwarded headers (X-Forwarded-For and friends) are only honored
+	 * when the connection comes from one of them, so clients that reach the server directly cannot forge them.
+	 * Used by getClientIP(), so the IP allowlist and the "ip" rate limit both follow it.
 	 *
-	 * @proxies IPs or CIDR ranges. Empty or [ "*" ] trusts forwarded headers from anyone (only safe when clients can
-	 *          only reach the server through your proxy).
+	 * @proxies IPs or CIDR ranges. Empty (the default) never trusts forwarded headers. [ "*" ] trusts them from
+	 *          anyone (only safe when clients can only reach the server through your proxy).
 	 *
 	 * @return This instance for fluent method chaining
 	 */
@@ -1473,15 +1474,10 @@ class {
 	}
 
 	/**
-	 * Get the configured trusted proxies
-	 */
-	array function getTrustedProxies() {
-		return variables.trustedProxies
-	}
-
-	/**
 	 * Extract the client IP address from request data.
-	 * Checks trusted proxy headers in order, then falls back to remoteAddr.
+	 * Without trusted proxies (the default) it is the address of the connection, forwarded headers are ignored.
+	 * With trusted proxies, forwarded headers are read when the connection comes from one of them.
+	 * With [ "*" ], forwarded headers are read from anyone.
 	 *
 	 * @requestData The request metadata struct containing headers and connection info
 	 *
@@ -1518,7 +1514,12 @@ class {
 			return remoteAddr
 		}
 
-		// No trusted proxies set (or "*"): check trusted proxy headers in order
+		// No trusted proxies (the default): never trust forwarded headers, a client could forge them
+		if ( !variables.trustedProxies.contains( "*" ) ) {
+			return remoteAddr
+		}
+
+		// "*": trust forwarded headers from anyone, check them in order
 		for ( var headerName in variables.trustedProxyHeaders ) {
 			var headerValue = arguments.requestData.headers?.get( headerName ) ?: ""
 			if ( len( headerValue ) ) {
@@ -2282,18 +2283,16 @@ class {
 	private string function _normalizeIPAddress( required string ip ) {
 		var cleaned = trim( arguments.ip )
 
-		// Remove port suffix for IPv4 (e.g., "192.168.1.1:8080" -> "192.168.1.1")
-		if ( cleaned.find( ":" ) && !cleaned.startsWith( "[" ) ) {
-			// Check if it's IPv4 with port (single colon) vs IPv6 (multiple colons)
-			var colonCount = cleaned.replace( ":", "", "all" ).len()
-			if ( colonCount == 1 ) {
-				cleaned = cleaned.listFirst( ":" )
-			}
+		// Bracketed IPv6, with or without a port: "[::1]" or "[::1]:8080" -> "::1"
+		var bracketed = reFind( "^\[([^\]]+)\](:\d+)?$", cleaned, 1, true )
+		if ( bracketed.pos[ 1 ] > 0 ) {
+			return mid( cleaned, bracketed.pos[ 2 ], bracketed.len[ 2 ] ).lCase()
 		}
 
-		// Remove IPv6 brackets if present
-		if ( cleaned.startsWith( "[" ) && cleaned.endsWith( "]" ) ) {
-			cleaned = cleaned.substring( 2, cleaned.len() - 1 )
+		// Exactly one colon is IPv4 with a port ("192.168.1.1:8080"). Two or more is IPv6 ("::1"), kept as is.
+		var colonCount = cleaned.len() - cleaned.replace( ":", "", "all" ).len()
+		if ( colonCount == 1 ) {
+			cleaned = cleaned.listFirst( ":" )
 		}
 
 		return cleaned.lCase()

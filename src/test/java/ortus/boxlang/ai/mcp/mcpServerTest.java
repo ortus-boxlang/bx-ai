@@ -2028,12 +2028,12 @@ public class mcpServerTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "getClientIP prefers x-forwarded-for first value" )
+	@DisplayName( "getClientIP with trusted proxies [ * ] prefers x-forwarded-for first value" )
 	public void testGetClientIPXForwardedFor() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				myServer = mcpServer( "xffTest" )
+				myServer = mcpServer( "xffTest" ).withTrustedProxies( [ "*" ] )
 				requestData = {
 					"headers": {
 						"x-forwarded-for": "203.0.113.50, 70.41.3.18, 150.172.238.178",
@@ -2053,12 +2053,12 @@ public class mcpServerTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "getClientIP falls back to cf-connecting-ip when x-forwarded-for absent" )
+	@DisplayName( "getClientIP with trusted proxies [ * ] falls back to cf-connecting-ip when x-forwarded-for absent" )
 	public void testGetClientIPFallbackToCF() {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				myServer = mcpServer( "cfIPTest" )
+				myServer = mcpServer( "cfIPTest" ).withTrustedProxies( [ "*" ] )
 				requestData = {
 					"headers": {
 						"cf-connecting-ip": "198.51.100.1"
@@ -2074,6 +2074,60 @@ public class mcpServerTest extends BaseIntegrationTest {
 		// @formatter:on
 
 		assertThat( variables.get( Key.of( "clientIP" ) ).toString() ).isEqualTo( "198.51.100.1" );
+	}
+
+	@Test
+	@DisplayName( "getClientIP ignores forwarded headers by default" )
+	public void testGetClientIPIgnoresHeadersByDefault() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "defaultIPTest" )
+				requestData = {
+					"headers": {
+						"x-forwarded-for": "203.0.113.50",
+						"cf-connecting-ip": "198.51.100.1",
+						"true-client-ip": "198.51.100.2",
+						"x-real-ip": "198.51.100.3"
+					},
+					"metadata": {
+						"remoteAddr": "10.0.0.1"
+					}
+				}
+				clientIP = myServer.getClientIP( requestData )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "clientIP" ) ).toString() ).isEqualTo( "10.0.0.1" );
+	}
+
+	@Test
+	@DisplayName( "getClientIP normalizes ports and IPv6 addresses" )
+	public void testGetClientIPNormalizes() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "normalizeIPTest" )
+				ipv6Loopback = myServer.getClientIP( { "headers": {}, "metadata": { "remoteAddr": "::1" } } )
+				ipv6Full = myServer.getClientIP( { "headers": {}, "metadata": { "remoteAddr": "2001:DB8::1" } } )
+				ipv6Bracketed = myServer.getClientIP( { "headers": {}, "metadata": { "remoteAddr": "[2001:db8::1]:8443" } } )
+				ipv4Port = myServer.getClientIP( { "headers": {}, "metadata": { "remoteAddr": "192.168.1.1:8080" } } )
+				// A trusted IPv6 proxy and a forwarded hop with a port
+				viaIPv6Proxy = mcpServer( "normalizeIPTest2" )
+					.withTrustedProxies( [ "::1" ] )
+					.getClientIP( { "headers": { "x-forwarded-for": "203.0.113.7:443" }, "metadata": { "remoteAddr": "::1" } } )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "ipv6Loopback" ) ).toString() ).isEqualTo( "::1" );
+		assertThat( variables.get( Key.of( "ipv6Full" ) ).toString() ).isEqualTo( "2001:db8::1" );
+		assertThat( variables.get( Key.of( "ipv6Bracketed" ) ).toString() ).isEqualTo( "2001:db8::1" );
+		assertThat( variables.get( Key.of( "ipv4Port" ) ).toString() ).isEqualTo( "192.168.1.1" );
+		assertThat( variables.get( Key.of( "viaIPv6Proxy" ) ).toString() ).isEqualTo( "203.0.113.7" );
 	}
 
 	@Test
@@ -2212,7 +2266,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "IP allowlist with x-forwarded-for header honors first client IP" )
+	@DisplayName( "IP allowlist with trusted proxies [ * ] and x-forwarded-for honors first client IP" )
 	public void testIPAllowlistWithXForwardedFor() {
 		// @formatter:off
 		runtime.executeSource(
@@ -2220,6 +2274,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 				import bxModules.bxai.models.mcp.MCPRequestProcessor;
 
 				myServer = mcpServer( "ipXFFTest" )
+					.withTrustedProxies( [ "*" ] )
 					.withAllowedIPs( [ "203.0.113.50" ] )
 					.registerTool( aiTool( "test", "Test tool", ( x ) => "ok" ) )
 
