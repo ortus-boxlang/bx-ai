@@ -42,7 +42,8 @@ public class PaidProviderGuard implements TestExecutionExceptionHandler {
 	    "invalid_api_key",
 	    "authentication",
 	    "unauthorized",
-	    "login fail"
+	    "login fail",
+	    "bad credentials"
 	);
 
 	/**
