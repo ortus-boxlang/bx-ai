@@ -438,29 +438,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [3.0.0] - 2026-04-02
 
-## [2.4.0] - 2026-02-20
-
-## [2.3.0] - 2026-02-18
-
-### Added
-
-- **Pipeline `_input` System Variable**: Auto-inject previous stage output into message templates via `${_input}`. For struct outputs, individual fields are flattened as `${_input_fieldName}` for template access. Enables clean, composable multi-stage AI pipelines without manual transformation steps.
-- `aiTransform()` needd to process instances of `AiTransformRunnable` and `BaseTransformer` classes, allowing for more flexible and reusable transformation logic.
-- Stricter and more defensive code when doing tool calling, to prevent errors when tools are called with invalid arguments or when the tool execution fails.
-
-### Fixed
-
-- Tool calling with streaming was not working because the tools were being executed in a different context that didn't have access to the request. Now the request is properly passed to the tool execution context, allowing tools to be called and executed correctly during streaming.
-- Agent stream() was not passing tools the correct request, now it does.
-- scoping issue on Agent streaming
-- fixed BaseMemory getRecent() where limit was not being used
-- SummaryMemory was not trimming messages when the summary threshold  was exceeded, and it was recursing forever on summary. Now it properly trims messages until it gets under the threshold, then summarizes and adds the summary message back in.
-- BaseTransformer was missing it's internal constructor
-- Default for `config` on all `BaseTransformer` classes was missing.
-- Fixed a bug where if the `aiTransform()` BIF was called with a non-string or closure, the `throw()` was invalid.
-
-## [2.2.0] - 2026-02-16
-
 ### Added
 
 - **AI Skills system** (`aiSkill()` BIF + `withSkills()` / `withAvailableSkills()` APIs on `AiModel` and `AiAgent`): Composable, reusable knowledge blocks — following the [Claude Agent Skills open standard](https://www.anthropic.com/news/agent-skills) — that can be injected into any model or agent system message at runtime.
