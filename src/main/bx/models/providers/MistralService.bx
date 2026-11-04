@@ -42,12 +42,16 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		}
 		DEFAULT_SPEECH_PARAMS = {
 			// https://docs.mistral.ai/capabilities/audio/text_to_speech/speech/
+			// Voxtral TTS 3. voxtral-mini-tts-2603 is deprecated (2026-10-31) and retires on 2027-04-30.
 			// No default voice: "Charlotte" is not a valid Mistral voice (404 invalid_voice). When the caller
-			// does not choose one, the first preset voice is looked up from GET /v1/audio/voices.
-			"model" : "voxtral-mini-tts-2603"
+			// does not choose one, the first preset voice is looked up from GET /v2/audio/voices.
+			"model" : "voxtral-mini-tts-3-0"
 		}
 		// Preset voice id per endpoint, so the lookup happens once per process
 		PRESET_VOICE_CACHE = {}
+		// Voice id per endpoint and voice name, so a name is looked up once per process
+		VOICE_NAME_CACHE = {}
+		UUID_PATTERN = "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 		DEFAULT_TRANSCRIPTION_PARAMS = {
 			// https://docs.mistral.ai/capabilities/audio/offline_transcription/
 			"model" : "voxtral-mini-latest"
@@ -191,11 +195,15 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 	}
 
 	/**
-	 * Mistral references voices by `voice_id`.
-	 * - A UUID passed as the generic `voice` is mapped onto `voice_id`. Any other value is left untouched.
-	 * - When no voice (and no reference audio) was requested, the first preset voice is used, looked up from
-	 *   GET /v1/audio/voices. If that lookup fails the request is sent without a voice and Mistral's own
-	 *   error explains what it needs.
+	 * Mistral references voices by `voice_id` and has no `voice` field: it answers "voice is not supported".
+	 * The public `voice` setting is translated here:
+	 * - A voice id (UUID) is sent as `voice_id`.
+	 * - A voice name is looked up in the voices of the account, exact and case-insensitive, and its
+	 *   id is sent as `voice_id`.
+	 * - A name with no match (for example a voice of another provider, such as OpenAI's "nova") is dropped, so
+	 *   the preset voice below is used instead of a rejected request.
+	 * - When no voice (and no reference audio) was requested, the first preset voice is used. If that lookup
+	 *   fails the request is sent without a voice and Mistral's own error explains what it needs.
 	 */
 	@override
 	private struct function preRequest(
@@ -203,21 +211,24 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 		required struct dataPacket,
 		required string operation
 	){
-		if (
-			arguments.operation == "speech" &&
-			isSimpleValue( arguments.dataPacket.voice ?: "" ) &&
-			reFindNoCase( "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", arguments.dataPacket.voice ?: "" )
-		) {
-			arguments.dataPacket.voice_id = arguments.dataPacket.voice
-			structDelete( arguments.dataPacket, "voice" )
+		if ( arguments.operation != "speech" ) {
+			return arguments.dataPacket
 		}
 
-		if (
-			arguments.operation == "speech" &&
-			!len( arguments.dataPacket.voice_id ?: "" ) &&
-			!len( arguments.dataPacket.voice ?: "" ) &&
-			!len( arguments.dataPacket.ref_audio ?: "" )
-		) {
+		if ( arguments.dataPacket.keyExists( "voice" ) ) {
+			var requestedVoice = arguments.dataPacket.voice
+			structDelete( arguments.dataPacket, "voice" )
+			if ( !len( arguments.dataPacket.voice_id ?: "" ) && isSimpleValue( requestedVoice ) && len( trim( requestedVoice ) ) ) {
+				var voiceId = reFindNoCase( static.UUID_PATTERN, trim( requestedVoice ) )
+					? trim( requestedVoice )
+					: resolveVoiceIdByName( arguments.aiRequest, trim( requestedVoice ) )
+				if ( len( voiceId ) ) {
+					arguments.dataPacket.voice_id = voiceId
+				}
+			}
+		}
+
+		if ( !len( arguments.dataPacket.voice_id ?: "" ) && !len( arguments.dataPacket.ref_audio ?: "" ) ) {
 			var presetId = resolveDefaultVoiceId( arguments.aiRequest )
 			if ( len( presetId ) ) {
 				arguments.dataPacket.voice_id = presetId
@@ -233,26 +244,84 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService, 
 	 * @see https://docs.mistral.ai/api/endpoint/audio/voices
 	 */
 	private string function resolveDefaultVoiceId( required aiRequest ){
-		var voicesURL = resolveSpeechURL( arguments.aiRequest ).replace( "/audio/speech", "/audio/voices" )
+		var voicesURL = resolveVoicesURL( arguments.aiRequest )
 		if ( static.PRESET_VOICE_CACHE.keyExists( voicesURL ) ) {
 			return static.PRESET_VOICE_CACHE[ voicesURL ]
 		}
+		var voices = listVoices( arguments.aiRequest, { type: "preset" }, 1 )
+		if ( voices.len() && len( voices[ 1 ].id ?: "" ) ) {
+			static.PRESET_VOICE_CACHE[ voicesURL ] = voices[ 1 ].id
+			return voices[ 1 ].id
+		}
+		return ""
+	}
+
+	/**
+	 * Find the id of a voice by its name, case-insensitive, among the preset and custom voices of the account.
+	 * The answer is cached per endpoint and name, also when no voice has that name. Returns an empty string
+	 * when no voice has that exact name or the lookup fails.
+	 *
+	 * @name The voice name, as Mistral lists it
+	 */
+	private string function resolveVoiceIdByName( required aiRequest, required string name ){
+		var cacheKey = resolveVoicesURL( arguments.aiRequest ) & "##" & lCase( arguments.name )
+		if ( static.VOICE_NAME_CACHE.keyExists( cacheKey ) ) {
+			return static.VOICE_NAME_CACHE[ cacheKey ]
+		}
+		var wanted = lCase( arguments.name )
+		var match = listVoices( arguments.aiRequest, { type: "all", query: arguments.name }, 100 )
+			.filter( ( voice ) => lCase( voice.name ?: "" ) == wanted && len( voice.id ?: "" ) )
+		// A name with no match is cached too, so a voice of another provider is not looked up on every request
+		static.VOICE_NAME_CACHE[ cacheKey ] = match.len() ? match[ 1 ].id : ""
+		return static.VOICE_NAME_CACHE[ cacheKey ]
+	}
+
+	/**
+	 * List voices from Mistral. Never throws: a failed lookup returns an empty array so speech is still attempted.
+	 *
+	 * @filters  Query filters: type (all, preset, custom) and query (a name to match)
+	 * @pageSize How many voices to return
+	 *
+	 * @return Array of voice structs with at least id and name
+	 *
+	 * @see https://docs.mistral.ai/api/endpoint/audio/voices
+	 */
+	private array function listVoices( required aiRequest, struct filters = {}, numeric pageSize = 100 ){
+		var voicesURL = resolveVoicesURL( arguments.aiRequest )
+		var queryParams = duplicate( arguments.filters )
+		// v2 pages with page_size, the deprecated v1 list (custom base URLs) with limit
+		if ( voicesURL.findNoCase( "/v2/" ) ) {
+			queryParams.page_size = arguments.pageSize
+		} else {
+			queryParams.limit = arguments.pageSize
+		}
+		var queryString = queryParams.reduce( ( result, key, value ) => result.listAppend( "#key#=#urlEncodedFormat( value )#", "&" ), "" )
 		try {
 			var voiceResult = ""
-			bx:http url="#voicesURL#?type=preset&limit=1" method="get" result="voiceResult" timeout=arguments.aiRequest.getTimeout(){
+			bx:http url="#voicesURL#?#queryString#" method="get" result="voiceResult" timeout=arguments.aiRequest.getTimeout(){
 				bx:httpParam type="header" name="Authorization" value="Bearer #arguments.aiRequest.getApiKey()#";
 			}
 			if ( voiceResult.statusCode == "200" ) {
-				var items = jsonDeserialize( voiceResult.fileContent ).items ?: []
-				if ( items.len() && len( items[ 1 ].id ?: "" ) ) {
-					static.PRESET_VOICE_CACHE[ voicesURL ] = items[ 1 ].id
-					return items[ 1 ].id
-				}
+				var body = jsonDeserialize( voiceResult.fileContent )
+				// v2 answers { data: [] }, v1 { items: [] }
+				return body.data ?: ( body.items ?: [] )
 			}
 		} catch ( any e ) {
-			writeLog( text: "Mistral preset voice lookup failed: #e.message#", type: "warning", log: "ai" )
+			writeLog( text: "Mistral voice lookup failed: #e.message#", type: "warning", log: "ai" )
 		}
-		return ""
+		return []
+	}
+
+	/**
+	 * The voices endpoint for a request: GET /v2/audio/voices on the Mistral API (the v1 list is deprecated),
+	 * or <baseURL>/audio/voices for a custom base URL (proxies, gateways, tests).
+	 */
+	private string function resolveVoicesURL( required aiRequest ){
+		var speechEndpoint = resolveSpeechURL( arguments.aiRequest )
+		if ( reFindNoCase( "/v1/audio/speech$", speechEndpoint ) ) {
+			return reReplaceNoCase( speechEndpoint, "/v1/audio/speech$", "/v2/audio/voices" )
+		}
+		return speechEndpoint.replace( "/audio/speech", "/audio/voices" )
 	}
 
 	/**

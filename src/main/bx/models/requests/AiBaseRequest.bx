@@ -195,6 +195,8 @@ abstract class{
 			.append( arguments.methodDefaults, true )
 			// Apply user options (highest priority)
 			.append( arguments.options, true )
+			// Profiles hold env var names (or keys), they are never copied into a request
+			.delete( "profiles" )
 	}
 
 	/**

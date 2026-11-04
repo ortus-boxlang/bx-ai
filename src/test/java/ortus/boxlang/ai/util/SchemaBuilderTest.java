@@ -72,6 +72,24 @@ public class SchemaBuilderTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "Can build schema from a class path string" )
+	public void testFromClassPath() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+			import bxModules.bxai.models.util.SchemaBuilder;
+
+			schema = SchemaBuilder::fromObject( "src.test.bx.Person" );
+			hasFirstName = schema.properties.keyExists( "firstName" );
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.getAsBoolean( Key.of( "hasFirstName" ) ) ).isTrue();
+	}
+
+	@Test
 	@DisplayName( "Can build schema from struct" )
 	public void testFromStruct() {
 		// @formatter:off

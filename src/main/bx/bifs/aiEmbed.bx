@@ -38,6 +38,8 @@
  * )
  * ```
  */
+import bxModules.bxai.models.util.ProfileResolver;
+
 @BoxBIF
 class {
 
@@ -48,7 +50,7 @@ class {
 	 *
 	 * @input The input text or array of texts to generate embeddings for
 	 * @params A set of request params to pass to the provider (e.g., model, encoding_format)
-	 * @options A set of request options (e.g., provider, apiKey, returnFormat, timeout, logResponse, logResponseToConsole, logRequest, logRequestToConsole)
+	 * @options A set of request options (e.g., profile, provider, apiKey, returnFormat, timeout, logResponse, logResponseToConsole, logRequest, logRequestToConsole)
 	 *
 	 * @return The embeddings response from the provider. Format depends on returnFormat option:
 	 *         - "raw" (default): Full API response with metadata
@@ -60,8 +62,42 @@ class {
 		struct params = {},
 		struct options = {}
 	){
+		// Order of priority: the call, options.profile, the embeddings settings, then the default profile and the
+		// default provider settings. The embeddings settings must win over defaultProfile, which is a chat profile.
+		if( len( arguments.options.profile ?: "" ) ){
+			var profiled = ProfileResolver::apply( arguments.options.profile, arguments.params, arguments.options )
+			arguments.params = profiled.params
+			arguments.options = profiled.options
+		}
+
+		var embeddingSettings = static.MODULE_SETTINGS.embeddings ?: {}
+		if( !len( arguments.options.provider ?: "" ) && len( embeddingSettings.defaultProvider ?: "" ) ){
+			arguments.options.provider = embeddingSettings.defaultProvider
+			if( !len( arguments.options.apiKey ?: "" ) ){
+				if( len( embeddingSettings.defaultApiKey ?: "" ) ){
+					arguments.options.apiKey = embeddingSettings.defaultApiKey
+				} else if( arguments.options.provider != static.MODULE_SETTINGS.provider ){
+					// The global apiKey belongs to the global provider: leave it empty so the <PROVIDER>_API_KEY convention is used.
+					// For the global provider itself the key is left unset, so the global apiKey still applies.
+					arguments.options.apiKey = ""
+				}
+			}
+		}
+		if( !len( arguments.params.model ?: "" ) && len( embeddingSettings.defaultModel ?: "" ) ){
+			arguments.params.model = embeddingSettings.defaultModel
+		}
+
+		// Nothing chose a provider: use the default profile for the provider, key and options only.
+		// Its params (model, temperature, max_tokens...) are chat params that an embeddings endpoint rejects.
+		if( !len( arguments.options.provider ?: "" ) ){
+			var defaulted = ProfileResolver::applyFor( {}, arguments.options )
+			arguments.options = defaulted.options
+		}
+
 		// Merge options
 		arguments.options.append( static.MODULE_SETTINGS, false );
+		// Profiles hold env var names and are never copied into a request
+		arguments.options.delete( "profiles" );
 
 		// Create the embedding request
 		var embeddingRequest = new bxModules.bxai.models.requests.AiEmbeddingRequest(

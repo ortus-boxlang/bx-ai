@@ -49,7 +49,8 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 		}
 		DEFAULT_IMAGE_PARAMS = {
 			// https://platform.openai.com/docs/guides/images
-			"model"           : "gpt-image-1"
+			// gpt-image-1 was shut down on 2026-10-23, see https://developers.openai.com/api/docs/deprecations
+			"model"           : "gpt-image-2.5-flare"
 		}
 		DEFAULT_SPEECH_PARAMS = {
 			// https://platform.openai.com/docs/speech-to-text/overview

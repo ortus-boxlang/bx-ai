@@ -134,7 +134,8 @@ class {
 			"authFailures"      : new AtomicInteger( 0 ),
 			"apiKeyFailures"    : new AtomicInteger( 0 ),
 			"bodySizeViolations": new AtomicInteger( 0 ),
-			"ipFilterFailures"  : new AtomicInteger( 0 )
+			"ipFilterFailures"  : new AtomicInteger( 0 ),
+			"rateLimitFailures" : new AtomicInteger( 0 )
 		}
 
 		return this
@@ -362,7 +363,7 @@ class {
 	/**
 	 * Record a security failure
 	 *
-	 * @type One of: "basicAuth", "apiKey", "bodySize"
+	 * @type One of: "basicAuth", "apiKey", "bodySize", "ipFilter", "rateLimit"
 	 */
 	MCPServerStats function recordSecurityFailure( required string type ) {
 		if ( !variables.enabled ) return this
@@ -379,6 +380,9 @@ class {
 				break;
 			case "ipFilter":
 				variables.security.ipFilterFailures.incrementAndGet()
+				break;
+			case "rateLimit":
+				variables.security.rateLimitFailures.incrementAndGet()
 				break;
 		}
 
@@ -437,7 +441,8 @@ class {
 			"authFailures"      : variables.security.authFailures.get(),
 			"apiKeyFailures"    : variables.security.apiKeyFailures.get(),
 			"bodySizeViolations": variables.security.bodySizeViolations.get(),
-			"ipFilterFailures"  : variables.security.ipFilterFailures.get()
+			"ipFilterFailures"  : variables.security.ipFilterFailures.get(),
+			"rateLimitFailures" : variables.security.rateLimitFailures.get()
 		}
 
 		return {
@@ -480,7 +485,8 @@ class {
 				"authFailures"      : variables.security.authFailures.get(),
 				"apiKeyFailures"    : variables.security.apiKeyFailures.get(),
 				"bodySizeViolations": variables.security.bodySizeViolations.get(),
-				"ipFilterFailures"  : variables.security.ipFilterFailures.get()
+				"ipFilterFailures"  : variables.security.ipFilterFailures.get(),
+				"rateLimitFailures" : variables.security.rateLimitFailures.get()
 			}
 		}
 	}

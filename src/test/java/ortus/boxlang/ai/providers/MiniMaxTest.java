@@ -20,12 +20,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import ortus.boxlang.ai.BaseIntegrationTest;
 
 /**
- * Integration tests for MiniMax AI provider
+ * Integration tests for MiniMax AI provider.
+ * <p>
+ * These call the live MiniMax API and are manual: they only run with AI_TESTS_MINIMAX=true (and MINIMAX_API_KEY),
+ * for example <code>AI_TESTS_MINIMAX=true ./gradlew test --tests "*MiniMaxTest"</code>.
  */
+@EnabledIfEnvironmentVariable( named = "AI_TESTS_MINIMAX", matches = "true", disabledReason = "Live MiniMax tests are manual: set AI_TESTS_MINIMAX=true" )
 public class MiniMaxTest extends BaseIntegrationTest {
 
 	@BeforeEach

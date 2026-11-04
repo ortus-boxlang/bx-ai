@@ -59,7 +59,7 @@ class extends="OpenAIService" {
 	property name="responses" type="array" default=[];
 
 	/**
-	 * Every request this instance received: { model, messages, timestamp }
+	 * Every request this instance received: { model, messages, params, timestamp }
 	 */
 	property name="receivedRequests" type="array" default=[];
 
@@ -255,9 +255,14 @@ class extends="OpenAIService" {
 	 * Record a snapshot of the received request on the instance and the static shared log
 	 */
 	private void function recordRequest( required struct dataPacket ){
+		// Everything else in the packet (temperature, max_tokens, ...) so tests can see which params reached the provider
+		var packetParams = duplicate( arguments.dataPacket )
+		packetParams.delete( "model" )
+		packetParams.delete( "messages" )
 		var snapshot = {
 			"model"    : arguments.dataPacket.model ?: "",
 			"messages" : duplicate( arguments.dataPacket.messages ?: [] ),
+			"params"   : packetParams,
 			"timestamp": now()
 		}
 		variables.receivedRequests.append( snapshot )

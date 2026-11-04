@@ -666,4 +666,23 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		assertThat( loaded.getAsString( Key.of( "status" ) ) ).isEqualTo( "resumed" );
 	}
 
+	@Test
+	@DisplayName( "Test CacheMemory saveState ttl is in minutes, the cache timeout in seconds" )
+	public void testSaveStateTtlInSeconds() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( "cache", "checkpoint-ttl-test" )
+		        .configure( { cacheName: "default" } )
+		    memory.saveState( "thread-ttl", { step: 1 }, 5 )
+		    timeout = cache( "default" ).getCachedObjectMetadata( "checkpoint:thread-ttl" ).timeout
+		    memory.clearState( "thread-ttl" )
+		    memory.clear()
+		    """,
+		    context
+		);
+
+		// 5 minutes = 300 seconds
+		assertThat( ( ( Number ) variables.get( Key.of( "timeout" ) ) ).longValue() ).isEqualTo( 300L );
+	}
+
 }

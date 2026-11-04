@@ -638,7 +638,8 @@ class extends="BaseMemory" {
 	public IAiMemory function saveState( required string threadId, required struct state, numeric ttl = 0 ) {
 		var cacheKey = buildCheckpointKey( arguments.threadId )
 		if ( arguments.ttl > 0 ) {
-			variables.cache.set( cacheKey, arguments.state, arguments.ttl, 0 )
+			// The ttl is in minutes, BoxLang cache timeouts are in seconds
+			variables.cache.set( cacheKey, arguments.state, arguments.ttl * 60, 0 )
 		} else {
 			variables.cache.set( cacheKey, arguments.state )
 		}

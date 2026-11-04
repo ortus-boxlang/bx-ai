@@ -14,6 +14,8 @@
  * ----------------------------------------------------------------------------------
  * Creates a reference to a registered AI Service Provider.
  */
+import bxModules.bxai.models.util.ProfileResolver;
+
 @BoxBIF
 class {
 
@@ -25,29 +27,7 @@ class {
 		 * - interceptorService : The BoxLang InterceptorService
 		 * - log : A logger for the module config itself
 		 */
-		final CORE_PROVIDERS = [
-			"bedrock",
-			"cartesia",
-			"claude",
-			"cloudflare",
-			"cohere",
-			"deepseek",
-			"docker",
-			"elevenlabs",
-			"gemini",
-			"grok",
-			"groq",
-			"huggingface",
-			"minimax",
-			"mistral",
-			"mock",
-			"ollama",
-			"openai",
-			"openai-compatible",
-			"openrouter",
-			"perplexity",
-			"voyage"
-		];
+		final CORE_PROVIDERS = ProfileResolver::providerNames();
 	}
 
     /**
@@ -56,16 +36,39 @@ class {
 	 * You can pass an optional API key to use with the AI Service Provider to override the default API key from the configuration.
 	 *
 	 * @provider The provider to use. If not provided, the provider will use the default provider from the configuration.
-	 * @options A struct of options to configure the provider instance, or a simple API key value.
+	 * @options A struct of options to configure the provider instance, or a simple API key value. A <code>profile</code> option is the same as the profile argument.
+	 * @profile The name of a configured profile. It supplies the provider, the API key and the options. Explicit arguments win. A profile API key is only used with the profile's own provider.
 	 *
 	 * @throws ProviderNotSupported if the provider is not supported
 	 *
 	 * @return The AI Service Provider instance
      */
-    function invoke( string provider, any options = {} ) {
+    function invoke( string provider, any options = {}, string profile ) {
         // Choose the provider in the following order:
 		// 1. Argument provider
 		// 2. Module setting provider
+		// Apply a profile first: the argument, else options.profile, else the configured defaultProfile
+		// (only when no provider was requested). Explicit provider, apiKey and options always win.
+		var profileName = arguments.profile ?: ( isStruct( arguments.options ) ? ( arguments.options.profile ?: "" ) : "" )
+		if( !len( profileName ) && isNull( arguments.provider ) ){
+			profileName = moduleRecord.settings.defaultProfile ?: ""
+		}
+		if( len( profileName ) ){
+			var resolvedProfile = ProfileResolver::resolve( profileName )
+			// A simple options value is an API key
+			if( !isStruct( arguments.options ) ){
+				arguments.options = { apiKey: arguments.options }
+			}
+			arguments.provider = arguments.provider ?: resolvedProfile.provider
+			// Profile options and key only belong to the profile's own provider
+			if( arguments.provider == resolvedProfile.provider ){
+				arguments.options = duplicate( resolvedProfile.options ).append( arguments.options, true )
+				if( !len( arguments.options.apiKey ?: "" ) && len( resolvedProfile.apiKey ) ){
+					arguments.options.apiKey = resolvedProfile.apiKey
+				}
+			}
+		}
+
 		arguments.provider = arguments.provider ?: moduleRecord.settings.provider
 
 		// In case an `arguments.apiKey` is passed as a simple value, convert to options struct

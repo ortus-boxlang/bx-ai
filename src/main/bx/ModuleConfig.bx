@@ -25,6 +25,7 @@
  * Every module will have its own classloader that will be used to load the module libs and dependencies.
  */
 import bxModules.bxai.models.mcp.MCPStdioClient;
+import bxModules.bxai.models.util.ProfileResolver;
 
 class {
 
@@ -127,6 +128,21 @@ class {
 				// 	options: {}
 				// }
 			},
+			// Named combinations of provider, model, params, options and API key. Select one with
+			// options.profile in aiChat()/aiEmbed(), or profile in aiModel()/aiAgent()/aiService().
+			// A profile name cannot be the name of a provider or "default".
+			// Params layer: defaultParams < providers.<name>.params < profile < call params.
+			// Ex: fast : { description: "Cheap and quick", provider: "openai", model: "gpt-4.1-mini", params: { temperature: 0 }, apiKeyEnv: "OPENAI_API_KEY" }
+			profiles : {
+			},
+			// The profile used when none is requested. Empty means "default", built from the settings above.
+			defaultProfile : "",
+			// Defaults for aiEmbed(). Empty values use the default provider and its own embedding model.
+			embeddings : {
+				defaultProvider : "",
+				defaultModel    : "",
+				defaultApiKey   : ""
+			},
 			// The default timeout of the ai requests
 			timeout : 90,
 			// If true, the AI request will be logged into the ai.log
@@ -143,6 +159,37 @@ class {
 			// MCP Clients
 			// --------------------------------------------------------------------------
 			mcp : {
+				// MCP servers you build with mcpServer() / MCPServer()
+				server : {
+					// IPs or CIDR ranges of the proxies in front of your servers, for example [ "10.0.0.0/8" ].
+					// Empty (the default): X-Forwarded-For and similar headers are never trusted, the client IP is the connection address.
+					// When set, those headers are only trusted from these proxies.
+					// [ "*" ] trusts them from anyone, only safe when clients can only reach you through your proxy.
+					trustedProxies : [],
+					// Limit how often one client can call a server. Off by default.
+					rateLimit : {
+						// true limits every MCP server you create, with no code change
+						enabled : false,
+						// Requests allowed per window and the window in seconds
+						limit : 60,
+						window : 60,
+						// Who is limited: ip, apiKey (needs withApiKeyProvider) or global. In code it can also be a lambda.
+						key : "ip",
+						// Where the counters live: cache, memory, a class path or an IRateLimitStore instance
+						store : "cache",
+						// The cache used by the cache store. Use a dedicated one so counters are not evicted early.
+						cacheName : "default",
+						// When the store fails: true lets requests in, false answers 503
+						failOpen : true,
+						// Days of history (per client, per day: requests, blocked, busiest minute) kept in the cache, 0 for none, at most 365.
+						// It is what getRateLimitReport() and the top consumers read, and it survives a restart.
+						retentionDays : 7,
+						// Seconds between writes of the history to the cache, at least 5
+						historyFlushSeconds : 30,
+						// Clients kept per day, from 50 to 5000. The smallest are folded into "(other)", totals stay exact.
+						historyMaxClients : 500
+					}
+				},
 				// MCP servers that run as a child process and talk over stdin/stdout: MCP( { command : [ ... ] } )
 				stdio : {
 					// Executable names a stdio server may use, for example [ "bxplaywright", "npx" ]
@@ -343,6 +390,7 @@ class {
 			"onAIModelCreate",
 			"onAIProviderCreate",
 			"onMissingAiProvider",
+			"onAIProfileSwitch",
 
 			// Request & Response Events
 			"onAIChatRequest",
@@ -401,6 +449,7 @@ class {
 			"onMCPRequest",
 			"onMCPResponse",
 			"onMCPError",
+			"onMCPRateLimitHit",
 			// MCP Client Events
 			"onMCPClientRequest",
 			"onMCPClientResponse",
@@ -447,6 +496,9 @@ class {
 	 * Also assures us that datasources and caches are available if our skills need them during auto-discovery.
 	 */
 	function onRuntimeStart(){
+		// Reject bad profile settings early, with the setting that is wrong
+		ProfileResolver::validate( moduleRecord.settings )
+
 		// Auto-discover global skills from the configured skillsDirectory
 		var skillsDir = moduleRecord.settings.skillsDirectory
 

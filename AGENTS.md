@@ -583,7 +583,7 @@ browser.close();
   - **Core Properties**:
     - Identity: `serverName`, `description`, `version`
     - Security: `corsAllowedOrigins`, `basicAuthUsername`, `basicAuthPassword`, `apiKeyProvider`
-    - Limits: `maxRequestBodySize`, `rateLimitPerMinute`
+    - Limits: `maxRequestBodySize`, `withRateLimit()` (sliding window, `ip`/`apiKey`/`global`/lambda key, cache store), `withTrustedProxies()`
     - Callbacks: `onRequest`, `onResponse`, `onError`
     - Resources: `tools`, `resources`, `prompts` (registration maps)
     - Monitoring: `stats` (MCPServerStats with request counts, errors, latency)
@@ -1079,6 +1079,16 @@ aiService( "bedrock", {
 })
 ```
 
+### Profiles
+
+Named combinations of provider, model, params, options and API key, set in the `profiles` setting (see `models/util/ProfileResolver.bx`). All resolution goes through `ProfileResolver`, never read `settings.profiles` directly in a BIF.
+
+- Select with `options.profile` (`aiChat`, `aiChatStream`, `aiEmbed`) or `profile` (`aiService`, `aiModel`, `aiAgent`). `agent.withProfile( name )` switches for good, `agent.run( input, params, { profile: name } )` for one run. `defaultProfile` picks the profile used when a call names no provider.
+- Params layer: `defaultParams` < `providers.<name>.params` < profile < call params. Explicit provider, apiKey, params and options always win.
+- A profile name cannot be a provider name or `default`. Validated in `onRuntimeStart()`.
+- Keys: prefer `apiKeyEnv` (the env var NAME). Never return or log a key: `aiProfile()`, `aiProfiles()` and `aiProviders()` only say `hasApiKey`. `profiles` is removed from request options in `AiBaseRequest.prepareOptions()`, `aiChatStream` and `aiEmbed`.
+- Tests: `ProfilesTest` with the `mock` provider. `MockService.getRecorded()` entries have `model`, `messages` and `params`.
+
 ### Request Configuration Hierarchy
 
 1. **AiBaseRequest** - Base for all requests
@@ -1373,7 +1383,7 @@ println( product.inStock ); // true (boolean!)
 ```
 src/main/bx/
 ├── ModuleConfig.bx          # Module descriptor, settings, 53 interceptor points
-├── bifs/                    # 27 Global BIFs (aiChat, aiMessage, aiService, aiTool, etc.)
+├── bifs/                    # 38 Global BIFs (aiChat, aiMessage, aiService, aiTool, aiProfiles, etc.)
 ├── models/
 │   ├── AiAgent.bx          # Agent system (630 lines) - multi-memory, tools, sub-agents
 │   ├── AiMessage.bx        # Fluent message builder with OnMissingMethod for roles

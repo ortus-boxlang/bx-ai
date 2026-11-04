@@ -1,0 +1,295 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * The rate limit of one MCP server: who is limited (the key), what happens when the store fails, and the stats.
+ *
+ * Nothing is ever logged on the request path, so a flood cannot fill the logs. Blocked requests and store
+ * errors only change the stats and the history. The `onMCPRateLimitHit` event fires at most
+ * `MAX_EVENTS_PER_MINUTE` times a minute per server, so listeners cannot be flooded either.
+ */
+class {
+
+	/**
+	 * The RateLimitSet doing the counting
+	 */
+	property name="limiter" type="any";
+
+	/**
+	 * The RateLimitHistory: what each client did, per day
+	 */
+	property name="history" type="any";
+
+	/**
+	 * "ip", "apiKey", "global" or "custom"
+	 */
+	property name="keyType" type="string";
+
+	/**
+	 * true: a store failure lets the request in. false: it answers 503.
+	 */
+	property name="failOpen" type="boolean";
+
+	static {
+		// onMCPRateLimitHit events allowed per minute, per server
+		final MAX_EVENTS_PER_MINUTE = 10
+		// Blocked clients kept in the stats
+		final MAX_TOP_BLOCKED = 20
+		// API keys remembered as accepted by the provider, so their requests are limited before authentication
+		final MAX_KNOWN_API_KEYS = 10000
+		ConcurrentHashMap = createObject( "java", "java.util.concurrent.ConcurrentHashMap" )
+		AtomicLong = createObject( "java", "java.util.concurrent.atomic.AtomicLong" )
+	}
+
+	/**
+	 * @limiter   The RateLimiter
+	 * @key       "ip", "apiKey", "global" or a lambda( requestData ) => string
+	 * @failOpen  Store failure policy
+	 * @mcpServer The MCPServer this gate protects
+	 * @history   The RateLimitHistory that keeps what each client did
+	 * @clock     Function returning epoch seconds, for tests
+	 */
+	function init(
+		required any limiter,
+		required any key,
+		boolean failOpen = true,
+		required any mcpServer,
+		required any history,
+		any clock
+	) {
+		variables.limiter   = arguments.limiter
+		variables.history   = arguments.history
+		variables.failOpen  = arguments.failOpen
+		variables.mcpServer = arguments.mcpServer
+		if ( isNull( arguments.clock ) ) {
+			variables.clock = () => createObject( "java", "java.lang.System" ).currentTimeMillis() / 1000
+		} else {
+			variables.clock = arguments.clock
+		}
+		if ( isSimpleValue( arguments.key ) ) {
+			variables.keyType = arguments.key
+			variables.keyFn   = ""
+		} else {
+			variables.keyType = "custom"
+			variables.keyFn   = arguments.key
+		}
+
+		variables.allowedCount    = static.AtomicLong.init( 0 )
+		variables.blockedCount    = static.AtomicLong.init( 0 )
+		variables.storeErrorCount = static.AtomicLong.init( 0 )
+
+		// API keys the provider accepted: key hash -> epoch seconds when the memory ends
+		variables.knownApiKeys = static.ConcurrentHashMap.init()
+
+		// Event budget of the current minute, changed under a lock
+		variables.eventMinute = 0
+		variables.eventCount  = 0
+		return this
+	}
+
+	/**
+	 * Count a request and decide.
+	 *
+	 * @requestData      The request data of the transport
+	 * @clientIP         The client IP, "" when the transport has none (stdio)
+	 * @verifiedApiKey   The API key of the request if the server's provider accepted it, else ""
+	 *
+	 * @return { allowed, skipped, headers, retryAfter, status }
+	 *   - skipped true when the key lambda returned nothing, the request is not limited and has no headers
+	 *   - status  the HTTP status to answer when allowed is false: 429, or 503 when the store failed
+	 */
+	struct function enforce( required struct requestData, string clientIP = "", string verifiedApiKey = "" ) {
+		var bucket = ""
+		var type   = variables.keyType
+
+		try {
+			switch ( variables.keyType ) {
+				case "ip":
+					bucket = "ip:" & ( len( arguments.clientIP ) ? arguments.clientIP : "unknown" )
+					break
+				case "apiKey":
+					if ( len( arguments.verifiedApiKey ) ) {
+						bucket = "apiKey:" & arguments.verifiedApiKey
+					} else {
+						type   = "ip"
+						bucket = "ip:" & ( len( arguments.clientIP ) ? arguments.clientIP : "unknown" )
+					}
+					break
+				case "global":
+					bucket = "global"
+					break
+				default:
+					var custom = variables.keyFn( arguments.requestData )
+					if ( isNull( custom ) || !len( toString( custom ) ) ) {
+						return { "allowed": true, "skipped": true, "headers": {}, "retryAfter": 0, "status": 200 }
+					}
+					bucket = "custom:" & toString( custom )
+			}
+			var result = variables.limiter.check( bucket )
+		} catch ( any e ) {
+			// Never logged: a failing store under a flood would fill the logs. getStats().storeErrors counts them.
+			variables.storeErrorCount.incrementAndGet()
+			if ( variables.failOpen ) {
+				return { "allowed": true, "skipped": true, "headers": {}, "retryAfter": 0, "status": 200 }
+			}
+			return { "allowed": false, "skipped": false, "headers": {}, "retryAfter": 0, "status": 503 }
+		}
+
+		var headers = {
+			"X-RateLimit-Limit"    : result.limit,
+			"X-RateLimit-Remaining": result.remaining,
+			"X-RateLimit-Reset"    : result.resetAt
+		}
+
+		// The client as shown in reports, stats and events: an IP, or a short hash
+		var shownKey = type == "ip" ? listRest( bucket, ":" ) : variables.limiter.keyHash( bucket ).left( 12 )
+
+		if ( result.allowed ) {
+			variables.allowedCount.incrementAndGet()
+			variables.history.record( shownKey, type, true )
+			return { "allowed": true, "skipped": false, "headers": headers, "retryAfter": 0, "status": 200 }
+		}
+
+		headers[ "Retry-After" ] = result.retryAfter
+		variables.blockedCount.incrementAndGet()
+		variables.history.record( shownKey, type, false )
+		announceBlocked( shownKey, type, result, arguments.requestData )
+
+		return { "allowed": false, "skipped": false, "headers": headers, "retryAfter": result.retryAfter, "status": 429 }
+	}
+
+	/**
+	 * Did the API key provider accept this key recently? Then its requests can be limited on the key's own bucket
+	 * before authentication, without calling the provider. Authentication still checks the key afterwards.
+	 *
+	 * @apiKey The API key of the request
+	 */
+	boolean function isKnownApiKey( required string apiKey ) {
+		if ( !len( arguments.apiKey ) ) {
+			return false
+		}
+		var keyHash = variables.limiter.keyHash( "apiKey:" & arguments.apiKey )
+		var endsAt  = variables.knownApiKeys.get( keyHash )
+		if ( isNull( endsAt ) ) {
+			return false
+		}
+		if ( endsAt < variables.clock() ) {
+			variables.knownApiKeys.remove( keyHash )
+			return false
+		}
+		return true
+	}
+
+	/**
+	 * Remember an API key the provider accepted, for one window. Only its hash is kept, and at most
+	 * MAX_KNOWN_API_KEYS keys: when full, the memory starts over, and those keys go through the IP bucket and the
+	 * provider once more.
+	 *
+	 * @apiKey The API key the provider accepted
+	 */
+	function rememberApiKey( required string apiKey ) {
+		if ( !len( arguments.apiKey ) ) {
+			return this
+		}
+		if ( variables.knownApiKeys.size() >= static.MAX_KNOWN_API_KEYS ) {
+			variables.knownApiKeys.clear()
+		}
+		var rememberUntil = variables.clock() + variables.limiter.getWindow()
+		variables.knownApiKeys.put( variables.limiter.keyHash( "apiKey:" & arguments.apiKey ), rememberUntil )
+		return this
+	}
+
+	/**
+	 * The numbers for getStats()
+	 */
+	struct function getStats() {
+		return {
+			"keyType"      : variables.keyType,
+			"limit"        : variables.limiter.getLimit(),
+			"window"       : variables.limiter.getWindow(),
+			"limits"       : variables.limiter.getLimits(),
+			"allowed"      : variables.allowedCount.get(),
+			"blocked"      : variables.blockedCount.get(),
+			"storeErrors"  : variables.storeErrorCount.get(),
+			"retentionDays": variables.history.getRetentionDays(),
+			"topBlocked"   : variables.history.top( static.MAX_TOP_BLOCKED )
+		}
+	}
+
+	/**
+	 * Clear the numbers
+	 */
+	function resetStats() {
+		variables.allowedCount.set( 0 )
+		variables.blockedCount.set( 0 )
+		variables.storeErrorCount.set( 0 )
+		variables.history.clear()
+		return this
+	}
+
+	// ---------------------------------------------------------------------------------------------------------
+	// Private: the event budget
+	// ---------------------------------------------------------------------------------------------------------
+
+	/**
+	 * Announce onMCPRateLimitHit for the first block of a client in a window, while the budget of the minute lasts.
+	 * Nothing is logged.
+	 *
+	 * @shownKey    The client as shown in events: the IP, or a short hash
+	 * @type        The key type
+	 * @result      The RateLimiter result
+	 * @requestData The request
+	 */
+	private void function announceBlocked(
+		required string shownKey,
+		required string type,
+		required struct result,
+		required struct requestData
+	) {
+		if ( !arguments.result.firstBlock ) {
+			return
+		}
+		var minute   = int( variables.clock() / 60 )
+		var announce = false
+
+		lock name="bxai-ratelimit-event-#variables.mcpServer.getServerName()#" type="exclusive" timeout="2" throwontimeout="false" {
+			if ( minute != variables.eventMinute ) {
+				variables.eventMinute = minute
+				variables.eventCount  = 0
+			}
+			if ( variables.eventCount < static.MAX_EVENTS_PER_MINUTE ) {
+				variables.eventCount++
+				announce = true
+			}
+		}
+		if ( !announce ) {
+			return
+		}
+
+		try {
+			BoxAnnounce( "onMCPRateLimitHit", {
+				mcpServer  : variables.mcpServer,
+				serverName : variables.mcpServer.getServerName(),
+				key        : arguments.shownKey,
+				keyType    : arguments.type,
+				limit      : arguments.result.limit,
+				window     : arguments.result.window,
+				retryAfter : arguments.result.retryAfter,
+				requestData: arguments.requestData
+			} )
+		} catch ( any e ) {
+			// A failing listener never fails the request, and is not logged
+		}
+	}
+
+}

@@ -28,6 +28,11 @@ class extends="AiBaseRunnable" {
 	property name="service" type="IAiService";
 
 	/**
+	 * The name of the profile this model was built from, empty when it was not built from one
+	 */
+	property name="profile" type="string" default="";
+
+	/**
 	 * Constructor
 	 *
 	 * @service The AI service provider to wrap
@@ -65,6 +70,7 @@ class extends="AiBaseRunnable" {
 			"middleware": listMiddleware(),
 			"name": variables.name,
 			"provider": variables.service.getName(),
+			"profile": variables.profile,
 			"params": getMergedParams(),
 			"options": getMergedOptions().map( ( key, value ) => {
 				// Mask sensitive options (e.g. API keys) in the config output
