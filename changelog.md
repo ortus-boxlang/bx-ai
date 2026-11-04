@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.7.0] - 2026-11-04
+
 ### ⚠️ Migration
 
 - **MCP servers no longer trust forwarded headers by default.** `X-Forwarded-For`, `CF-Connecting-IP`, `True-Client-IP` and `X-Real-IP` used to be read from anyone, so any client could choose its own IP. Now the client IP is the address of the connection unless you list your proxies with `server.withTrustedProxies( [ "10.0.0.0/8" ] )` or the `mcp.server.trustedProxies` setting. `[ "*" ]` restores the old behavior. This changes `getClientIP()`, the IP allowlist (`withAllowedIPs()`) and the `ip` rate limit: a server behind a proxy that uses the allowlist must now set its trusted proxies.
@@ -16,10 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 🐛 Fixed
 
 - **OpenAI image default model**: `gpt-image-1` was shut down by OpenAI on 2026-10-23, so `aiImage()` with the OpenAI provider failed with `The model 'gpt-image-1' does not exist`. The default is now `gpt-image-2.5-flare`. Pass `model: "gpt-image-2.5-sunburst"` for OpenAI's most capable image model.
+
 - **BoxLang cache timeouts are in seconds**, but several stores passed minutes, so entries expired 60 times too early: the HITL `CacheDecisionStore` (a grant that should last 10 minutes lived 10 seconds) and `CacheMemory.saveState()` checkpoints (`ttl` is minutes, the cache got the minutes as seconds). Both now convert to seconds.
+
 - **IP normalization of MCP servers** counted the characters instead of the colons of an address, so a port was never removed from `192.168.1.1:8080` and the IPv6 address `::1` became `1`. Bracketed IPv6 (`[::1]:8080`) is now handled too.
 
 - **`SchemaBuilder::fromObject()` given a class path string** (`SchemaBuilder::fromObject( "models.Person" )`) failed with `The requested key [new] was not located`. It created the class with `new #path#()`, which BoxLang reads as a variable named `new` until 1.19; it now uses `new "#path#"()`, which works on every version.
+
 - **Mistral speech** no longer sends a `voice` field. Mistral only knows `voice_id` and answered "voice is not supported for speech v1" (HTTP 400, code 3051) when a voice name (or the voice of another provider, such as OpenAI's `nova`) reached it. The public `voice` setting is translated: a UUID is sent as `voice_id`, the name of one of the account's voices is looked up in the account's voices (exact, case-insensitive, cached) and its id is sent, and a name with no match is dropped so the first preset voice is used. The default model is now Voxtral TTS 3, `voxtral-mini-tts-3-0` (`voxtral-mini-tts-2603` is deprecated and retires on 2027-04-30). Voice lookups use `GET /v2/audio/voices`, the v1 list is deprecated.
 
 ### 🥊 Added
@@ -30,15 +35,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Counters live in a BoxLang cache by default (`cacheName`, use a dedicated one), for exactly their window (cache timeouts are seconds), or in `"memory"`, or in your own class that implements `IRateLimitStore` (`increment`, `get`, `remove`).
   - Nothing is logged on the request path: blocked requests, store errors and history failures only change the stats, so a flood cannot fill the logs. `onMCPRateLimitHit` (new event) fires at most 10 times a minute per server. `getStats()` has `security.rateLimitFailures` and a `rateLimit` section (allowed, blocked, store errors, top 20 blocked clients) with exact totals.
   - Settings `mcp.server.rateLimit` (`enabled` false by default, `limit` 60, `window` 60, `key`, `store`, `cacheName`, `failOpen`) set the defaults for every MCP server.
+
 - **MCP rate limit: several limits, on/off, reset, history and reports**
   - Several limits on one server: `withRateLimit( { limits: [ { limit: 60, window: 60 }, { limit: 1000, window: 3600 } ] } )`. A request has to pass all of them, a refusal does not use up the other limits, and `Retry-After` is the longest wait. `limit` and `window` still work for a single limit.
   - `server.disableRateLimit()` and `server.enableRateLimit()` switch the checking without losing the setup, counters or history. `isRateLimitEnabled()` tells which. `withRateLimit( false )` still removes the limit. `getStats().rateLimit.enabled` shows the state.
   - `server.resetRateLimit()` deletes the counters of every client when the store can (`IClearableRateLimitStore`, implemented by the cache and memory stores), `server.resetRateLimitStats()` clears the stats and the history.
   - History per client and per UTC day (requests, blocked, busiest minute, last block), kept in the BoxLang cache for `retention` days (module setting `mcp.server.rateLimit.retentionDays`, default 7, 0 for none, at most 365) so it survives a restart and is shared by the nodes that share the cache. The server writes it about every `historyFlushSeconds` (default 30, at least 5) and keeps at most `historyMaxClients` clients per day (default 500, from 50 to 5000), folding the smallest into `(other)` so totals stay exact.
   - `server.getRateLimitReport( { days: 7, top: 20 } )` returns the days and the top consumers with requests, blocked, `peakPerMinute` and `pctOfLimit`. `getStats().rateLimit` has `limits`, `retentionDays` and the top blocked clients of today, so the in-memory top list no longer grows forever.
+
 - **Trusted proxies for MCP servers**: `server.withTrustedProxies( [ "10.0.0.0/8" ] )` and the `mcp.server.trustedProxies` setting. Empty (the default) never trusts forwarded headers. When set, `X-Forwarded-For` and similar headers are only honored when the connection comes from a trusted proxy, and the chain is read from the right. It applies to the IP allowlist and the `ip` rate limit. `[ "*" ]` trusts the headers from anyone (see Migration).
 
 - **Manual releases**: the `Release` workflow can be run by hand (Actions, Run workflow) from `development` or `main`, with a `snapshot` input. It never runs the tests. Unchecked it makes a release (changelog, tag, publish, GitHub release, version bump), checked it makes a `-snapshot` build, whatever the branch, with no tag, release or version bump.
+
 - The live MiniMax tests are manual now: they only run with `AI_TESTS_MINIMAX=true`.
 
 - **Configuration profiles**: name a combination of provider, model, params, options and API key once, then select it by name. A profile is set in the new `profiles` setting, for example `fast : { provider: "openai", model: "gpt-4.1-mini", params: { temperature: 0 }, apiKeyEnv: "OPENAI_API_KEY" }`. A profile may set `description` (text for UIs, returned by `aiProfile()` and `aiProfiles()`), `provider`, `model` (shorthand for `params.model`), `params`, `options`, `apiKeyEnv` (the NAME of the env var that holds the key, preferred) or `apiKey`. Params layer as `defaultParams`, then `providers.<name>.params`, then the profile, then the params of the call. The profile `default` always exists: it is the top level `provider`, `apiKey` and `defaultParams`, and the new `defaultProfile` setting makes another profile the default. Without profiles nothing changes.
@@ -49,7 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New interception point `onAIProfileSwitch` with `{ agent, from, to, scope }`, where scope is `agent` or `run`.
   - Profiles are never copied into request options, so a key can not reach logs or events through them.
   - The params (including the model) and options of a profile only reach its own provider: `aiChat( ..., { profile: "fast", provider: "claude" } )` sends none of them to Claude.
+
 - **Embeddings defaults**: the new `embeddings` setting (`defaultProvider`, `defaultModel`, `defaultApiKey`) gives `aiEmbed()` its own default instead of the chat provider. The order is the call, `options.profile`, the `embeddings` settings, then `defaultProfile` (provider, key and options only, its chat params are not sent to an embeddings endpoint) and the default provider. When the embeddings provider is the global provider, the global `apiKey` still applies. Empty values keep the old behavior.
+
 - `MockService` records the other params of each request (`temperature`, `max_tokens`, ...) in `getRecorded()` as `params`.
 
 ## [3.6.0] - 2026-10-20
@@ -834,7 +844,8 @@ One of our biggest library updates yet! This release introduces a powerful new d
 
 - First iteration of this module
 
-[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.6.0...HEAD
+[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.7.0...HEAD
+[3.7.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.6.0...v3.7.0
 [3.6.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.5.0...v3.6.0
 [3.5.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.4.0...v3.5.0
 [3.4.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.3.2...v3.4.0
