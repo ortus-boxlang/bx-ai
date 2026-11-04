@@ -2,6 +2,8 @@
 # It can also be called by other workflows to reuse the release flow.
 # It never runs the tests (the build uses `-x test`). Tests have their own workflow.
 #
+# Automatic: merging a pull request into `main` releases the version in gradle.properties.
+#
 # Manual run (Actions > Release > Run workflow), from `development` or `main`:
 #   - snapshot unchecked: a release. Finalizes the changelog, tags, publishes and creates the GitHub release,
 #     then bumps the version on `development`
@@ -9,8 +11,12 @@
 name: Release
 
 on:
-  # If you push to main this will trigger a stable release
-  push:
+  # Merging a pull request into main triggers a stable release.
+  # Not `push`: a squash merge puts every commit message of the PR into the merge commit, and one `[no ci]`
+  # or `[skip ci]` in there makes GitHub skip every push workflow, so releases never started on their own.
+  # A pull_request event is only skipped when the last commit of the PR itself carries such a marker.
+  pull_request:
+    types: [closed]
     branches:
       - master
       - main
@@ -45,8 +51,13 @@ jobs:
   #############################################
   build:
     name: Build & Publish Release
-    # A manual run only builds from development or main, so a stray branch can not publish
-    if: github.event_name != 'workflow_dispatch' || github.ref_name == 'development' || github.ref_name == 'main' || github.ref_name == 'master'
+    # A closed pull request releases only when it was merged and comes from this repository.
+    # A manual run only builds from development or main, so a stray branch can not publish.
+    # Called from snapshot.yml, the event is the caller's (a push to development), which this file no longer listens to.
+    if: >-
+      ( github.event_name == 'pull_request' && github.event.pull_request.merged == true && github.event.pull_request.head.repo.full_name == github.repository )
+      || ( github.event_name == 'workflow_dispatch' && ( github.ref_name == 'development' || github.ref_name == 'main' || github.ref_name == 'master' ) )
+      || github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       checks: write
@@ -54,8 +65,12 @@ jobs:
       contents: write
       issues: write
     steps:
+      # A pull_request event checks out a temporary merge ref by default. Check out the branch the PR was merged
+      # into, so the build is the merged code and the changelog commit and the tag land on main.
       - name: Checkout Repository
         uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || github.ref }}
 
       - name: Setup Java
         uses: actions/setup-java@v6
