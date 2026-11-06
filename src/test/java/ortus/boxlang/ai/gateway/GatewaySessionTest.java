@@ -246,7 +246,6 @@ public class GatewaySessionTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "secondIsQueuedReply" ) ) ).isTrue();
 	}
 
-	@DisplayName( "Thread-ID namespacing: two gateways sharing a raw conversation id get independent claims and both dispatch immediately" )
 	@DisplayName( "Memory is keyed by user and thread: two chats do not share a bucket, and nothing lands in the blank one" )
 	@Test
 	public void testTurnsAreKeyedByUserAndThread() {
@@ -282,6 +281,7 @@ public class GatewaySessionTest extends BaseIntegrationTest {
 		assertThat( variables.getAsNumber( Key.of( "sharedBlank" ) ).intValue() ).isEqualTo( 0 );
 	}
 
+	@DisplayName( "Thread-ID namespacing: two gateways sharing a raw conversation id get independent claims and both dispatch immediately" )
 	@Test
 	public void testThreadIdNamespacingAcrossGateways() {
 		// @formatter:off
