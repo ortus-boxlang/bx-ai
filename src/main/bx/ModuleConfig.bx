@@ -454,6 +454,7 @@ class {
 			"onMCPClientRequest",
 			"onMCPClientResponse",
 			"onMCPClientError",
+			"onMCPAuthorizationRequired",
 
 			// Tool Registry Events
 			"onAIToolRegistryRegister",

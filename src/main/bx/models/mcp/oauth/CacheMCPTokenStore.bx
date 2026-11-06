@@ -1,0 +1,61 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Keeps MCP OAuth state in a BoxLang cache. The default store.
+ *
+ * With the default cache this lives in the memory of the process and is gone when it stops. Name a cache that
+ * is backed by something durable (Redis, a file cache) to keep tokens across restarts and between servers.
+ *
+ * @since 3.8.0
+ */
+class implements="IMCPTokenStore" {
+
+	/**
+	 * The BoxLang cache provider instance
+	 */
+	property name="cache";
+
+	static {
+		final DEFAULT_CACHE_NAME = "default"
+		final KEY_PREFIX         = "bxai:mcpoauth:"
+	}
+
+	/**
+	 * @cacheName The name of the cache to use
+	 */
+	function init( string cacheName = static.DEFAULT_CACHE_NAME ) {
+		variables.cacheName = len( arguments.cacheName ) ? arguments.cacheName : static.DEFAULT_CACHE_NAME
+		variables.cache     = cache( variables.cacheName )
+		return this
+	}
+
+	struct function get( required string key ) {
+		var found = variables.cache.get( static.KEY_PREFIX & arguments.key ).orElse( javacast( "null", "" ) )
+		return isNull( found ) || !isStruct( found ) ? {} : found
+	}
+
+	void function set( required string key, required struct value, numeric ttlSeconds = 0 ) {
+		if ( arguments.ttlSeconds > 0 ) {
+			// BoxLang cache timeouts are in seconds
+			variables.cache.set( static.KEY_PREFIX & arguments.key, arguments.value, arguments.ttlSeconds, 0 )
+		} else {
+			variables.cache.set( static.KEY_PREFIX & arguments.key, arguments.value )
+		}
+	}
+
+	void function remove( required string key ) {
+		variables.cache.clear( static.KEY_PREFIX & arguments.key )
+	}
+
+}

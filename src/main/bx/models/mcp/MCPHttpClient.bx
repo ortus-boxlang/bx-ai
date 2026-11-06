@@ -73,9 +73,20 @@ class extends="BaseMCPClient" {
 	property name="httpVersion" type="string" default="HTTP/2";
 
 	/**
-	 * Session id the server returned from the handshake, empty when none
+	 * Session id the server returned from the handshake, empty when none.
+	 * With OAuth each person has a session of their own, see getSessionId().
 	 */
 	property name="sessionId" type="string" default="";
+
+	/**
+	 * The OAuth flow of this client (MCPOAuthFlow), empty when OAuth is off
+	 */
+	property name="oauth";
+
+	/**
+	 * Who the OAuth tokens belong to: a name, or a function ( context ) that returns it for each call
+	 */
+	property name="oauthSubject";
 
 	/**
 	 * Constructor
@@ -95,7 +106,11 @@ class extends="BaseMCPClient" {
 		variables.handshake    = false
 		variables.sessionId    = ""
 		variables.httpVersion  = "HTTP/2"
-		variables.handshakeDone = false
+		variables.sessionIds   = {}
+		variables.handshakesDone = {}
+		variables.oauth        = ""
+		variables.oauthSubject = "default"
+		variables.lastChallenge = ""
 
 		return this
 	}
@@ -214,9 +229,115 @@ class extends="BaseMCPClient" {
 	 */
 	function withHandshake( boolean enabled = true ) {
 		variables.handshake = arguments.enabled
-		variables.handshakeDone = false
+		variables.handshakesDone = {}
+		variables.sessionIds = {}
 		variables.sessionId = ""
 		return this
+	}
+
+	/**
+	 * Sign in to the server with OAuth, as the MCP authorization specification describes: the client finds the
+	 * authorization server from the server's metadata, you send the person to sign in (startAuthorization()),
+	 * your callback route finishes it (completeAuthorization()), and from then on every request carries the
+	 * person's access token, refreshed when it expires.
+	 *
+	 * A request without tokens does not reach the server: it fails with "MCPAuthorizationRequired" and the
+	 * onMCPAuthorizationRequired event fires, so your code can show a sign-in.
+	 *
+	 * Options:
+	 * - store        Where tokens live: "cache" (default, the BoxLang cache), "file", "jdbc", a class path, or an IMCPTokenStore instance
+	 * - storeOptions Options of the store: { cacheName } for cache, { path } for file, { datasource, table } for jdbc, passed to a class path
+	 * - subject      Whose tokens a call uses: a name, or a function ( context ) => string. The context of a tool call has { chatRequest }, so
+	 *                ( context ) => context.chatRequest.getUserId() signs in each person on their own. Calls without a context (listing the tools) use "default".
+	 * - redirectUri  The address of your callback route (required to sign in)
+	 * - scopes       Array of scopes to ask for. When left out, the scope the server asks for, else everything it supports
+	 * - clientId     A client id you registered with the authorization server (and clientSecret, when it has one)
+	 * - clientMetadataUrl  The HTTPS address of a Client ID Metadata Document, used when the authorization server supports them
+	 * - clientName   The name shown at sign in, when the client registers itself. Default "bx-ai"
+	 *
+	 * <pre>
+	 * client = MCP( "https://mail.example.com/mcp" ).withOAuth( {
+	 *     redirectUri : "https://app.example.com/oauth/callback",
+	 *     subject     : ( context ) => context.chatRequest.getUserId()
+	 * } )
+	 * link = client.startAuthorization( "alice" ).authorizationUrl
+	 * </pre>
+	 *
+	 * @options The options above
+	 *
+	 * @return This client for chaining
+	 */
+	function withOAuth( struct options = {} ) {
+		var oauthOptions = arguments.options.copy()
+		oauthOptions[ "timeout" ] = oauthOptions.timeout ?: variables.timeout
+		variables.oauthSubject = oauthOptions.subject ?: "default"
+		variables.oauth = new bxModules.bxai.models.mcp.oauth.MCPOAuthFlow(
+			variables.baseURL,
+			resolveTokenStore( oauthOptions.store ?: "cache", oauthOptions.storeOptions ?: {} ),
+			oauthOptions
+		)
+		variables.handshakesDone = {}
+		variables.sessionIds = {}
+		return this
+	}
+
+	/**
+	 * Begin signing a person in. Finds the authorization server, gets a client id and returns the address to send
+	 * the person to. Needs withOAuth().
+	 *
+	 * @subject Who is signing in (the same name the subject option gives for their calls)
+	 *
+	 * @return { authorizationUrl, state }
+	 */
+	struct function startAuthorization( string subject = "default" ) {
+		assertOAuth()
+		return variables.oauth.start( arguments.subject, variables.lastChallenge )
+	}
+
+	/**
+	 * Finish signing a person in, from the callback route. Trades the code for tokens and saves them in the store.
+	 *
+	 * @code   The "code" the authorization server sent to your callback
+	 * @state  The "state" it sent
+	 * @issuer The "iss" it sent, when it sent one
+	 *
+	 * @return { subject, scope, expiresAt }: who signed in, never the tokens
+	 */
+	struct function completeAuthorization( required string code, required string state, string issuer = "" ) {
+		assertOAuth()
+		return variables.oauth.complete( arguments.code, arguments.state, arguments.issuer )
+	}
+
+	/**
+	 * Whether a person has tokens that work or can be refreshed.
+	 *
+	 * @subject Whose tokens
+	 */
+	boolean function isAuthorized( string subject = "default" ) {
+		assertOAuth()
+		return variables.oauth.isAuthorized( arguments.subject )
+	}
+
+	/**
+	 * Delete a person's tokens, so they have to sign in again.
+	 *
+	 * @subject Whose tokens
+	 *
+	 * @return This client for chaining
+	 */
+	function revokeAuthorization( string subject = "default" ) {
+		assertOAuth()
+		variables.oauth.forget( arguments.subject )
+		return this
+	}
+
+	/**
+	 * The session id the server gave a person at the handshake. Without OAuth there is one session.
+	 *
+	 * @subject Whose session, with OAuth
+	 */
+	string function getSessionId( string subject = "" ) {
+		return variables.sessionIds[ arguments.subject ] ?: ""
 	}
 
 	/**
@@ -232,7 +353,8 @@ class extends="BaseMCPClient" {
 	private void function prepare(
 		required struct body,
 		required string operationType,
-		required string operationName
+		required string operationName,
+		struct context = {}
 	) {
 		if( !isNull( variables.urlGuard ) ){
 			if( variables.urlGuard( variables.baseURL ) === false ){
@@ -240,8 +362,9 @@ class extends="BaseMCPClient" {
 			}
 		}
 
-		if( variables.handshake && !variables.handshakeDone && arguments.operationName != "initialize" ){
-			doHandshake()
+		// With OAuth each person has a session of their own, so the handshake is done once per person
+		if( variables.handshake && !variables.handshakesDone.keyExists( sessionKeyFor( arguments.context ) ) && arguments.operationName != "initialize" ){
+			doHandshake( arguments.context )
 		}
 	}
 
@@ -249,8 +372,9 @@ class extends="BaseMCPClient" {
 	 * Send "initialize" and "notifications/initialized" once and keep the session id the server returns.
 	 * A server that does not answer the handshake is not an error, the client carries on without a session.
 	 */
-	private void function doHandshake() {
-		variables.handshakeDone = true
+	private void function doHandshake( struct context = {} ) {
+		var sessionKey = sessionKeyFor( arguments.context )
+		variables.handshakesDone[ sessionKey ] = true
 		var initResponse = makeRequest(
 			{
 				"jsonrpc": "2.0",
@@ -263,17 +387,21 @@ class extends="BaseMCPClient" {
 				}
 			},
 			"discovery",
-			"initialize"
+			"initialize",
+			arguments.context
 		)
 		if( initResponse.isSuccess() ){
 			var responseHeaders = initResponse.getHeaders()
 			for( var headerName in responseHeaders ){
 				if( headerName.lCase() == "mcp-session-id" ){
 					var headerValue = responseHeaders[ headerName ]
-					variables.sessionId = isArray( headerValue ) ? ( headerValue.len() ? headerValue.first() : "" ) : headerValue
+					variables.sessionIds[ sessionKey ] = isArray( headerValue ) ? ( headerValue.len() ? headerValue.first() : "" ) : headerValue
+					if( !len( sessionKey ) ){
+						variables.sessionId = variables.sessionIds[ sessionKey ]
+					}
 				}
 			}
-			makeRequest( { "jsonrpc": "2.0", "method": "notifications/initialized" }, "discovery", "initialized" )
+			makeRequest( { "jsonrpc": "2.0", "method": "notifications/initialized" }, "discovery", "initialized", arguments.context )
 		}
 	}
 
@@ -288,13 +416,20 @@ class extends="BaseMCPClient" {
 	private MCPResponse function transportSend(
 		required struct body,
 		required string operationType,
-		required string operationName
+		required string operationName,
+		struct context = {},
+		boolean retried = false
 	) {
-		var targetUrl = variables.baseURL
+		var targetUrl  = variables.baseURL
+		var subject    = isObject( variables.oauth ) ? subjectFor( arguments.context ) : ""
+		var sessionId  = variables.sessionIds[ sessionKeyFor( arguments.context ) ] ?: ""
 
 		// Build authentication credentials
 		var authHeader = ""
-		if( len( variables.bearerToken ) ){
+		if( isObject( variables.oauth ) ){
+			// The person's access token, refreshed when it has expired. Throws when they have to sign in.
+			authHeader = "Bearer " & tokenFor( subject )
+		} else if( len( variables.bearerToken ) ){
 			authHeader = "Bearer #variables.bearerToken#"
 		} else if( len( variables.authUser ) ){
 			// Create Basic Auth header with Base64 encoding
@@ -320,8 +455,8 @@ class extends="BaseMCPClient" {
 			bx:httpParam type="header" name="accept" value="application/json, text/event-stream";
 
 			// MCP session from the handshake
-			if( len( variables.sessionId ) ){
-				bx:httpParam type="header" name="Mcp-Session-Id" value="#variables.sessionId#";
+			if( len( sessionId ) ){
+				bx:httpParam type="header" name="Mcp-Session-Id" value="#sessionId#";
 			}
 
 			// Authentication header
@@ -349,6 +484,29 @@ class extends="BaseMCPClient" {
 		if( !isNull( httpResult.responseheader ) ) {
 			for( var headerName in httpResult.responseheader ) {
 				responseHeaders[ headerName ] = httpResult.responseheader[ headerName ]
+			}
+		}
+
+		// OAuth: a 401 means the token is not accepted. Refresh it and try once more, then ask for a sign in.
+		if( isObject( variables.oauth ) && ( statusCode == 401 || statusCode == 403 ) ){
+			var challenge = headerValueOf( responseHeaders, "www-authenticate" )
+			if( statusCode == 401 ){
+				variables.lastChallenge = challenge
+				if( !arguments.retried ){
+					variables.oauth.expire( subject )
+					return transportSend( arguments.body, arguments.operationType, arguments.operationName, arguments.context, true )
+				}
+				announceAuthorizationRequired( subject, "unauthorized", challenge )
+				return new bxModules.bxai.models.mcp.MCPResponse(
+					success: false,
+					data: {},
+					error: "The MCP server did not accept the access token of [#subject#] (HTTP 401). They need to sign in again.",
+					statusCode: statusCode,
+					headers: responseHeaders
+				)
+			}
+			if( challenge.findNoCase( "insufficient_scope" ) ){
+				announceAuthorizationRequired( subject, "insufficient_scope", challenge )
 			}
 		}
 
@@ -434,6 +592,107 @@ class extends="BaseMCPClient" {
 			statusCode: statusCode,
 			headers: responseHeaders
 		)
+	}
+
+
+	/**
+	 * ---------------------------------------------------------------------------------------------------------
+	 * OAuth helpers
+	 * ---------------------------------------------------------------------------------------------------------
+	 */
+
+	/**
+	 * Whose tokens a call uses. The subject option is a name, or a function that gets the context of the call.
+	 * A call with no context (listing the tools at start up) uses the name "default".
+	 */
+	private string function subjectFor( struct context = {} ) {
+		var subject = variables.oauthSubject
+		if( !isSimpleValue( subject ) ){
+			subject = arguments.context.isEmpty() ? "default" : subject( arguments.context )
+		}
+		return len( subject ?: "" ) ? subject : "default"
+	}
+
+	/**
+	 * The key of a person's session: their name with OAuth, empty without
+	 */
+	private string function sessionKeyFor( struct context = {} ) {
+		return isObject( variables.oauth ) ? subjectFor( arguments.context ) : ""
+	}
+
+	/**
+	 * The access token of a person. Tells listeners when there is none, then lets the error through.
+	 */
+	private string function tokenFor( required string subject ) {
+		try {
+			return variables.oauth.accessToken( arguments.subject )
+		} catch( "MCPAuthorizationRequired" e ) {
+			announceAuthorizationRequired( arguments.subject, "no_token", "" )
+			rethrow
+		}
+	}
+
+	/**
+	 * Fire onMCPAuthorizationRequired: a person has to sign in (or grant more scope). Interceptors use it to show a sign in.
+	 *
+	 * @reason    no_token, unauthorized or insufficient_scope
+	 * @challenge The WWW-Authenticate header of the answer, when there was one
+	 */
+	private void function announceAuthorizationRequired( required string subject, required string reason, string challenge = "" ) {
+		BoxAnnounce( "onMCPAuthorizationRequired", {
+			"client"   : this,
+			"baseURL"  : variables.baseURL,
+			"subject"  : arguments.subject,
+			"reason"   : arguments.reason,
+			"challenge": arguments.challenge,
+			"scope"    : variables.oauth.parseChallenge( arguments.challenge ).scope
+		} )
+	}
+
+	/**
+	 * A response header by name, whatever its case. Several values come back joined by a comma.
+	 */
+	private string function headerValueOf( required struct headers, required string name ) {
+		for( var headerName in arguments.headers ){
+			if( headerName.lCase() == arguments.name ){
+				var value = arguments.headers[ headerName ]
+				return isArray( value ) ? value.toList( ", " ) : toString( value )
+			}
+		}
+		return ""
+	}
+
+	private void function assertOAuth() {
+		if( !isObject( variables.oauth ) ){
+			throw( type: "MCPOAuthNotEnabled", message: "OAuth is not turned on for this client. Call withOAuth() first." )
+		}
+	}
+
+	/**
+	 * Build the token store of the oauth options
+	 *
+	 * @store   "cache", "file", "jdbc", a class path or a store instance
+	 * @options Options of the store
+	 */
+	private any function resolveTokenStore( required any store, struct options = {} ) {
+		if( isObject( arguments.store ) ){
+			return arguments.store
+		}
+		switch( lCase( arguments.store ) ){
+			case "cache":
+				return new bxModules.bxai.models.mcp.oauth.CacheMCPTokenStore( arguments.options.cacheName ?: "default" )
+			case "file":
+				return new bxModules.bxai.models.mcp.oauth.FileMCPTokenStore( arguments.options.path ?: arguments.options.directoryPath ?: "" )
+			case "jdbc":
+				return new bxModules.bxai.models.mcp.oauth.JdbcMCPTokenStore(
+					arguments.options.datasource ?: "",
+					arguments.options.table ?: "bx_ai_mcp_oauth"
+				)
+		}
+		if( arguments.store.find( "." ) ){
+			return new "#arguments.store#"( argumentCollection: arguments.options )
+		}
+		throw( type: "InvalidArgument", message: "Unknown OAuth token store [#arguments.store#]. Use cache, file, jdbc, a class path or a store instance" )
 	}
 
 }
