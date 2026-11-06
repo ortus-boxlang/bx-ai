@@ -246,14 +246,14 @@ public class GatewaySessionTest extends BaseIntegrationTest {
 		assertThat( variables.getAsBoolean( Key.of( "secondIsQueuedReply" ) ) ).isTrue();
 	}
 
-	@DisplayName( "Memory is keyed by user and thread: two chats do not share a bucket, and nothing lands in the blank one" )
+	@DisplayName( "Memory is keyed by user and conversation: two chats, and a topic thread inside one, do not share a bucket, and nothing lands in the blank one" )
 	@Test
 	public void testTurnsAreKeyedByUserAndThread() {
 		// @formatter:off
 		runtime.executeSource(
 		    """
 		        mockSvcM = aiService( "mock" )
-		        mockSvcM.setResponses( [ "reply one", "reply two" ] )
+		        mockSvcM.setResponses( [ "reply one", "reply two", "reply three" ] )
 		        modelM = new bxModules.bxai.models.runnables.AiModel( service: mockSvcM )
 		        agentM = aiAgent( model: modelM, memory: aiMemory( "cache" ) )
 
@@ -265,10 +265,17 @@ public class GatewaySessionTest extends BaseIntegrationTest {
 		        sessionM.handleInbound( msgA[ 1 ], gwM ).get()
 		        sessionM.handleInbound( msgB[ 1 ], gwM ).get()
 
+		        // a topic thread inside chat-a (a Telegram forum topic, a Slack thread) is its own conversation
+		        msgT = gwM.parseInbound( { text: "in a topic", userID: "ada", conversationID: "chat-a", threadID: "topic-1" } )
+		        sessionM.handleInbound( msgT[ 1 ], gwM ).get()
+
 		        adaOwn    = agentM.getMemoryMessages( "ada", "mock:chat-a" ).len()
 		        bobOwn    = agentM.getMemoryMessages( "bob", "mock:chat-b" ).len()
 		        crossed   = agentM.getMemoryMessages( "ada", "mock:chat-b" ).len()
 		        sharedBlank = agentM.getMemoryMessages( "", "" ).len()
+		        topicOwn    = agentM.getMemoryMessages( "ada", "mock:chat-a:topic-1" ).len()
+		        // the run's thread id is not the memory's conversation id
+		        runIdIsNotKey = agentM.getMemoryMessages( "ada", "topic-1" ).len()
 		    """,
 		    context
 		);
@@ -279,6 +286,8 @@ public class GatewaySessionTest extends BaseIntegrationTest {
 		assertThat( variables.getAsNumber( Key.of( "bobOwn" ) ).intValue() ).isEqualTo( 2 );
 		assertThat( variables.getAsNumber( Key.of( "crossed" ) ).intValue() ).isEqualTo( 0 );
 		assertThat( variables.getAsNumber( Key.of( "sharedBlank" ) ).intValue() ).isEqualTo( 0 );
+		assertThat( variables.getAsNumber( Key.of( "topicOwn" ) ).intValue() ).isEqualTo( 2 );
+		assertThat( variables.getAsNumber( Key.of( "runIdIsNotKey" ) ).intValue() ).isEqualTo( 0 );
 	}
 
 	@DisplayName( "Thread-ID namespacing: two gateways sharing a raw conversation id get independent claims and both dispatch immediately" )
