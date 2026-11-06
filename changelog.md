@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ Migration
+
+- **A gateway turn is now keyed by user and thread.** `GatewaySession` ran every turn with only `{ threadId }`, so the agent's memory (keyed by user and conversation) was one shared bucket: every chat on every platform saw every other chat's messages. Each turn now runs with `conversationId` set to the thread and, when the platform names the sender, `userId` too. Conversations a gateway kept in the old shared bucket are not found under the new keys. Override the new public `turnOptions( message, sourceGateway, threadId )` to name the identity another way, for example with a platform-qualified user id.
+
 ## [3.7.0] - 2026-11-04
 
 ### ⚠️ Migration

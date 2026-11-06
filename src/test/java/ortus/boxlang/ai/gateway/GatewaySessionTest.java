@@ -247,6 +247,41 @@ public class GatewaySessionTest extends BaseIntegrationTest {
 	}
 
 	@DisplayName( "Thread-ID namespacing: two gateways sharing a raw conversation id get independent claims and both dispatch immediately" )
+	@DisplayName( "Memory is keyed by user and thread: two chats do not share a bucket, and nothing lands in the blank one" )
+	@Test
+	public void testTurnsAreKeyedByUserAndThread() {
+		// @formatter:off
+		runtime.executeSource(
+		    """
+		        mockSvcM = aiService( "mock" )
+		        mockSvcM.setResponses( [ "reply one", "reply two" ] )
+		        modelM = new bxModules.bxai.models.runnables.AiModel( service: mockSvcM )
+		        agentM = aiAgent( model: modelM, memory: aiMemory( "cache" ) )
+
+		        gwM = aiGateway( "mock" )
+		        sessionM = aiGatewaySession( agent: agentM, gateways: [ gwM ], policy: "queue" )
+
+		        msgA = gwM.parseInbound( { text: "from ada", userID: "ada", conversationID: "chat-a" } )
+		        msgB = gwM.parseInbound( { text: "from bob", userID: "bob", conversationID: "chat-b" } )
+		        sessionM.handleInbound( msgA[ 1 ], gwM ).get()
+		        sessionM.handleInbound( msgB[ 1 ], gwM ).get()
+
+		        adaOwn    = agentM.getMemoryMessages( "ada", "mock:chat-a" ).len()
+		        bobOwn    = agentM.getMemoryMessages( "bob", "mock:chat-b" ).len()
+		        crossed   = agentM.getMemoryMessages( "ada", "mock:chat-b" ).len()
+		        sharedBlank = agentM.getMemoryMessages( "", "" ).len()
+		    """,
+		    context
+		);
+		// @formatter:on
+
+		// a turn is the question and the answer
+		assertThat( variables.getAsNumber( Key.of( "adaOwn" ) ).intValue() ).isEqualTo( 2 );
+		assertThat( variables.getAsNumber( Key.of( "bobOwn" ) ).intValue() ).isEqualTo( 2 );
+		assertThat( variables.getAsNumber( Key.of( "crossed" ) ).intValue() ).isEqualTo( 0 );
+		assertThat( variables.getAsNumber( Key.of( "sharedBlank" ) ).intValue() ).isEqualTo( 0 );
+	}
+
 	@Test
 	public void testThreadIdNamespacingAcrossGateways() {
 		// @formatter:off

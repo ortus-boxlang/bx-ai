@@ -362,6 +362,28 @@ class {
 	}
 
 	/**
+	 * The options one turn runs with. The agent keys its memory by ( userId, conversationId ), so a turn that names
+	 * neither lands in the one shared bucket: every chat on every platform would see every other chat's messages.
+	 * Each turn therefore carries the thread as its conversation and, when the platform says who is writing, that
+	 * user. Public so a subclass can name the identity its own way (a platform-qualified user id, say) and still
+	 * use everything else here unchanged.
+	 *
+	 * @message The inbound message the turn answers
+	 * @sourceGateway The gateway it arrived on
+	 * @threadId The resolved thread
+	 *
+	 * @return The options handed to agent.stream(): threadId, conversationId, and userId when the message has one
+	 */
+	struct function turnOptions( required GatewayMessage message, required IGateway sourceGateway, required string threadId ) {
+		var options = { threadId: arguments.threadId, conversationId: arguments.threadId }
+		var userId  = arguments.message.getContext().getUserID()
+		if ( len( userId ) ) {
+			options[ "userId" ] = userId
+		}
+		return options
+	}
+
+	/**
 	 * Runs one turn to completion, relaying output back through sourceGateway — streamed
 	 * chunk-by-chunk if it declares "streaming" support, buffered into one final delivery
 	 * otherwise (true of every core gateway today). Blocking by design: agent.stream() is
@@ -389,7 +411,7 @@ class {
 			},
 			arguments.message.getText(),
 			{},
-			{ threadId: arguments.threadId }
+			turnOptions( arguments.message, arguments.sourceGateway, arguments.threadId )
 		)
 
 		if ( supportsStreaming ) {
