@@ -36,4 +36,11 @@ class extends="BaseMemory" {
 		return this;
 	}
 
+	/**
+	 * A window keeps its messages on the object, so a call for another user or conversation is answered by its own window.
+	 */
+	private boolean function routesByScope() {
+		return true
+	}
+
 }

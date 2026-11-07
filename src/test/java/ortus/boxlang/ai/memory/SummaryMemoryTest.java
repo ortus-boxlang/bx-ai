@@ -569,4 +569,26 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 		assertThat( countAfterSecond ).isAtMost( 4 ); // summary + threshold messages
 	}
 
+	@Test
+	@DisplayName( "Test SummaryMemory keeps each user and conversation apart when ids are passed per call" )
+	public void testPerCallScopesAreSeparate() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "summary", key: "scoped-summary", config: { maxMessages: 10, summaryThreshold: 2 } )
+		    memory.add( { role: "user", content: "alpha" }, "u1", "c1" )
+		    memory.add( { role: "user", content: "alpha2" }, "u1", "c1" )
+		    memory.add( { role: "user", content: "beta" }, "u1", "c2" )
+
+		    c1 = memory.getAll( "u1", "c1" ).len()
+		    c2 = memory.getAll( "u1", "c2" ).len()
+		    unscoped = memory.getAll().len()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "c1" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsInteger( Key.of( "c2" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "unscoped" ) ) ).isEqualTo( 0 );
+	}
+
 }

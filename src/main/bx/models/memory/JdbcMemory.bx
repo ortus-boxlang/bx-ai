@@ -128,13 +128,14 @@ class extends="BaseMemory" {
 	/**
 	 * Clear all messages and remove from database
 	 *
-	 * @userId   Optional per-call user identifier (ignored — JdbcMemory is an on-object store)
-	 * @conversationId Optional per-call conversation identifier (ignored — JdbcMemory is an on-object store)
-	 *
-	 * TODO: Full per-call routing requires on-demand DB loading per userId/conversationId.
-	 *       For multi-user apps, store one JdbcMemory instance per conversation.
+	 * @userId   Optional per-call user identifier (another user's messages are in their own row)
+	 * @conversationId Optional per-call conversation identifier (another conversation's messages are in their own row)
 	 */
 	public IAiMemory function clear( string userId = "", string conversationId = "" ) {
+		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
+			scopeFor( arguments.userId, arguments.conversationId ).clear()
+			return this
+		}
 		super.clear( resolveUserId( userId ), resolveConversationId( conversationId ) )
 		deleteFromDatabase( resolveUserId( userId ), resolveConversationId( conversationId ) )
 		return this
@@ -149,6 +150,9 @@ class extends="BaseMemory" {
 	 * @return Struct with memory state and database connection info
 	 */
 	public struct function export( string userId = "", string conversationId = "" ) {
+		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
+			return scopeFor( arguments.userId, arguments.conversationId ).export()
+		}
 		var exported = super.export( resolveUserId( userId ), resolveConversationId( conversationId ) )
 		exported.datasource = variables.datasource
 		exported.table = variables.table
@@ -197,6 +201,10 @@ class extends="BaseMemory" {
 	 * @conversationId Optional per-call conversation identifier (ignored — JdbcMemory is an on-object store)
 	 */
 	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
+		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
+			scopeFor( arguments.userId, arguments.conversationId ).trim()
+			return this
+		}
 		super.trim( resolveUserId( userId ), resolveConversationId( conversationId ) )
 		// sync DB storage
 		saveToDatabase( resolveUserId( userId ), resolveConversationId( conversationId ) );
@@ -205,35 +213,54 @@ class extends="BaseMemory" {
 
 	/**
 	 * AI-summarize older messages and persist the result to database.
-	 * JdbcMemory only ever holds one database row per instance (memory_key is the sole
-	 * primary key, and unlike CacheMemory/FileMemory/SessionMemory it never reloads from
-	 * the database for a different scope), so it cannot safely honor a per-call userId/
-	 * conversationId that targets a different scope than the instance's own - doing so
-	 * would summarize this instance's own real messages under a foreign identity. Construct
-	 * a separate JdbcMemory instance per conversation for true multi-tenant routing.
+	 * A call for another (userId, conversationId) is answered by the child memory for that scope,
+	 * which has a database row of its own (see scopeFor() in BaseMemory).
 	 *
 	 * @config Optional struct with keys: keepRecent, model, provider
-	 * @userId   Optional per-call user identifier - must match the instance's own userId, or be omitted
-	 * @conversationId Optional per-call conversation identifier - must match the instance's own conversationId, or be omitted
+	 * @userId   Optional per-call user identifier
+	 * @conversationId Optional per-call conversation identifier
 	 *
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
+		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
+			scopeFor( arguments.userId, arguments.conversationId ).summarize( arguments.config )
+			return this
+		}
 		var targetUserId = resolveUserId( arguments.userId )
 		var targetConversationId = resolveConversationId( arguments.conversationId )
-
-		if ( targetUserId != variables.userId || targetConversationId != variables.conversationId ) {
-			throw(
-				type: "JdbcMemory.UnsupportedScope",
-				message: "JdbcMemory.summarize() cannot target a different (userId, conversationId) than the instance's own bound scope (userId=""#variables.userId#"", conversationId=""#variables.conversationId#""), since a JdbcMemory instance only holds one database row. Construct a separate JdbcMemory instance for that user/conversation instead."
-			)
-		}
 
 		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
 			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
 			saveToDatabase( targetUserId, targetConversationId )
 		}
 		return this
+	}
+
+	// ========================================
+	// Scopes
+	// ========================================
+
+	/**
+	 * The messages are in the database, so the child memories of scopes not used lately can be forgotten and read back
+	 * the next time they are asked for.
+	 */
+	private boolean function routesByScope() {
+		return true
+	}
+
+	private numeric function maxScopes() {
+		return variables.config.maxScopes ?: 200
+	}
+
+	/**
+	 * A child memory reads and writes its own row of the same table.
+	 */
+	private struct function scopeConfig() {
+		var scoped = super.scopeConfig()
+		scoped.datasource = variables.datasource
+		scoped.table = variables.table
+		return scoped
 	}
 
 	// ========================================

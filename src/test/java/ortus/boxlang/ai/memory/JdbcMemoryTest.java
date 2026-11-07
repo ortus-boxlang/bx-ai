@@ -625,4 +625,100 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( stateB.getAsString( Key.of( "agent" ) ) ).isEqualTo( "bob" );
 		assertThat( stateB.getAsString( Key.of( "task" ) ) ).isEqualTo( "analyze" );
 	}
+
+	@Test
+	@DisplayName( "Test JdbcMemory keeps each user and conversation in a row of its own when ids are passed per call" )
+	public void testPerCallScopesAreSeparate() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "jdbc", key: "scoped-jdbc", config: { datasource: "bxai_test" } )
+		    memory.clear( "u1", "c1" )
+		    memory.clear( "u1", "c2" )
+		    memory.add( { role: "user", content: "alpha" }, "u1", "c1" )
+		    memory.add( { role: "user", content: "alpha2" }, "u1", "c1" )
+		    memory.add( { role: "user", content: "beta" }, "u1", "c2" )
+
+		    c1 = memory.getAll( "u1", "c1" ).len()
+		    c2 = memory.getAll( "u1", "c2" ).len()
+		    otherUser = memory.getAll( "u2", "c1" ).len()
+		    unscoped = memory.getAll().len()
+
+		    rows = queryExecute(
+		        "SELECT user_id, conversation_id FROM bx_ai_memories WHERE memory_key LIKE 'scoped-jdbc::%' ORDER BY conversation_id",
+		        {},
+		        { datasource: "bxai_test" }
+		    )
+		    rowCount = rows.recordCount
+		    firstRowConversation = rows.conversation_id[ 1 ]
+		    firstRowUser = rows.user_id[ 1 ]
+
+		    memory.clear( "u1", "c1" )
+		    memory.clear( "u1", "c2" )
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "c1" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsInteger( Key.of( "c2" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "otherUser" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "unscoped" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "rowCount" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsString( Key.of( "firstRowConversation" ) ) ).isEqualTo( "c1" );
+		assertThat( variables.getAsString( Key.of( "firstRowUser" ) ) ).isEqualTo( "u1" );
+	}
+
+	@Test
+	@DisplayName( "Test JdbcMemory reads a scope back from the database in a new instance, and clear only removes that scope" )
+	public void testPerCallScopesSurviveANewInstance() {
+		runtime.executeSource(
+		    """
+		    first = aiMemory( memory: "jdbc", key: "scoped-reload", config: { datasource: "bxai_test" } )
+		    first.clear( "u1", "c1" )
+		    first.clear( "u1", "c2" )
+		    first.add( { role: "user", content: "alpha" }, "u1", "c1" )
+		    first.add( { role: "user", content: "beta" }, "u1", "c2" )
+
+		    second = aiMemory( memory: "jdbc", key: "scoped-reload", config: { datasource: "bxai_test" } )
+		    readC1 = second.getAll( "u1", "c1" ).len()
+		    readC2 = second.getAll( "u1", "c2" ).len()
+
+		    second.clear( "u1", "c1" )
+		    afterClearC1 = second.getAll( "u1", "c1" ).len()
+		    afterClearC2 = second.getAll( "u1", "c2" ).len()
+
+		    third = aiMemory( memory: "jdbc", key: "scoped-reload", config: { datasource: "bxai_test" } )
+		    thirdC1 = third.getAll( "u1", "c1" ).len()
+		    thirdC2 = third.getAll( "u1", "c2" ).len()
+		    third.clear( "u1", "c2" )
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "readC1" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "readC2" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "afterClearC1" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "afterClearC2" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "thirdC1" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "thirdC2" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Test JdbcMemory summarize for another scope no longer throws and leaves the memory's own messages alone" )
+	public void testSummarizeOtherScope() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "jdbc", key: "scoped-summarize", userId: "u1", conversationId: "c1", config: { datasource: "bxai_test" } )
+		    memory.clear()
+		    memory.add( { role: "user", content: "mine" } )
+		    memory.summarize( {}, "u1", "c2" )
+		    mine = memory.getAll().len()
+		    memory.clear()
+		    memory.clear( "u1", "c2" )
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "mine" ) ) ).isEqualTo( 1 );
+	}
+
 }

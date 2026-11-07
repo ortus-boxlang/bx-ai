@@ -403,4 +403,86 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "summaryConvId" ) ) ).isEqualTo( "ticket-123" );
 	}
 
+	@Test
+	@DisplayName( "Test WindowMemory keeps each user and conversation apart when ids are passed per call" )
+	public void testPerCallScopesAreSeparate() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "buffered", key: "scoped-window" )
+		    memory.add( { role: "user", content: "alpha" }, "u1", "c1" )
+		    memory.add( { role: "user", content: "alpha2" }, "u1", "c1" )
+		    memory.add( { role: "user", content: "beta" }, "u1", "c2" )
+
+		    c1 = memory.getAll( "u1", "c1" ).len()
+		    c2 = memory.getAll( "u1", "c2" ).len()
+		    otherUser = memory.getAll( "u2", "c1" ).len()
+		    unscoped = memory.getAll().len()
+		    c1Count = memory.count( "u1", "c1" )
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "c1" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsInteger( Key.of( "c2" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "otherUser" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "unscoped" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "c1Count" ) ) ).isEqualTo( 2 );
+	}
+
+	@Test
+	@DisplayName( "Test WindowMemory applies its limit, system message and clear to each scope on its own" )
+	public void testPerCallScopesHaveTheirOwnLimitSystemMessageAndClear() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "buffered", key: "scoped-window-limit", config: { maxMessages: 3 } )
+		    for ( i = 1; i <= 5; i++ ) {
+		        memory.add( { role: "user", content: "m" & i }, "u1", "c1" )
+		    }
+		    memory.add( { role: "user", content: "x" }, "u1", "c2" )
+		    memory.setSystemMessage( "be brief", "u1", "c1" )
+
+		    c1 = memory.getNonSystemMessages( "u1", "c1" ).len()
+		    c2 = memory.getAll( "u1", "c2" ).len()
+		    firstKept = memory.getNonSystemMessages( "u1", "c1" ).first().content
+		    systemC1 = memory.getSystemMessage( "u1", "c1" )
+		    systemC2 = memory.getSystemMessage( "u1", "c2" )
+
+		    memory.clear( "u1", "c1" )
+		    afterClearC1 = memory.getAll( "u1", "c1" ).len()
+		    afterClearC2 = memory.getAll( "u1", "c2" ).len()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "c1" ) ) ).isEqualTo( 3 );
+		assertThat( variables.getAsInteger( Key.of( "c2" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsString( Key.of( "firstKept" ) ) ).isEqualTo( "m3" );
+		assertThat( variables.getAsString( Key.of( "systemC1" ) ) ).isEqualTo( "be brief" );
+		assertThat( variables.getAsString( Key.of( "systemC2" ) ) ).isEmpty();
+		assertThat( variables.getAsInteger( Key.of( "afterClearC1" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "afterClearC2" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Test WindowMemory answers the ids it was built with without a child scope" )
+	public void testBoundScopeIsTheMemoryItself() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "buffered", key: "bound-window", userId: "u1", conversationId: "c1" )
+		    memory.add( { role: "user", content: "alpha" } )
+		    memory.add( { role: "user", content: "beta" }, "u1", "c1" )
+		    memory.add( { role: "user", content: "gamma" }, "u1", "c2" )
+
+		    bound = memory.getAll().len()
+		    boundByIds = memory.getAll( "u1", "c1" ).len()
+		    other = memory.getAll( "u1", "c2" ).len()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "bound" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsInteger( Key.of( "boundByIds" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsInteger( Key.of( "other" ) ) ).isEqualTo( 1 );
+	}
+
 }
