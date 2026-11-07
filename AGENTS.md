@@ -557,13 +557,13 @@ loader.ingest( vectorMemory, {
 
 ```javascript
 // Example: Consume an MCP server over HTTP
-var client = MCP( "http://localhost:3000" )
+var mcpClient = MCP( "http://localhost:3000" )
     .withTimeout( 5000 )
     .withBearerToken( "secret" )
     .onError( error => println( error, true ) );
 
-var tools = client.listTools();
-var result = client.send( "search", { query: "BoxLang" } );
+var tools = mcpClient.listTools();
+var result = mcpClient.send( "search", { query: "BoxLang" } );
 
 // Example: Consume an MCP server that runs as a child process
 var browser = MCP( { command: [ "bxplaywright", "mcp" ], env: { HEADLESS: "true" } } );
@@ -1565,7 +1565,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    var floatValue = javaCast( "float", config.temperature );
    ```
 
-3. **Reserved scope names**: Avoid as variable names - `server`, `request`, `session`, `application`, `cgi`, `url`, `form`, `cookie`, `variables`
+3. **Reserved scope names**: Avoid as variable names - `server`, `client`, `request`, `session`, `application`, `cgi`, `url`, `form`, `cookie`, `variables`
 
    ```javascript
    // ❌ Wrong - conflicts with BoxLang scope

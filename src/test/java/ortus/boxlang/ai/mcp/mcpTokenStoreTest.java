@@ -105,30 +105,45 @@ public class mcpTokenStoreTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "neverAfter" ) ) ).isEqualTo( true );
 	}
 
+	/**
+	 * CacheMCPTokenStore keeps to the contract
+	 */
 	@Test
 	@DisplayName( "CacheMCPTokenStore keeps to the contract" )
 	public void testCacheStore() {
 		assertContract( "new " + PACKAGE + "CacheMCPTokenStore( \"default\" )" );
 	}
 
+	/**
+	 * CacheMCPTokenStore forgets a record after its lifetime
+	 */
 	@Test
 	@DisplayName( "CacheMCPTokenStore forgets a record after its lifetime" )
 	public void testCacheStoreLifetime() {
 		assertLifetime( "new " + PACKAGE + "CacheMCPTokenStore( \"default\" )" );
 	}
 
+	/**
+	 * FileMCPTokenStore keeps to the contract
+	 */
 	@Test
 	@DisplayName( "FileMCPTokenStore keeps to the contract" )
 	public void testFileStore( @TempDir Path folder ) {
 		assertContract( "new " + PACKAGE + "FileMCPTokenStore( \"" + folder.toString().replace( "\\", "/" ) + "\" )" );
 	}
 
+	/**
+	 * FileMCPTokenStore forgets a record after its lifetime
+	 */
 	@Test
 	@DisplayName( "FileMCPTokenStore forgets a record after its lifetime" )
 	public void testFileStoreLifetime( @TempDir Path folder ) {
 		assertLifetime( "new " + PACKAGE + "FileMCPTokenStore( \"" + folder.toString().replace( "\\", "/" ) + "\" )" );
 	}
 
+	/**
+	 * FileMCPTokenStore makes the folder, treats a damaged file as no record and leaves no half written files
+	 */
 	@Test
 	@DisplayName( "FileMCPTokenStore makes the folder, treats a damaged file as no record and leaves no half written files" )
 	public void testFileStoreDetails( @TempDir Path folder ) throws Exception {
@@ -162,6 +177,9 @@ public class mcpTokenStoreTest extends BaseIntegrationTest {
 		assertThat( variables.getAsStruct( Key.of( "damaged" ) ) ).isEmpty();
 	}
 
+	/**
+	 * FileMCPTokenStore needs a folder
+	 */
 	@Test
 	@DisplayName( "FileMCPTokenStore needs a folder" )
 	public void testFileStoreNeedsAFolder() {
@@ -183,18 +201,27 @@ public class mcpTokenStoreTest extends BaseIntegrationTest {
 		return "new " + PACKAGE + "JdbcMCPTokenStore( \"bxai_test\", \"mcp_oauth_" + Long.toHexString( System.nanoTime() ) + "\" )";
 	}
 
+	/**
+	 * JdbcMCPTokenStore keeps to the contract
+	 */
 	@Test
 	@DisplayName( "JdbcMCPTokenStore keeps to the contract" )
 	public void testJdbcStore() {
 		assertContract( jdbcStore() );
 	}
 
+	/**
+	 * JdbcMCPTokenStore forgets a record after its lifetime
+	 */
 	@Test
 	@DisplayName( "JdbcMCPTokenStore forgets a record after its lifetime" )
 	public void testJdbcStoreLifetime() {
 		assertLifetime( jdbcStore() );
 	}
 
+	/**
+	 * JdbcMCPTokenStore creates its table once, needs a datasource, refuses an odd table name and a record that does not fit
+	 */
 	@Test
 	@DisplayName( "JdbcMCPTokenStore creates its table once, needs a datasource, refuses an odd table name and a record that does not fit" )
 	public void testJdbcStoreDetails() {
@@ -222,6 +249,9 @@ public class mcpTokenStoreTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "tooBig" ) ) ).isEqualTo( "JdbcMCPTokenStore.TooLarge" );
 	}
 
+	/**
+	 * A store that is a class path is built with the store options, and a store instance is used as it is
+	 */
 	@Test
 	@DisplayName( "A store that is a class path is built with the store options, and a store instance is used as it is" )
 	public void testCustomStores() {

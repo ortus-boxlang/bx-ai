@@ -93,6 +93,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:on
 	}
 
+	/**
+	 * Starting a sign in finds the authorization server, registers the client and builds a PKCE authorization URL
+	 */
 	@Test
 	@DisplayName( "Starting a sign in finds the authorization server, registers the client and builds a PKCE authorization URL" )
 	public void testStartBuildsTheAuthorizationUrl() {
@@ -126,6 +129,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( this.fake.registrations.get( 0 ) ).contains( "\"token_endpoint_auth_method\":\"none\"" );
 	}
 
+	/**
+	 * After the sign in, requests carry the person's access token and the tools can be used
+	 */
 	@Test
 	@DisplayName( "After the sign in, requests carry the person's access token and the tools can be used" )
 	public void testSignedInRequestsCarryTheToken() {
@@ -157,6 +163,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( exchange.get( "resource" ) ).isEqualTo( this.fake.resource() );
 	}
 
+	/**
+	 * A call with no tokens never reaches the server, fails with a sign in message and fires onMCPAuthorizationRequired
+	 */
 	@Test
 	@DisplayName( "A call with no tokens never reaches the server, fails with a sign in message and fires onMCPAuthorizationRequired" )
 	public void testNoTokensAsksForSignIn() {
@@ -198,6 +207,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "firedReason" ) ) ).isEqualTo( reason );
 	}
 
+	/**
+	 * An access token that is about to expire is refreshed before it is used, and a rotated refresh token is kept
+	 */
 	@Test
 	@DisplayName( "An access token that is about to expire is refreshed before it is used, and a rotated refresh token is kept" )
 	public void testExpiredTokenIsRefreshed() {
@@ -225,6 +237,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "first" ) ) ).isNotEqualTo( variables.getAsString( Key.of( "second" ) ) );
 	}
 
+	/**
+	 * A refresh that does not rotate the refresh token keeps using the one it has
+	 */
 	@Test
 	@DisplayName( "A refresh that does not rotate the refresh token keeps using the one it has" )
 	public void testRefreshWithoutRotationKeepsTheRefreshToken() {
@@ -240,6 +255,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( this.fake.tokenRequests.get( 1 ).get( "refresh_token" ) ).isEqualTo( this.fake.tokenRequests.get( 2 ).get( "refresh_token" ) );
 	}
 
+	/**
+	 * A refresh token that is refused ends the sign in: the tokens are deleted and the person must sign in again
+	 */
 	@Test
 	@DisplayName( "A refresh token that is refused ends the sign in: the tokens are deleted and the person must sign in again" )
 	public void testRefusedRefreshNeedsSignIn() {
@@ -265,6 +283,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( variables.get( Key.of( "authorized" ) ) ).isEqualTo( false );
 	}
 
+	/**
+	 * A 401 for a token that looks valid refreshes it and tries once more
+	 */
 	@Test
 	@DisplayName( "A 401 for a token that looks valid refreshes it and tries once more" )
 	public void testUnauthorizedTokenIsRefreshedAndRetried() {
@@ -291,6 +312,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( this.fake.tokenRequests.get( 1 ).get( "grant_type" ) ).isEqualTo( "refresh_token" );
 	}
 
+	/**
+	 * A token that is refused even after a refresh ends in a failed call and an unauthorized event, after one retry only
+	 */
 	@Test
 	@DisplayName( "A token that is refused even after a refresh ends in a failed call and an unauthorized event, after one retry only" )
 	public void testSecondUnauthorizedStops() {
@@ -324,6 +348,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		runtimeAssertFired( "unauthorized" );
 	}
 
+	/**
+	 * A 403 that asks for more scope fires the event with the scope and fails the call
+	 */
 	@Test
 	@DisplayName( "A 403 that asks for more scope fires the event with the scope and fails the call" )
 	public void testInsufficientScope() {
@@ -356,6 +383,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		runtimeAssertFired( "insufficient_scope" );
 	}
 
+	/**
+	 * People sign in on their own: the subject function picks the tokens from the chat request of the call
+	 */
 	@Test
 	@DisplayName( "People sign in on their own: the subject function picks the tokens from the chat request of the call" )
 	public void testEachPersonHasTheirOwnTokens() {
@@ -399,6 +429,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "bobText" ) ) ).isNotEqualTo( variables.getAsString( Key.of( "aliceText" ) ) );
 	}
 
+	/**
+	 * MCP tools pass the chat request, so each person's tokens are used by the agent's tools
+	 */
 	@Test
 	@DisplayName( "MCP tools pass the chat request, so each person's tokens are used by the agent's tools" )
 	public void testMcpToolUsesTheCallersTokens() {
@@ -426,6 +459,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "bobAnswer" ) ) ).contains( "Error from MCP tool" );
 	}
 
+	/**
+	 * With the handshake on, each person gets a session of their own
+	 */
 	@Test
 	@DisplayName( "With the handshake on, each person gets a session of their own" )
 	public void testSessionsArePerPerson() {
@@ -462,6 +498,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( this.fake.mcpCalls.stream().filter( c -> c.startsWith( "tools/call" ) && c.endsWith( "|" + bob ) ).count() ).isEqualTo( 1 );
 	}
 
+	/**
+	 * A callback with an unknown or used state is refused, and a sign in can only be finished once
+	 */
 	@Test
 	@DisplayName( "A callback with an unknown or used state is refused, and a sign in can only be finished once" )
 	public void testStateIsChecked() {
@@ -489,6 +528,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "usedType" ) ) ).isEqualTo( "MCPOAuthInvalidState" );
 	}
 
+	/**
+	 * The issuer in the callback is checked against the one the sign in was started with (RFC 9207)
+	 */
 	@Test
 	@DisplayName( "The issuer in the callback is checked against the one the sign in was started with (RFC 9207)" )
 	public void testIssuerIsChecked() {
@@ -532,6 +574,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "missingType" ) ) ).isEqualTo( "MCPOAuthIssuerMismatch" );
 	}
 
+	/**
+	 * A client id given in the options is used and nothing is registered
+	 */
 	@Test
 	@DisplayName( "A client id given in the options is used and nothing is registered" )
 	public void testPreRegisteredClient() {
@@ -544,6 +589,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( this.fake.registrations ).isEmpty();
 	}
 
+	/**
+	 * A Client ID Metadata Document address is the client id when the server supports them
+	 */
 	@Test
 	@DisplayName( "A Client ID Metadata Document address is the client id when the server supports them" )
 	public void testClientIdMetadataDocument() {
@@ -556,6 +604,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( this.fake.registrations ).isEmpty();
 	}
 
+	/**
+	 * Without a client id and without a registration endpoint the sign in says what to do
+	 */
 	@Test
 	@DisplayName( "Without a client id and without a registration endpoint the sign in says what to do" )
 	public void testNoWayToGetAClient() {
@@ -573,6 +624,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "noClientMessage" ) ) ).contains( "clientId" );
 	}
 
+	/**
+	 * An authorization server that does not list PKCE with S256 is refused
+	 */
 	@Test
 	@DisplayName( "An authorization server that does not list PKCE with S256 is refused" )
 	public void testPkceIsRequired() {
@@ -589,6 +643,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "pkceType" ) ) ).isEqualTo( "MCPOAuthDiscoveryFailed" );
 	}
 
+	/**
+	 * Credentials never go over plain http, except to the machine itself
+	 */
 	@Test
 	@DisplayName( "Credentials never go over plain http, except to the machine itself" )
 	public void testInsecureUrlIsRefused() {
@@ -604,6 +661,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "insecureType" ) ) ).isEqualTo( "MCPOAuthInsecureUrl" );
 	}
 
+	/**
+	 * OAuth methods on a client without withOAuth say so
+	 */
 	@Test
 	@DisplayName( "OAuth methods on a client without withOAuth say so" )
 	public void testOAuthMustBeTurnedOn() {
@@ -619,6 +679,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "offType" ) ) ).isEqualTo( "MCPOAuthNotEnabled" );
 	}
 
+	/**
+	 * A server config with an oauth key builds a client that signs in
+	 */
 	@Test
 	@DisplayName( "A server config with an oauth key builds a client that signs in" )
 	public void testOauthKeyInServerConfig() {
@@ -637,6 +700,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		assertThat( this.fake.mcpCalls ).isEmpty();
 	}
 
+	/**
+	 * After signing in, handing the client to an agent gives it the server's tools
+	 */
 	@Test
 	@DisplayName( "After signing in, handing the client to an agent gives it the server's tools" )
 	public void testAgentGetsToolsAfterSignIn() {
