@@ -430,6 +430,54 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 	}
 
 	/**
+	 * A call with no context (listing the tools when an agent starts) uses the discoverySubject
+	 */
+	@Test
+	@DisplayName( "A call with no context uses the discoverySubject, a name or a function" )
+	public void testDiscoverySubject() {
+		makeClient( ", subject: ( context ) => context.chatRequest.getUserId(), discoverySubject: () => \"alice\"" );
+		signIn( "alice" );
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				listed     = mcpClient.listTools()
+				listedOk   = listed.isSuccess()
+				// a person's own call still uses their own tokens
+				bobCall    = mcpClient.send( "inbox", {}, { chatRequest: { getUserId: () => "bob" } } )
+				bobOk      = bobCall.isSuccess()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "listedOk" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "bobOk" ) ) ).isEqualTo( false );
+	}
+
+	/**
+	 * Without a discoverySubject a call with no context still uses "default"
+	 */
+	@Test
+	@DisplayName( "Without a discoverySubject a call with no context uses the subject default" )
+	public void testDiscoverySubjectDefaults() {
+		makeClient( ", subject: ( context ) => context.chatRequest.getUserId()" );
+		signIn( "alice" );
+
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				listed   = mcpClient.listTools()
+				listedOk = listed.isSuccess()
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "listedOk" ) ) ).isEqualTo( false );
+	}
+
+	/**
 	 * MCP tools pass the chat request, so each person's tokens are used by the agent's tools
 	 */
 	@Test

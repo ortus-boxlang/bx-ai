@@ -1565,7 +1565,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    var floatValue = javaCast( "float", config.temperature );
    ```
 
-3. **Reserved scope names**: Avoid as variable names - `server`, `client`, `request`, `session`, `application`, `cgi`, `url`, `form`, `cookie`, `variables`
+3. **Reserved scope names**: Avoid as variable names AND as argument names - `server`, `client`, `request`, `session`, `application`, `cgi`, `url`, `form`, `cookie`, `local`, `variables`. A name that works in a script or a test can silently read the real scope inside a web request: the OAuth token request was sent with an empty body in a served app because an argument was called `form`
 
    ```javascript
    // ❌ Wrong - conflicts with BoxLang scope

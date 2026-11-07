@@ -15,12 +15,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 Added
 
+- **`discoverySubject` for MCP OAuth.** `withOAuth( { discoverySubject : "alice" } )` (a name, or a function with no arguments) says whose tokens a call with no context uses, such as listing the tools when an agent starts. Before, such a call always used the subject `"default"`, so a server that needs a sign in to list its tools only worked for an agent whose people all shared one sign in.
+
 - **OAuth for MCP clients**: `MCP( url ).withOAuth( { redirectUri: ... } )` signs in to an MCP server that is protected the way the MCP authorization specification describes, and keeps the access token fresh. It reads the server's Protected Resource Metadata and the authorization server's metadata, gets a client id (one you give, a Client ID Metadata Document, or Dynamic Client Registration), signs the person in with PKCE (S256) and the `resource` parameter, checks the `iss` of the callback, and sends `Authorization: Bearer` on every request, refreshing the token before it expires and once more after a `401`. See `src/docs/main-components/mcp-oauth.md`.
   - `mcpClient.startAuthorization( subject )` returns `{ authorizationUrl, state }`, `mcpClient.completeAuthorization( code, state, issuer )` finishes it at your callback route, `isAuthorized( subject )` and `revokeAuthorization( subject )` tell and forget. A call with no usable tokens fails without reaching the server and fires the new `onMCPAuthorizationRequired` event (`reason`: `no_token`, `unauthorized`, `insufficient_scope`).
   - **Per person**: the `subject` option is a name or a function `( context ) => string`. `send( tool, args, context )` has a new optional `context`; `MCPTool` passes `{ chatRequest }`, so `( context ) => context.chatRequest.getUserId()` gives each person their own tokens (and, with `withHandshake( true )`, their own MCP session) on one shared client.
   - **Token stores**: tokens, the client registration and pending sign ins live in an `IMCPTokenStore`, three methods (`get`, `set`, `remove`) so it is easy to write one that encrypts. `CacheMCPTokenStore` (default, a BoxLang cache), `FileMCPTokenStore` and `JdbcMCPTokenStore` ship; pick with `store: "cache" | "file" | "jdbc" | "my.Class" | instance` and `storeOptions`. The file and JDBC stores keep plain text.
   - `oauth: { ... }` is accepted in the config of `withMCPServer()` and in an agent's `mcpServers` entries.
   - Every address in the flow must be `https` (plain `http` only for `localhost`), and an authorization server that does not list PKCE `S256` is refused.
+
+### 🐛 Fixed
+
+- **MCP OAuth in a web request.** The token request of a sign in was sent with an empty body when the app ran as a web server, because the form fields were held in an argument called `form`, which is a reserved scope there. It is renamed, so signing in works under CommandBox and the MiniServer, not only in a script.
 
 ## [3.7.0] - 2026-11-04
 

@@ -195,7 +195,7 @@ class {
 			throw( type: "MCPOAuthIssuerMismatch", message: "The authorization server must send its issuer with the answer and did not." )
 		}
 
-		var form = {
+		var fields = {
 			"grant_type"   : "authorization_code",
 			"code"         : arguments.code,
 			"redirect_uri" : flow.redirectUri,
@@ -205,9 +205,9 @@ class {
 		}
 		var secret = clientSecretFor( flow.issuer, flow.redirectUri )
 		if ( len( secret ) ) {
-			form[ "client_secret" ] = secret
+			fields[ "client_secret" ] = secret
 		}
-		var answer = post( flow.tokenEndpoint, form )
+		var answer = post( flow.tokenEndpoint, fields )
 		if ( answer.status < 200 || answer.status >= 300 || !isStruct( answer.body ) || !len( answer.body.access_token ?: "" ) ) {
 			throw(
 				type   : "MCPOAuthTokenError",
@@ -411,7 +411,7 @@ class {
 				authorizationRequired( arguments.subject, "The access token of [#arguments.subject#] has expired and there is no refresh token." )
 			}
 
-			var form = {
+			var fields = {
 				"grant_type"   : "refresh_token",
 				"refresh_token": tokens.refreshToken,
 				"client_id"    : tokens.clientId,
@@ -419,10 +419,10 @@ class {
 			}
 			var secret = clientSecretFor( tokens.issuer, variables.options.redirectUri ?: "" )
 			if ( len( secret ) ) {
-				form[ "client_secret" ] = secret
+				fields[ "client_secret" ] = secret
 			}
 
-			var answer = post( tokens.tokenEndpoint, form )
+			var answer = post( tokens.tokenEndpoint, fields )
 			if ( answer.status >= 400 && answer.status < 500 ) {
 				// the refresh token is refused (revoked, expired, or issued to another client): the person must sign in again
 				variables.store.remove( key )
@@ -569,8 +569,8 @@ class {
 	/**
 	 * POST a form (the token endpoint) or, when a JSON body is given, a JSON document (client registration).
 	 */
-	private struct function post( required string target, struct form = {}, struct json = {} ) {
-		return send( "POST", arguments.target, arguments.form, arguments.json )
+	private struct function post( required string target, struct fields = {}, struct json = {} ) {
+		return send( "POST", arguments.target, arguments.fields, arguments.json )
 	}
 
 	/**
@@ -578,12 +578,12 @@ class {
 	 *
 	 * @method The HTTP method
 	 * @target The address
-	 * @form   Form fields, for a form POST such as the token endpoint
+	 * @fields Form fields, for a form POST such as the token endpoint
 	 * @json   A JSON body, used instead of the form when given
 	 *
 	 * @return { status, headers, body, raw } where body is the parsed JSON when the answer was JSON
 	 */
-	private struct function send( required string method, required string target, struct form = {}, struct json = {} ) {
+	private struct function send( required string method, required string target, struct fields = {}, struct json = {} ) {
 		assertSecure( arguments.target )
 		var timeoutSeconds = max( 1, ceiling( variables.timeout / 1000 ) )
 		var useJson        = !arguments.json.isEmpty()
@@ -599,8 +599,8 @@ class {
 				bx:httpParam type="header" name="content-type" value="application/json";
 				bx:httpParam type="body" value=jsonSerialize( arguments.json );
 			} else {
-				for ( var field in arguments.form ) {
-					bx:httpParam type="formfield" name="#field#" value="#arguments.form[ field ]#";
+				for ( var field in arguments.fields ) {
+					bx:httpParam type="formfield" name="#field#" value="#arguments.fields[ field ]#";
 				}
 			}
 		}
