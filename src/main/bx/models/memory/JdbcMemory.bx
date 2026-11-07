@@ -80,12 +80,8 @@ class extends="BaseMemory" {
 			)
 		}
 
-		// Ensure table exists (a child memory for one scope is told the parent already did)
-		if ( !( arguments.config.tableChecked ?: false ) ) {
-			ensureTable()
-		}
-		// only a hint for this call, not a setting to keep in the row
-		variables.config.delete( "tableChecked" )
+		// Ensure table exists
+		ensureTable()
 
 		// Load existing data from database if it exists
 		loadFromDatabase( variables.userId, variables.conversationId )
@@ -132,12 +128,12 @@ class extends="BaseMemory" {
 	/**
 	 * Clear all messages and remove from database
 	 *
-	 * @userId   Optional per-call user identifier (another user's messages are in their own row)
-	 * @conversationId Optional per-call conversation identifier (another conversation's messages are in their own row)
+	 * @userId   Optional per-call user identifier (another user's row is deleted, not this memory's own)
+	 * @conversationId Optional per-call conversation identifier (another conversation's row is deleted, not this memory's own)
 	 */
 	public IAiMemory function clear( string userId = "", string conversationId = "" ) {
-		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
-			scopeFor( arguments.userId, arguments.conversationId ).clear()
+		if ( !isOwnScope( arguments.userId, arguments.conversationId ) ) {
+			deleteScope( arguments.userId, arguments.conversationId )
 			return this
 		}
 		super.clear( resolveUserId( userId ), resolveConversationId( conversationId ) )
@@ -154,9 +150,6 @@ class extends="BaseMemory" {
 	 * @return Struct with memory state and database connection info
 	 */
 	public struct function export( string userId = "", string conversationId = "" ) {
-		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
-			return scopeFor( arguments.userId, arguments.conversationId ).export()
-		}
 		var exported = super.export( resolveUserId( userId ), resolveConversationId( conversationId ) )
 		exported.datasource = variables.datasource
 		exported.table = variables.table
@@ -205,8 +198,8 @@ class extends="BaseMemory" {
 	 * @conversationId Optional per-call conversation identifier (ignored — JdbcMemory is an on-object store)
 	 */
 	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
-		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
-			scopeFor( arguments.userId, arguments.conversationId ).trim()
+		if ( !isOwnScope( arguments.userId, arguments.conversationId ) ) {
+			writeScope( arguments.userId, arguments.conversationId, trimmed( readScope( arguments.userId, arguments.conversationId ) ) )
 			return this
 		}
 		super.trim( resolveUserId( userId ), resolveConversationId( conversationId ) )
@@ -217,8 +210,7 @@ class extends="BaseMemory" {
 
 	/**
 	 * AI-summarize older messages and persist the result to database.
-	 * A call for another (userId, conversationId) is answered by the child memory for that scope,
-	 * which has a database row of its own (see scopeFor() in BaseMemory).
+	 * A call for another user or conversation summarizes the row for it, leaving this memory's own messages alone.
 	 *
 	 * @config Optional struct with keys: keepRecent, model, provider
 	 * @userId   Optional per-call user identifier
@@ -227,9 +219,8 @@ class extends="BaseMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
-		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
-			scopeFor( arguments.userId, arguments.conversationId ).summarize( arguments.config )
-			return this
+		if ( !isOwnScope( arguments.userId, arguments.conversationId ) ) {
+			return summarizeScope( arguments.config, arguments.userId, arguments.conversationId )
 		}
 		var targetUserId = resolveUserId( arguments.userId )
 		var targetConversationId = resolveConversationId( arguments.conversationId )
@@ -242,27 +233,182 @@ class extends="BaseMemory" {
 	}
 
 	// ========================================
-	// Scopes
+	// Other users and conversations
 	// ========================================
+	//
+	// The messages of the (userId, conversationId) this memory was built with are held on the object, as they always
+	// were. A call that names another user or conversation reads and writes the row for it in the table instead.
+	// memory_key is the table's primary key, so that row's key is <key>::<userId>::<conversationId>, with user_id and
+	// conversation_id filled in and used in the SQL.
 
 	/**
-	 * Each user and conversation has a row of its own. A call that names another scope is answered by a child memory
-	 * made for the call, which reads that row (by key, user_id and conversation_id) and writes it back, so nothing about a
-	 * scope is kept in the process and two processes on one database see each other's messages.
+	 * @return The messages for the user and conversation asked for, from the database for another scope
 	 */
-	private boolean function routesByScope() {
-		return true
+	public array function getAll( string userId = "", string conversationId = "" ) {
+		return isOwnScope( arguments.userId, arguments.conversationId ) ? super.getAll( arguments.userId, arguments.conversationId ) : readScope( arguments.userId, arguments.conversationId )
+	}
+
+	public IAiMemory function add( required any message, string userId = "", string conversationId = "" ) {
+		if ( isOwnScope( arguments.userId, arguments.conversationId ) ) {
+			return super.add( arguments.message, arguments.userId, arguments.conversationId )
+		}
+		var messages = readScope( arguments.userId, arguments.conversationId )
+		messages.append( processMessage( arguments.message ), true )
+		writeScope( arguments.userId, arguments.conversationId, trimmed( messages ) )
+		return this
+	}
+
+	public IAiMemory function setSystemMessage( required string message, string userId = "", string conversationId = "" ) {
+		if ( isOwnScope( arguments.userId, arguments.conversationId ) ) {
+			return super.setSystemMessage( arguments.message, arguments.userId, arguments.conversationId )
+		}
+		var messages = readScope( arguments.userId, arguments.conversationId ).filter( m => m.role != "system" )
+		messages.prepend( { role: "system", content: arguments.message, timestamp: now() } )
+		writeScope( arguments.userId, arguments.conversationId, trimmed( messages ) )
+		return this
+	}
+
+	public IAiMemory function removeSystemMessage( string userId = "", string conversationId = "" ) {
+		if ( isOwnScope( arguments.userId, arguments.conversationId ) ) {
+			return super.removeSystemMessage( arguments.userId, arguments.conversationId )
+		}
+		writeScope( arguments.userId, arguments.conversationId, readScope( arguments.userId, arguments.conversationId ).filter( m => m.role != "system" ) )
+		return this
 	}
 
 	/**
-	 * A child memory reads and writes its own row of the same table. The table is known to exist, so it is not checked again.
+	 * @return True when the call names the user and conversation this memory was built with, or neither
 	 */
-	private struct function scopeConfig() {
-		var scoped = super.scopeConfig()
-		scoped.datasource = variables.datasource
-		scoped.table = variables.table
-		scoped.tableChecked = true
-		return scoped
+	private boolean function isOwnScope( string userId = "", string conversationId = "" ) {
+		return resolveUserId( arguments.userId ) == variables.userId && resolveConversationId( arguments.conversationId ) == variables.conversationId
+	}
+
+	/**
+	 * @return The messages with the memory's limit applied: the system message, then the last maxMessages of the rest
+	 */
+	private array function trimmed( required array messages ) {
+		if ( variables.maxMessages == 0 ) {
+			return arguments.messages
+		}
+		var system = arguments.messages.filter( m => m.role == "system" )
+		var rest = arguments.messages.filter( m => m.role != "system" )
+		if ( rest.len() > variables.maxMessages ) {
+			rest = rest.slice( rest.len() - variables.maxMessages + 1, variables.maxMessages )
+		}
+		return system.len() ? [ system[ 1 ] ].append( rest, true ) : rest
+	}
+
+	/**
+	 * The SQL that picks one row: its key, and the user and conversation when they are named.
+	 *
+	 * @params The parameters of the statement; filled in
+	 *
+	 * @return The WHERE clause
+	 */
+	private string function whereScope( required string userId, required string conversationId, required struct params ) {
+		var sql = " WHERE memory_key = :key"
+		arguments.params.key = variables.key & "::" & arguments.userId & "::" & arguments.conversationId
+		if ( len( arguments.userId ) ) {
+			sql &= " AND user_id = :userId"
+			arguments.params.userId = arguments.userId
+		}
+		if ( len( arguments.conversationId ) ) {
+			sql &= " AND conversation_id = :conversationId"
+			arguments.params.conversationId = arguments.conversationId
+		}
+		return sql
+	}
+
+	private boolean function scopeExists( required string userId, required string conversationId ) {
+		var params = {}
+		var found = queryExecute(
+			"SELECT COUNT(*) AS record_count FROM #variables.table#" & whereScope( arguments.userId, arguments.conversationId, params ),
+			params,
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+		return found.len() > 0 && found[ 1 ].record_count > 0
+	}
+
+	/**
+	 * @return The messages in the row for the user and conversation, or an empty array when there is none
+	 */
+	private array function readScope( string userId = "", string conversationId = "" ) {
+		var uid = resolveUserId( arguments.userId )
+		var cid = resolveConversationId( arguments.conversationId )
+		// check first, to avoid "CLOB freed after transaction" errors on a row that is not there
+		if ( !scopeExists( uid, cid ) ) {
+			return []
+		}
+		var params = {}
+		var result = queryExecute(
+			getDatabaseSpecificSelectSQL().replace( " WHERE memory_key = :key", "" ) & whereScope( uid, cid, params ),
+			params,
+			{ datasource: variables.datasource }
+		)
+		return result.recordCount > 0 ? jsonDeserialize( result.memory_data[ 1 ] ) : []
+	}
+
+	private void function writeScope( string userId = "", string conversationId = "", required array messages ) {
+		var uid = resolveUserId( arguments.userId )
+		var cid = resolveConversationId( arguments.conversationId )
+		var params = {}
+		var where = whereScope( uid, cid, params )
+		params.messages = jsonSerialize( arguments.messages )
+		if ( scopeExists( uid, cid ) ) {
+			queryExecute(
+				"UPDATE #variables.table# SET memory_data = :messages, updated_date = CURRENT_TIMESTAMP" & where,
+				params,
+				{ datasource: variables.datasource }
+			)
+		} else {
+			queryExecute(
+				"INSERT INTO #variables.table# (memory_key, user_id, conversation_id, memory_data, metadata_data, config_data)
+				 VALUES (:key, :userId, :conversationId, :messages, '{}', :config)",
+				{
+					key: params.key,
+					userId: uid,
+					conversationId: cid,
+					messages: params.messages,
+					config: jsonSerialize( variables.config )
+				},
+				{ datasource: variables.datasource }
+			)
+		}
+	}
+
+	private void function deleteScope( string userId = "", string conversationId = "" ) {
+		var params = {}
+		queryExecute(
+			"DELETE FROM #variables.table#" & whereScope( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ), params ),
+			params,
+			{ datasource: variables.datasource }
+		)
+	}
+
+	/**
+	 * Summarizes the row for another user or conversation. doSummarize() builds its result in variables.messages and
+	 * variables.currentSummary, so this memory's own are put back afterwards.
+	 */
+	private IAiMemory function summarizeScope( struct config, string userId, string conversationId ) {
+		var uid = resolveUserId( arguments.userId )
+		var cid = resolveConversationId( arguments.conversationId )
+		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
+			var ownMessages = variables.messages
+			var ownSummary = variables.currentSummary
+			var ownHasSummary = variables.hasSummary
+			try {
+				var earlier = readScope( uid, cid ).filter( m => m.isSummary ?: false )
+				variables.currentSummary = earlier.len() ? earlier.last().content.replace( "[Previous conversation summary]: ", "" ) : ""
+				variables.hasSummary = earlier.len() > 0
+				doSummarize( arguments.config, uid, cid )
+				writeScope( uid, cid, variables.messages )
+			} finally {
+				variables.messages = ownMessages
+				variables.currentSummary = ownSummary
+				variables.hasSummary = ownHasSummary
+			}
+		}
+		return this
 	}
 
 	// ========================================

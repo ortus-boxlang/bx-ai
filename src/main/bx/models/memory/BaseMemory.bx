@@ -192,79 +192,6 @@ abstract class implements="IAiMemory" {
 
 	/**
 	 * ---------------------------------------------------------------------------------------------------------
-	 * Per-call scopes for on-object stores
-	 * ---------------------------------------------------------------------------------------------------------
-	 *
-	 * A memory that keeps its messages on the object holds one set of messages: the ones for the
-	 * (userId, conversationId) it was built with. A call that names another user or conversation must not read or
-	 * change those, so a memory that opts in with routesByScope() answers it with a child memory of the same class,
-	 * bound to that scope and keyed `<key>::<userId>::<conversationId>`. The child is made for the call and thrown away
-	 * after it, so nothing is kept in the process: a store that persists (jdbc) reads the scope's row afresh each time.
-	 * A call with no ids, or with the ids the memory was built with, is answered by the memory itself.
-	 *
-	 * Memories that look the scope up in their store on every call (cache, file, session) do not use this.
-	 */
-
-	/**
-	 * Whether this class answers other scopes through child memories. Only a store that persists its messages says yes
-	 * (jdbc): an in-process store would lose a scope's messages with the child.
-	 *
-	 * @return True when a call for another scope goes to a child memory
-	 */
-	private boolean function routesByScope() {
-		return false
-	}
-
-	/**
-	 * @userId   The per-call user identifier (empty = the instance's own)
-	 * @conversationId The per-call conversation identifier (empty = the instance's own)
-	 *
-	 * @return True when this memory routes by scope and the call names a scope other than its own
-	 */
-	private boolean function divertsToScope( string userId = "", string conversationId = "" ) {
-		return routesByScope()
-			&& ( resolveUserId( arguments.userId ) != variables.userId || resolveConversationId( arguments.conversationId ) != variables.conversationId )
-	}
-
-	/**
-	 * The child memory for one scope, made for this call.
-	 *
-	 * @userId   The per-call user identifier
-	 * @conversationId The per-call conversation identifier
-	 *
-	 * @return An IAiMemory of this class, bound to that scope
-	 */
-	private any function scopeFor( string userId = "", string conversationId = "" ) {
-		return buildScope( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
-	}
-
-	/**
-	 * @userId   The scope's user identifier
-	 * @conversationId The scope's conversation identifier
-	 *
-	 * @return A new memory of this class for that scope, with this memory's limits and summary settings
-	 */
-	private any function buildScope( required string userId, required string conversationId ) {
-		return createObject( "component", getMetadata( this ).name )
-			.init( key: variables.key & "::" & arguments.userId & "::" & arguments.conversationId, userId: arguments.userId, conversationId: arguments.conversationId )
-			.configure( scopeConfig() )
-	}
-
-	/**
-	 * @return The settings a child memory is configured with: this memory's own configuration, limits and summary settings
-	 */
-	private struct function scopeConfig() {
-		var scoped = duplicate( variables.config )
-		scoped.maxMessages = variables.maxMessages
-		scoped.maxTokens = variables.maxTokens
-		scoped.summaryThreshold = variables.summaryThreshold
-		scoped.summaryModel = variables.summaryModel
-		scoped.summaryProvider = variables.summaryProvider
-		return scoped
-	}
-
-	/**
-	 * ---------------------------------------------------------------------------------------------------------
 	 * Interface Methods
 	 * ---------------------------------------------------------------------------------------------------------
 	 */
@@ -314,10 +241,6 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function add( required any message, string userId = "", string conversationId = "" ) {
-		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
-			scopeFor( arguments.userId, arguments.conversationId ).add( arguments.message )
-			return this
-		}
 		processMessage( arguments.message )
 			.each( msg => {
 				variables.messages.append( msg )
@@ -373,9 +296,6 @@ abstract class implements="IAiMemory" {
 	 * @return Array of message structs
 	 */
 	public array function getAll( string userId = "", string conversationId = "" ) {
-		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
-			return scopeFor( arguments.userId, arguments.conversationId ).getAll()
-		}
 		return variables.messages
 	}
 
@@ -423,10 +343,6 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function clear( string userId = "", string conversationId = "" ) {
-		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
-			scopeFor( arguments.userId, arguments.conversationId ).clear()
-			return this
-		}
 		variables.messages = []
 		return this
 	}
@@ -493,10 +409,6 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function setSystemMessage( required string message, string userId = "", string conversationId = "" ) {
-		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
-			scopeFor( arguments.userId, arguments.conversationId ).setSystemMessage( arguments.message )
-			return this
-		}
 		// Remove existing system message if any
 		removeSystemMessage( arguments.userId, arguments.conversationId )
 
@@ -522,10 +434,6 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function removeSystemMessage( string userId = "", string conversationId = "" ) {
-		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
-			scopeFor( arguments.userId, arguments.conversationId ).removeSystemMessage()
-			return this
-		}
 		variables.messages = getAll( arguments.userId, arguments.conversationId ).filter( ( m ) => m.role != "system" )
 		return this
 	}
@@ -731,9 +639,6 @@ abstract class implements="IAiMemory" {
 	 * @return Struct containing all memory data
 	 */
 	public struct function export( String userId = "", String conversationId = "" ) {
-		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
-			return scopeFor( arguments.userId, arguments.conversationId ).export()
-		}
 		return {
 			"type":this. name(),
 			"key": this.key(),
@@ -868,10 +773,6 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
-		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
-			scopeFor( arguments.userId, arguments.conversationId ).trim()
-			return this
-		}
 		// If maxMessages is 0, do not trim
 		if ( variables.maxMessages == 0 ) {
 			return this
@@ -985,10 +886,6 @@ abstract class implements="IAiMemory" {
 	 * @return IAiMemory for chaining
 	 */
 	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
-		if ( divertsToScope( arguments.userId, arguments.conversationId ) ) {
-			scopeFor( arguments.userId, arguments.conversationId ).summarize( arguments.config )
-			return this
-		}
 		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
 			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
 		}
