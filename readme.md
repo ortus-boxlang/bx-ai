@@ -538,6 +538,21 @@ agent.closeMCPServers()
 
 📖 [MCP Stdio Client Guide](src/docs/main-components/mcp-stdio-client.md)
 
+A server that asks people to sign in with OAuth works the same way. The client follows the MCP authorization specification (discovery, PKCE, refresh) and keeps tokens in a store you choose:
+
+```javascript
+var mail = MCP( "https://mail.example.com/mcp" ).withOAuth( {
+    redirectUri : "https://app.example.com/oauth/callback",
+    store       : "file",
+    storeOptions: { path: "/var/lib/myapp/mcp-tokens" },
+    subject     : ( context ) => context.chatRequest.getUserId()   // each person signs in on their own
+} )
+var link = mail.startAuthorization( "alice" ).authorizationUrl     // send Alice here
+mail.completeAuthorization( url.code, url.state, url.iss ?: "" )    // at your callback route
+```
+
+📖 [MCP OAuth Guide](src/docs/main-components/mcp-oauth.md)
+
 ### 🎙️ Speech & Transcription
 
 ```javascript

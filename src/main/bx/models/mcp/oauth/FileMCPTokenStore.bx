@@ -1,0 +1,134 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Keeps MCP OAuth state in files, one JSON file per record, in a folder you choose.
+ *
+ * The files are plain text. Where the file system has owner only permissions (Linux, macOS) each file is made
+ * readable by its owner alone, but keep the folder out of source control and backups, or write a store that encrypts.
+ *
+ * @since 3.8.0
+ */
+class implements="IMCPTokenStore" {
+
+	/**
+	 * The folder the files live in
+	 */
+	property name="directoryPath" type="string";
+
+	/**
+	 * @directoryPath The folder to keep the files in. Created when missing.
+	 */
+	function init( required string directoryPath ) {
+		if ( !len( arguments.directoryPath ) ) {
+			throw( type: "FileMCPTokenStore.MissingDirectory", message: "FileMCPTokenStore needs a directoryPath: the folder to keep the tokens in." )
+		}
+		variables.directoryPath = arguments.directoryPath
+		if ( !directoryExists( variables.directoryPath ) ) {
+			directoryCreate( variables.directoryPath, true, true )
+		}
+		return this
+	}
+
+	/**
+	 * Read one record from its file.
+	 *
+	 * @key The key it was saved under
+	 *
+	 * @return The saved struct, or an empty struct when there is no file, it is damaged or the record has expired
+	 */
+	struct function get( required string key ) {
+		var path = fileFor( arguments.key )
+		if ( !fileExists( path ) ) {
+			return {}
+		}
+		try {
+			var record = jsonDeserialize( fileRead( path, "UTF-8" ) )
+		} catch ( any e ) {
+			// a half written or damaged file is the same as no record
+			return {}
+		}
+		if ( !isStruct( record ) || !record.keyExists( "value" ) ) {
+			return {}
+		}
+		if ( ( record.expiresAt ?: 0 ) > 0 && epochMillis() >= record.expiresAt ) {
+			remove( arguments.key )
+			return {}
+		}
+		return record.value
+	}
+
+	/**
+	 * Save one record in a file of its own, replacing what is there. The file is written next to the final one and then moved, so a reader never sees half of it.
+	 *
+	 * @key        The key to save it under
+	 * @value      The record
+	 * @ttlSeconds Seconds after which the record expires, 0 for never
+	 */
+	void function set( required string key, required struct value, numeric ttlSeconds = 0 ) {
+		var path    = fileFor( arguments.key )
+		var staging = path & "." & createUUID() & ".tmp"
+		var record  = {
+			"key"       : arguments.key,
+			"expiresAt" : arguments.ttlSeconds > 0 ? epochMillis() + ( arguments.ttlSeconds * 1000 ) : 0,
+			"value"     : arguments.value
+		}
+		fileWrite( staging, jsonSerialize( record ), "UTF-8" )
+		ownerOnly( staging )
+		// the move is atomic where the file system allows it, so a reader never sees half a file
+		fileMove( staging, path )
+	}
+
+	/**
+	 * Delete the file of one record. Nothing happens when there is none.
+	 *
+	 * @key The key to delete
+	 */
+	void function remove( required string key ) {
+		var path = fileFor( arguments.key )
+		if ( fileExists( path ) ) {
+			fileDelete( path )
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Private Helpers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * The file of a key: the hash of the key, so any key is a safe file name
+	 */
+	private string function fileFor( required string key ) {
+		return variables.directoryPath & "/" & lCase( hash( arguments.key, "SHA-256" ) ) & ".json"
+	}
+
+	/**
+	 * @return The current time as milliseconds since 1970
+	 */
+	private numeric function epochMillis() {
+		return createObject( "java", "java.lang.System" ).currentTimeMillis()
+	}
+
+	/**
+	 * Make a file readable by its owner only, where the file system can. Skipped silently where it cannot.
+	 */
+	private void function ownerOnly( required string path ) {
+		try {
+			var permissions = createObject( "java", "java.nio.file.attribute.PosixFilePermissions" ).fromString( "rw-------" )
+			createObject( "java", "java.nio.file.Files" ).setPosixFilePermissions( createObject( "java", "java.nio.file.Paths" ).get( arguments.path, [] ), permissions )
+		} catch ( any e ) {
+			// no POSIX permissions on this file system
+		}
+	}
+
+}

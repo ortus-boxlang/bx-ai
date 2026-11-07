@@ -221,9 +221,10 @@ abstract class implements="IMCPClient" {
 	 *
 	 * @tool Name of the tool to send to
 	 * @args Arguments to pass to the tool
+	 * @context Who and what the call is for (for example { chatRequest }), used by clients that choose credentials per person. Empty when there is none.
 	 * @return MCPResponse with invocation result
 	 */
-	MCPResponse function send( required string tool, struct args = {} ) {
+	MCPResponse function send( required string tool, struct args = {}, struct context = {} ) {
 		var body = {
 			"jsonrpc": "2.0",
 			"method": "tools/call",
@@ -233,7 +234,7 @@ abstract class implements="IMCPClient" {
 			},
 			"id": createUUID()
 		};
-		return makeRequest( body, "tool", arguments.tool );
+		return makeRequest( body, "tool", arguments.tool, arguments.context );
 	}
 
 	/**
@@ -301,7 +302,8 @@ abstract class implements="IMCPClient" {
 	private MCPResponse function transportSend(
 		required struct body,
 		required string operationType,
-		required string operationName
+		required string operationName,
+		struct context = {}
 	) {
 		throw( type: "NotImplemented", message: "#getMetadata( this ).name# must implement transportSend()" )
 	}
@@ -313,7 +315,8 @@ abstract class implements="IMCPClient" {
 	private void function prepare(
 		required struct body,
 		required string operationType,
-		required string operationName
+		required string operationName,
+		struct context = {}
 	) {
 	}
 
@@ -335,13 +338,14 @@ abstract class implements="IMCPClient" {
 	private MCPResponse function makeRequest(
 		required struct body,
 		string operationType = "discovery",
-		string operationName = ""
+		string operationName = "",
+		struct context = {}
 	) {
 		var mcpResponse = null
 		var startTime   = 0
 
 		try {
-			prepare( arguments.body, arguments.operationType, arguments.operationName )
+			prepare( arguments.body, arguments.operationType, arguments.operationName, arguments.context )
 
 			// Start timing and fire request event
 			startTime = getTickCount()
@@ -354,7 +358,7 @@ abstract class implements="IMCPClient" {
 				"requestBody"  : arguments.body
 			} )
 
-			mcpResponse = transportSend( arguments.body, arguments.operationType, arguments.operationName )
+			mcpResponse = transportSend( arguments.body, arguments.operationType, arguments.operationName, arguments.context )
 
 			// Record stats and fire the appropriate post-request event
 			var elapsedTime = getTickCount() - startTime

@@ -263,9 +263,10 @@ Module defines **53 custom interception points** in [ModuleConfig.bx](src/main/b
 - `onMCPServerCreate`, `onMCPServerPause`, `onMCPServerRemove`, `onMCPServerResume` - Server lifecycle
 - `onMCPRequest`, `onMCPResponse`, `onMCPError` - MCP operations
 
-**MCP Client Events** (3):
+**MCP Client Events** (4):
 
 - `onMCPClientRequest`, `onMCPClientResponse`, `onMCPClientError` - MCP client operations
+- `onMCPAuthorizationRequired` - a person has to sign in to an OAuth protected MCP server (or grant more scope)
 
 **Tool Registry Events** (2):
 
@@ -546,6 +547,7 @@ loader.ingest( vectorMemory, {
 - **Implementations** - never created with `new`, the `MCP()` BIF picks the class from its argument:
   - `MCPHttpClient` ([models/mcp/MCPHttpClient.bx](src/main/bx/models/mcp/MCPHttpClient.bx)) - `MCP( "http://host/mcp" )`, goes through `bx:http`
   - `MCPStdioClient` ([models/mcp/MCPStdioClient.bx](src/main/bx/models/mcp/MCPStdioClient.bx)) - `MCP( { command: [ "bxplaywright", "mcp" ] } )`, launches the server as a child process (stdin/stdout, one JSON-RPC message per line, stderr to the `ai` log). Details and rules: `src/docs/main-components/mcp-stdio-client.md`
+  - OAuth: `MCPHttpClient.withOAuth()` ([models/mcp/oauth/](src/main/bx/models/mcp/oauth/)): `MCPOAuthFlow` does discovery, client registration, PKCE, code exchange and refresh per the MCP authorization spec; tokens live in an `IMCPTokenStore` (`CacheMCPTokenStore` default, `FileMCPTokenStore`, `JdbcMCPTokenStore`, or your own). `send( tool, args, context )` takes a context (`{ chatRequest }` from `MCPTool`) that the `subject` option turns into whose tokens to use. Guide: `src/docs/main-components/mcp-oauth.md`
 - **Configuration** (chainable, HTTP): `withTimeout(ms)`, `withHeaders(headers)`, `withAuth(user, pass)`, `withBearerToken(token)`, `onSuccess(callback)`, `onError(callback)`
 - **Discovery**: `listTools()`, `listResources()`, `listPrompts()`, `getCapabilities()`
 - **Execution**: `send(tool, args)`, `readResource(uri)`, `getPrompt(name, args)`
@@ -555,13 +557,13 @@ loader.ingest( vectorMemory, {
 
 ```javascript
 // Example: Consume an MCP server over HTTP
-var client = MCP( "http://localhost:3000" )
+var mcpClient = MCP( "http://localhost:3000" )
     .withTimeout( 5000 )
     .withBearerToken( "secret" )
     .onError( error => println( error, true ) );
 
-var tools = client.listTools();
-var result = client.send( "search", { query: "BoxLang" } );
+var tools = mcpClient.listTools();
+var result = mcpClient.send( "search", { query: "BoxLang" } );
 
 // Example: Consume an MCP server that runs as a child process
 var browser = MCP( { command: [ "bxplaywright", "mcp" ], env: { HEADLESS: "true" } } );
@@ -1563,7 +1565,7 @@ build/module/                # Compiled module (shadowJar output) - tests load f
    var floatValue = javaCast( "float", config.temperature );
    ```
 
-3. **Reserved scope names**: Avoid as variable names - `server`, `request`, `session`, `application`, `cgi`, `url`, `form`, `cookie`, `variables`
+3. **Reserved scope names**: Avoid as variable names - `server`, `client`, `request`, `session`, `application`, `cgi`, `url`, `form`, `cookie`, `variables`
 
    ```javascript
    // ❌ Wrong - conflicts with BoxLang scope

@@ -1,0 +1,762 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * The OAuth 2.1 steps an MCP client takes with a protected MCP server, following the MCP authorization
+ * specification: find the authorization server from the server's Protected Resource Metadata (RFC 9728), read
+ * its metadata (RFC 8414 or OpenID Connect discovery), get a client id, send the person to sign in with PKCE and
+ * the resource parameter (RFC 8707), trade the code for tokens, and refresh them.
+ *
+ * It keeps nothing itself. Tokens, the client registration and the sign-ins waiting for their callback all go
+ * through an IMCPTokenStore, so the host decides where credentials live. The one thing it cannot do is the
+ * browser step: the host sends the person to the URL start() returns and calls complete() from its redirect route.
+ *
+ * Most code does not use this class directly: MCPHttpClient.withOAuth() builds one.
+ *
+ * @since 3.8.0
+ */
+class {
+
+	static {
+		// seconds a sign-in may wait for its callback
+		final FLOW_TTL_SECONDS = 600
+		// seconds before expiry at which a token is refreshed
+		final REFRESH_SKEW_SECONDS = 60
+	}
+
+	/**
+	 * @resourceUrl The MCP server URL the tokens are for
+	 * @store       An IMCPTokenStore
+	 * @options     redirectUri, scopes (array), clientId, clientSecret, clientMetadataUrl, clientName, timeout (ms)
+	 */
+	function init( required string resourceUrl, required any store, struct options = {} ) {
+		variables.store    = arguments.store
+		variables.options  = arguments.options
+		variables.resource = canonical( arguments.resourceUrl )
+		variables.timeout  = arguments.options.timeout ?: 30000
+		variables.metadata = {}
+		return this
+	}
+
+	/**
+	 * The canonical URI of the MCP server: the value of the "resource" parameter and the base of the token keys.
+	 */
+	string function getResource() {
+		return variables.resource
+	}
+
+	/**
+	 * Whether a person has tokens that are valid or can be refreshed.
+	 *
+	 * @subject Who the tokens belong to
+	 */
+	boolean function isAuthorized( required string subject ) {
+		var tokens = variables.store.get( tokenKey( arguments.subject ) )
+		if ( tokens.isEmpty() || !len( tokens.accessToken ?: "" ) ) {
+			return false
+		}
+		return !isExpired( tokens ) || len( tokens.refreshToken ?: "" ) > 0
+	}
+
+	/**
+	 * Delete a person's tokens.
+	 *
+	 * @subject Who the tokens belong to
+	 */
+	void function forget( required string subject ) {
+		variables.store.remove( tokenKey( arguments.subject ) )
+	}
+
+	/**
+	 * Treat the access token as expired, so the next accessToken() refreshes it. For a 401 that arrives while
+	 * the token still looks valid (revoked, or the clock differs).
+	 *
+	 * @subject Who the tokens belong to
+	 */
+	void function expire( required string subject ) {
+		var tokens = variables.store.get( tokenKey( arguments.subject ) )
+		if ( !tokens.isEmpty() ) {
+			tokens[ "expiresAt" ] = 1
+			variables.store.set( tokenKey( arguments.subject ), tokens )
+		}
+	}
+
+	/**
+	 * The access token to send, refreshed when it has expired.
+	 *
+	 * @subject Who is asking
+	 *
+	 * @throws MCPAuthorizationRequired when there are no tokens, or they cannot be refreshed: the person must sign in
+	 */
+	string function accessToken( required string subject ) {
+		var key    = tokenKey( arguments.subject )
+		var tokens = variables.store.get( key )
+		if ( tokens.isEmpty() || !len( tokens.accessToken ?: "" ) ) {
+			authorizationRequired( arguments.subject, "No tokens for [#arguments.subject#]. Sign in with startAuthorization() first." )
+		}
+		if ( !isExpired( tokens ) ) {
+			return tokens.accessToken
+		}
+		return refreshTokens( arguments.subject ).accessToken
+	}
+
+	/**
+	 * Begin a sign-in: discover the authorization server, get a client id, make the PKCE secret and the state,
+	 * and build the URL to send the person to. What must be remembered until the callback is saved in the store.
+	 *
+	 * @subject   Who is signing in
+	 * @challenge The WWW-Authenticate header of the 401, when there was one (it names the metadata URL and the scope)
+	 *
+	 * @return { authorizationUrl, state }
+	 */
+	struct function start( required string subject, string challenge = "" ) {
+		if ( !len( variables.options.redirectUri ?: "" ) ) {
+			throw( type: "MCPOAuthMissingRedirectUri", message: "OAuth needs a redirectUri: the address of your callback route." )
+		}
+		var parsed    = parseChallenge( arguments.challenge )
+		var discovery = discover( parsed.resourceMetadata )
+		var registration = resolveClient( discovery )
+
+		var verifier = randomToken()
+		var state    = randomToken()
+		var scope    = chooseScope( parsed.scope, discovery )
+
+		var params = [
+			"response_type=code",
+			"client_id=" & encode( registration.clientId ),
+			"redirect_uri=" & encode( variables.options.redirectUri ),
+			"state=" & encode( state ),
+			"code_challenge=" & challengeOf( verifier ),
+			"code_challenge_method=S256",
+			"resource=" & encode( variables.resource )
+		]
+		if ( len( scope ) ) {
+			params.append( "scope=" & encode( scope ) )
+		}
+
+		variables.store.set(
+			"flow:" & state,
+			{
+				"subject"           : arguments.subject,
+				"verifier"          : verifier,
+				"issuer"            : discovery.authorizationServer.issuer,
+				"clientId"          : registration.clientId,
+				"redirectUri"       : variables.options.redirectUri,
+				"resource"          : variables.resource,
+				"tokenEndpoint"     : discovery.authorizationServer.token_endpoint,
+				"scope"             : scope,
+				"issuerRequired"    : ( discovery.authorizationServer.authorization_response_iss_parameter_supported ?: false ) == true
+			},
+			static.FLOW_TTL_SECONDS
+		)
+
+		var endpoint = discovery.authorizationServer.authorization_endpoint
+		return {
+			"authorizationUrl": endpoint & ( endpoint.find( "?" ) ? "&" : "?" ) & params.toList( "&" ),
+			"state"           : state
+		}
+	}
+
+	/**
+	 * Finish a sign-in: check the callback against what start() saved and trade the code for tokens.
+	 *
+	 * @code   The "code" the authorization server sent to the callback
+	 * @state  The "state" it sent back
+	 * @issuer The "iss" it sent back, when it sent one (RFC 9207)
+	 *
+	 * @return { subject, scope, expiresAt } (never the tokens)
+	 *
+	 * @throws MCPOAuthInvalidState when the state is unknown, used before or too old
+	 */
+	struct function complete( required string code, required string state, string issuer = "" ) {
+		var flowKey = "flow:" & arguments.state
+		var flow    = variables.store.get( flowKey )
+		if ( flow.isEmpty() ) {
+			throw( type: "MCPOAuthInvalidState", message: "This sign-in is unknown or has expired. Start again." )
+		}
+		// a sign-in is used once
+		variables.store.remove( flowKey )
+
+		// RFC 9207: a response from another authorization server than the one we sent the person to is refused before the code goes anywhere
+		if ( len( arguments.issuer ) && arguments.issuer != flow.issuer ) {
+			throw( type: "MCPOAuthIssuerMismatch", message: "The sign-in answered for [#arguments.issuer#] but was started with [#flow.issuer#]." )
+		}
+		if ( flow.issuerRequired && !len( arguments.issuer ) ) {
+			throw( type: "MCPOAuthIssuerMismatch", message: "The authorization server must send its issuer with the answer and did not." )
+		}
+
+		var form = {
+			"grant_type"   : "authorization_code",
+			"code"         : arguments.code,
+			"redirect_uri" : flow.redirectUri,
+			"client_id"    : flow.clientId,
+			"code_verifier": flow.verifier,
+			"resource"     : flow.resource
+		}
+		var secret = clientSecretFor( flow.issuer, flow.redirectUri )
+		if ( len( secret ) ) {
+			form[ "client_secret" ] = secret
+		}
+		var answer = post( flow.tokenEndpoint, form )
+		if ( answer.status < 200 || answer.status >= 300 || !isStruct( answer.body ) || !len( answer.body.access_token ?: "" ) ) {
+			throw(
+				type   : "MCPOAuthTokenError",
+				message: "The authorization server refused the code: #describeError( answer )#"
+			)
+		}
+
+		var tokens = tokenRecord( answer.body, flow, {} )
+		variables.store.set( tokenKey( flow.subject ), tokens )
+		return { "subject": flow.subject, "scope": tokens.scope, "expiresAt": tokens.expiresAt }
+	}
+
+	// -------------------------------------------------------------------------
+	// Discovery
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Find the authorization server of the MCP server and read its metadata. Remembered for the life of this object.
+	 *
+	 * @metadataUrl The resource_metadata URL from a WWW-Authenticate challenge, when there was one
+	 *
+	 * @return { resourceMetadata, authorizationServer }
+	 */
+	struct function discover( string metadataUrl = "" ) {
+		if ( !variables.metadata.isEmpty() ) {
+			return variables.metadata
+		}
+		var resourceMetadata = fetchResourceMetadata( arguments.metadataUrl )
+		var issuer           = resourceMetadata.authorization_servers[ 1 ]
+		var asMetadata       = fetchAuthorizationServerMetadata( issuer )
+
+		if ( !len( asMetadata.authorization_endpoint ?: "" ) || !len( asMetadata.token_endpoint ?: "" ) ) {
+			throw( type: "MCPOAuthDiscoveryFailed", message: "The authorization server [#issuer#] does not publish an authorization_endpoint and a token_endpoint." )
+		}
+		// MCP requires PKCE with S256: a server that does not say it supports it is refused
+		if ( !( asMetadata.code_challenge_methods_supported ?: [] ).contains( "S256" ) ) {
+			throw( type: "MCPOAuthDiscoveryFailed", message: "The authorization server [#issuer#] does not say it supports PKCE with S256 (code_challenge_methods_supported), which MCP requires." )
+		}
+		assertSecure( asMetadata.authorization_endpoint )
+		assertSecure( asMetadata.token_endpoint )
+
+		variables.metadata = { "resourceMetadata": resourceMetadata, "authorizationServer": asMetadata }
+		return variables.metadata
+	}
+
+	/**
+	 * @return The Protected Resource Metadata document, checked to name this server and at least one authorization server
+	 */
+	private struct function fetchResourceMetadata( string metadataUrl = "" ) {
+		var candidates = []
+		if ( len( arguments.metadataUrl ) ) {
+			candidates.append( arguments.metadataUrl )
+		} else {
+			var origin = originOf( variables.resource )
+			var path   = pathOf( variables.resource )
+			if ( len( path ) && path != "/" ) {
+				candidates.append( origin & "/.well-known/oauth-protected-resource" & path )
+			}
+			candidates.append( origin & "/.well-known/oauth-protected-resource" )
+		}
+
+		for ( var candidate in candidates ) {
+			assertSecure( candidate )
+			var answer = get( candidate )
+			if ( answer.status == 200 && isStruct( answer.body ) && isArray( answer.body.authorization_servers ?: "" ) && answer.body.authorization_servers.len() ) {
+				// RFC 9728: the document must be about the server we asked
+				if ( len( answer.body.resource ?: "" ) && normalize( answer.body.resource ) != normalize( variables.resource ) ) {
+					throw( type: "MCPOAuthDiscoveryFailed", message: "The resource metadata at [#candidate#] is for [#answer.body.resource#], not for [#variables.resource#]." )
+				}
+				return answer.body
+			}
+		}
+		throw( type: "MCPOAuthDiscoveryFailed", message: "Could not find the Protected Resource Metadata of [#variables.resource#] (tried #candidates.toList( ', ' )#)." )
+	}
+
+	/**
+	 * @issuer The authorization server's issuer URL
+	 *
+	 * @return Its metadata document, from the RFC 8414 or OpenID Connect well-known addresses in the order MCP lists
+	 */
+	private struct function fetchAuthorizationServerMetadata( required string issuer ) {
+		var origin = originOf( arguments.issuer )
+		var path   = pathOf( arguments.issuer )
+		var candidates = []
+		if ( len( path ) && path != "/" ) {
+			candidates = [
+				origin & "/.well-known/oauth-authorization-server" & path,
+				origin & "/.well-known/openid-configuration" & path,
+				arguments.issuer & "/.well-known/openid-configuration"
+			]
+		} else {
+			candidates = [
+				origin & "/.well-known/oauth-authorization-server",
+				origin & "/.well-known/openid-configuration"
+			]
+		}
+		for ( var candidate in candidates ) {
+			assertSecure( candidate )
+			var answer = get( candidate )
+			if ( answer.status == 200 && isStruct( answer.body ) ) {
+				// RFC 8414 section 3.3: the issuer in the document must be the one the address was built from
+				if ( ( answer.body.issuer ?: "" ) != arguments.issuer ) {
+					continue
+				}
+				return answer.body
+			}
+		}
+		throw( type: "MCPOAuthDiscoveryFailed", message: "Could not read the metadata of the authorization server [#arguments.issuer#] (tried #candidates.toList( ', ' )#)." )
+	}
+
+	// -------------------------------------------------------------------------
+	// Client registration
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Pick how this client identifies itself, in the order MCP lists: a client id given in the options, a Client ID
+	 * Metadata Document when the server supports it, then Dynamic Client Registration (kept in the store).
+	 *
+	 * @return { clientId }
+	 */
+	private struct function resolveClient( required struct discovery ) {
+		var asMetadata = arguments.discovery.authorizationServer
+		var issuer     = asMetadata.issuer
+
+		if ( len( variables.options.clientId ?: "" ) ) {
+			return { "clientId": variables.options.clientId }
+		}
+		if ( len( variables.options.clientMetadataUrl ?: "" ) && ( asMetadata.client_id_metadata_document_supported ?: false ) == true ) {
+			return { "clientId": variables.options.clientMetadataUrl }
+		}
+
+		var key    = registrationKey( issuer, variables.options.redirectUri )
+		var stored = variables.store.get( key )
+		if ( !stored.isEmpty() && len( stored.clientId ?: "" ) ) {
+			return stored
+		}
+
+		if ( !len( asMetadata.registration_endpoint ?: "" ) ) {
+			throw(
+				type   : "MCPOAuthNoClient",
+				message: "The authorization server [#issuer#] has no registration endpoint and no client id was given. Register an OAuth client with it and pass clientId (and clientSecret when it has one)."
+			)
+		}
+		assertSecure( asMetadata.registration_endpoint )
+
+		var isLocal = isLoopback( variables.options.redirectUri )
+		var answer  = post(
+			asMetadata.registration_endpoint,
+			{},
+			{
+				"client_name"                : variables.options.clientName ?: "bx-ai",
+				"redirect_uris"              : [ variables.options.redirectUri ],
+				"grant_types"                : [ "authorization_code", "refresh_token" ],
+				"response_types"             : [ "code" ],
+				"token_endpoint_auth_method" : "none",
+				"application_type"           : isLocal ? "native" : "web"
+			}
+		)
+		if ( answer.status < 200 || answer.status >= 300 || !isStruct( answer.body ) || !len( answer.body.client_id ?: "" ) ) {
+			throw( type: "MCPOAuthRegistrationFailed", message: "The authorization server did not register this client: #describeError( answer )#" )
+		}
+		var registration = { "clientId": answer.body.client_id, "clientSecret": answer.body.client_secret ?: "" }
+		variables.store.set( key, registration )
+		return registration
+	}
+
+	/**
+	 * The secret of this client, for the token endpoint: the one in the options, else the one the registration saved.
+	 *
+	 * @issuer      The authorization server the client is registered with
+	 * @redirectUri The redirect address the registration was made for
+	 *
+	 * @return The secret, or an empty string for a public client
+	 */
+	private string function clientSecretFor( required string issuer, required string redirectUri ) {
+		if ( len( variables.options.clientSecret ?: "" ) ) {
+			return variables.options.clientSecret
+		}
+		return variables.store.get( registrationKey( arguments.issuer, arguments.redirectUri ) ).clientSecret ?: ""
+	}
+
+	// -------------------------------------------------------------------------
+	// Tokens
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Refresh a person's tokens. One refresh at a time per person: a caller that waited finds the tokens already fresh.
+	 */
+	private struct function refreshTokens( required string subject ) {
+		var key = tokenKey( arguments.subject )
+		lock name="bxai-mcp-oauth-#hash( key )#" type="exclusive" timeout="30" {
+			var tokens = variables.store.get( key )
+			if ( tokens.isEmpty() ) {
+				authorizationRequired( arguments.subject, "No tokens for [#arguments.subject#]." )
+			}
+			if ( !isExpired( tokens ) ) {
+				return tokens
+			}
+			if ( !len( tokens.refreshToken ?: "" ) ) {
+				variables.store.remove( key )
+				authorizationRequired( arguments.subject, "The access token of [#arguments.subject#] has expired and there is no refresh token." )
+			}
+
+			var form = {
+				"grant_type"   : "refresh_token",
+				"refresh_token": tokens.refreshToken,
+				"client_id"    : tokens.clientId,
+				"resource"     : variables.resource
+			}
+			var secret = clientSecretFor( tokens.issuer, variables.options.redirectUri ?: "" )
+			if ( len( secret ) ) {
+				form[ "client_secret" ] = secret
+			}
+
+			var answer = post( tokens.tokenEndpoint, form )
+			if ( answer.status >= 400 && answer.status < 500 ) {
+				// the refresh token is refused (revoked, expired, or issued to another client): the person must sign in again
+				variables.store.remove( key )
+				authorizationRequired( arguments.subject, "The authorization server refused to refresh the tokens of [#arguments.subject#]: #describeError( answer )#" )
+			}
+			if ( answer.status < 200 || answer.status >= 300 || !isStruct( answer.body ) || !len( answer.body.access_token ?: "" ) ) {
+				// a server that is down or confused: the tokens are kept, a later call tries again
+				throw( type: "MCPOAuthRefreshFailed", message: "Could not refresh the tokens of [#arguments.subject#]: #describeError( answer )#" )
+			}
+
+			var refreshed = tokenRecord( answer.body, tokens, tokens )
+			variables.store.set( key, refreshed )
+			return refreshed
+		}
+	}
+
+	/**
+	 * Build the record saved for a token answer. The expiry is saved as an absolute time, so it is still right
+	 * when it is read back later. A refresh token the server did not rotate is kept.
+	 *
+	 * @answer   The token endpoint's JSON
+	 * @context  The sign-in or the old record: where issuer, clientId and tokenEndpoint come from
+	 * @previous The old token record, or an empty struct
+	 */
+	private struct function tokenRecord( required struct answer, required struct context, required struct previous ) {
+		var expiresIn = isNumeric( arguments.answer.expires_in ?: "" ) ? arguments.answer.expires_in : 0
+		return {
+			"accessToken"  : arguments.answer.access_token,
+			"refreshToken" : len( arguments.answer.refresh_token ?: "" ) ? arguments.answer.refresh_token : ( arguments.previous.refreshToken ?: "" ),
+			"tokenType"    : arguments.answer.token_type ?: "Bearer",
+			"expiresAt"    : expiresIn > 0 ? epochMillis() + ( expiresIn * 1000 ) : 0,
+			"scope"        : arguments.answer.scope ?: ( arguments.context.scope ?: "" ),
+			"issuer"       : arguments.context.issuer,
+			"clientId"     : arguments.context.clientId,
+			"tokenEndpoint": arguments.context.tokenEndpoint,
+			"obtainedAt"   : epochMillis()
+		}
+	}
+
+	/**
+	 * Whether an access token has expired, or is about to (inside the refresh margin).
+	 *
+	 * @tokens The saved token record
+	 *
+	 * @return True when it must be refreshed before use. A token saved without an expiry counts as valid until a 401 says otherwise
+	 */
+	private boolean function isExpired( required struct tokens ) {
+		var expiresAt = arguments.tokens.expiresAt ?: 0
+		// no expiry given by the server: assume valid until a 401 says otherwise
+		if ( expiresAt <= 0 ) {
+			return false
+		}
+		return epochMillis() >= expiresAt - ( static.REFRESH_SKEW_SECONDS * 1000 )
+	}
+
+	/**
+	 * Stop with the error that says a person has to sign in.
+	 *
+	 * @subject Who has to sign in
+	 * @message What to tell them
+	 *
+	 * @throws MCPAuthorizationRequired always, with the subject and the resource in the detail
+	 */
+	private void function authorizationRequired( required string subject, required string message ) {
+		throw(
+			type   : "MCPAuthorizationRequired",
+			message: arguments.message,
+			detail : jsonSerialize( { "subject": arguments.subject, "resource": variables.resource } )
+		)
+	}
+
+	/**
+	 * The store key of a person's tokens for this MCP server.
+	 *
+	 * @subject Whose tokens
+	 *
+	 * @return The key
+	 */
+	private string function tokenKey( required string subject ) {
+		return "token:" & variables.resource & "|" & arguments.subject
+	}
+
+	/**
+	 * The store key of a client registration. It names the authorization server that issued it, because a client id is only good there.
+	 *
+	 * @issuer      The authorization server's issuer
+	 * @redirectUri The redirect address the client registered
+	 *
+	 * @return The key
+	 */
+	private string function registrationKey( required string issuer, required string redirectUri ) {
+		return "client:" & arguments.issuer & "|" & arguments.redirectUri
+	}
+
+	/**
+	 * The scope to ask for: the one in the options, else the one the server asked for in its 401, else everything
+	 * the resource says it supports.
+	 */
+	private string function chooseScope( required string challengeScope, required struct discovery ) {
+		if ( isArray( variables.options.scopes ?: "" ) && variables.options.scopes.len() ) {
+			return variables.options.scopes.toList( " " )
+		}
+		if ( len( arguments.challengeScope ) ) {
+			return arguments.challengeScope
+		}
+		var supported = arguments.discovery.resourceMetadata.scopes_supported ?: []
+		return isArray( supported ) ? supported.toList( " " ) : ""
+	}
+
+	/**
+	 * Read what a WWW-Authenticate: Bearer challenge says.
+	 *
+	 * @header The header value, or an empty string
+	 *
+	 * @return { resourceMetadata, scope, error }
+	 */
+	struct function parseChallenge( string header = "" ) {
+		var parsed = { "resourceMetadata": "", "scope": "", "error": "" }
+		for ( var name in [ "resource_metadata", "scope", "error" ] ) {
+			var match = reFindNoCase( name & "=""([^""]*)""", arguments.header, 1, true )
+			if ( match.pos[ 1 ] > 0 && match.pos.len() > 1 ) {
+				var value = arguments.header.mid( match.pos[ 2 ], match.len[ 2 ] )
+				parsed[ name == "resource_metadata" ? "resourceMetadata" : name ] = value
+			}
+		}
+		return parsed
+	}
+
+	// -------------------------------------------------------------------------
+	// HTTP
+	// -------------------------------------------------------------------------
+
+	/**
+	 * GET one address and read the answer.
+	 *
+	 * @target The address
+	 *
+	 * @return { status, headers, body, raw } where body is the parsed JSON when the answer was JSON
+	 */
+	private struct function get( required string target ) {
+		return send( "GET", arguments.target )
+	}
+
+	/**
+	 * POST a form (the token endpoint) or, when a JSON body is given, a JSON document (client registration).
+	 */
+	private struct function post( required string target, struct form = {}, struct json = {} ) {
+		return send( "POST", arguments.target, arguments.form, arguments.json )
+	}
+
+	/**
+	 * Send one HTTP request of the flow. Refuses an address that is not https (localhost excepted).
+	 *
+	 * @method The HTTP method
+	 * @target The address
+	 * @form   Form fields, for a form POST such as the token endpoint
+	 * @json   A JSON body, used instead of the form when given
+	 *
+	 * @return { status, headers, body, raw } where body is the parsed JSON when the answer was JSON
+	 */
+	private struct function send( required string method, required string target, struct form = {}, struct json = {} ) {
+		assertSecure( arguments.target )
+		var timeoutSeconds = max( 1, ceiling( variables.timeout / 1000 ) )
+		var useJson        = !arguments.json.isEmpty()
+		bx:http
+			url     = arguments.target
+			method  = arguments.method
+			result  = "httpResult"
+			charset = "utf-8"
+			timeout = timeoutSeconds
+		{
+			bx:httpParam type="header" name="accept" value="application/json";
+			if ( useJson ) {
+				bx:httpParam type="header" name="content-type" value="application/json";
+				bx:httpParam type="body" value=jsonSerialize( arguments.json );
+			} else {
+				for ( var field in arguments.form ) {
+					bx:httpParam type="formfield" name="#field#" value="#arguments.form[ field ]#";
+				}
+			}
+		}
+
+		var raw    = httpResult.filecontent ?: ""
+		var parsed = raw
+		try {
+			if ( len( raw ) ) {
+				parsed = jsonDeserialize( raw )
+			}
+		} catch ( any e ) {
+			parsed = raw
+		}
+		return { "status": httpResult.status_code ?: 0, "headers": httpResult.responseheader ?: {}, "body": parsed, "raw": raw }
+	}
+
+	/**
+	 * A short reason from a failed answer: the OAuth error and its description, else the HTTP status.
+	 *
+	 * @answer The result of get() or send()
+	 *
+	 * @return Text to put in an error message
+	 */
+	private string function describeError( required struct answer ) {
+		if ( isStruct( arguments.answer.body ) && len( arguments.answer.body.error ?: "" ) ) {
+			return arguments.answer.body.error & ( len( arguments.answer.body.error_description ?: "" ) ? " (" & arguments.answer.body.error_description & ")" : "" )
+		}
+		return "HTTP " & arguments.answer.status
+	}
+
+	// -------------------------------------------------------------------------
+	// Helpers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * Credentials only travel over https. Plain http is allowed to the machine itself, for development and tests.
+	 */
+	private void function assertSecure( required string target ) {
+		var address = createObject( "java", "java.net.URI" ).create( arguments.target )
+		var scheme  = lCase( address.getScheme() ?: "" )
+		if ( scheme == "https" ) {
+			return
+		}
+		if ( scheme == "http" && isLoopback( arguments.target ) ) {
+			return
+		}
+		throw( type: "MCPOAuthInsecureUrl", message: "OAuth needs https. Refusing [#arguments.target#]." )
+	}
+
+	/**
+	 * Whether an address is on this machine, where plain http is allowed.
+	 *
+	 * @target The address
+	 *
+	 * @return True for localhost, 127.0.0.1 and ::1
+	 */
+	private boolean function isLoopback( required string target ) {
+		try {
+			var host = lCase( createObject( "java", "java.net.URI" ).create( arguments.target ).getHost() ?: "" )
+		} catch ( any e ) {
+			return false
+		}
+		return [ "localhost", "127.0.0.1", "[::1]", "::1" ].contains( host )
+	}
+
+	/**
+	 * The scheme and authority of an address.
+	 *
+	 * @target The address
+	 *
+	 * @return For example https://auth.example.com:8443
+	 */
+	private string function originOf( required string target ) {
+		var address = createObject( "java", "java.net.URI" ).create( arguments.target )
+		return address.getScheme() & "://" & address.getRawAuthority()
+	}
+
+	/**
+	 * The path of an address, as written.
+	 *
+	 * @target The address
+	 *
+	 * @return The path, or an empty string
+	 */
+	private string function pathOf( required string target ) {
+		return createObject( "java", "java.net.URI" ).create( arguments.target ).getRawPath() ?: ""
+	}
+
+	/**
+	 * The canonical resource URI: no fragment, no trailing slash on a bare host.
+	 */
+	private string function canonical( required string target ) {
+		var address = createObject( "java", "java.net.URI" ).create( arguments.target.trim() )
+		var path    = address.getRawPath() ?: ""
+		if ( path == "/" ) {
+			path = ""
+		}
+		var query = len( address.getRawQuery() ?: "" ) ? "?" & address.getRawQuery() : ""
+		return lCase( address.getScheme() ) & "://" & lCase( address.getRawAuthority() ) & path & query
+	}
+
+	/**
+	 * Put an address in canonical form so two spellings of it compare equal.
+	 *
+	 * @target The address
+	 *
+	 * @return The canonical address, see canonical()
+	 */
+	private string function normalize( required string target ) {
+		return canonical( arguments.target )
+	}
+
+	/**
+	 * Percent-encode a value for a query string or a form (a space becomes %20).
+	 *
+	 * @value The text
+	 *
+	 * @return The encoded text
+	 */
+	private string function encode( required string value ) {
+		return createObject( "java", "java.net.URLEncoder" ).encode( arguments.value, "UTF-8" ).replace( "+", "%20", "all" )
+	}
+
+	/**
+	 * @return The current time as milliseconds since 1970
+	 */
+	private numeric function epochMillis() {
+		return createObject( "java", "java.lang.System" ).currentTimeMillis()
+	}
+
+	/**
+	 * 32 random bytes as URL safe base64 without padding: 43 characters, the PKCE verifier and the state.
+	 */
+	private string function randomToken() {
+		var bytes = createObject( "java", "java.lang.reflect.Array" ).newInstance( createObject( "java", "java.lang.Byte" ).TYPE, 32 )
+		createObject( "java", "java.security.SecureRandom" ).init().nextBytes( bytes )
+		return base64Url( bytes )
+	}
+
+	/**
+	 * The S256 code challenge of a verifier: base64url( SHA-256( verifier ) )
+	 */
+	string function challengeOf( required string verifier ) {
+		var digest = createObject( "java", "java.security.MessageDigest" ).getInstance( "SHA-256" ).digest( arguments.verifier.getBytes( "US-ASCII" ) )
+		return base64Url( digest )
+	}
+
+	/**
+	 * Encode bytes as URL safe base64 without padding, as PKCE and state values are.
+	 *
+	 * @bytes The bytes (a Java byte[])
+	 *
+	 * @return The text
+	 */
+	private string function base64Url( required any bytes ) {
+		return toBase64( arguments.bytes ).replace( "+", "-", "all" ).replace( "/", "_", "all" ).replace( "=", "", "all" )
+	}
+
+}

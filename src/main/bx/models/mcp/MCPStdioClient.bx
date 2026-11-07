@@ -260,7 +260,8 @@ class extends="BaseMCPClient" {
 	private MCPResponse function transportSend(
 		required struct body,
 		required string operationType,
-		required string operationName
+		required string operationName,
+		struct context = {}
 	) {
 		ensureRunning()
 

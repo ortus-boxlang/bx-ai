@@ -75,7 +75,7 @@ abstract class implements="IAiRunnable" {
 		// withMCPServer(): the keys of a stdio struct that choose how the tools are exposed, not options of the client
 		MCP_REGISTRATION_KEYS = [ "prefix", "toolFilter" ];
 		// Options that only exist for an HTTP MCP server
-		MCP_HTTP_ONLY_KEYS    = [ "token", "headers", "user", "password", "urlGuard", "redirects", "maxResponseBytes", "httpVersion", "handshake" ];
+		MCP_HTTP_ONLY_KEYS    = [ "token", "headers", "user", "password", "urlGuard", "redirects", "maxResponseBytes", "httpVersion", "handshake", "oauth" ];
 	}
 
     /**
@@ -771,6 +771,7 @@ abstract class implements="IAiRunnable" {
 	 * @mcpServer  A URL string pointing to the MCP server, or a pre-configured IMCPClient instance.
 	 * @config  Optional configuration struct with any of: token, timeout, headers, user, password,
 	 *          urlGuard (function), redirects (boolean), maxResponseBytes (numeric), handshake (boolean), httpVersion ("HTTP/2" or "HTTP/1.1"),
+	 *          oauth (struct, sign in to the server with OAuth, see MCPHttpClient.withOAuth()),
 	 *          prefix (string, tools are named prefix__name so servers cannot clash),
 	 *          toolFilter (array of tool names, only these are exposed).
 	 *
@@ -909,6 +910,9 @@ abstract class implements="IAiRunnable" {
 		}
 		if ( arguments.config.keyExists( "user" ) )    {
 			mcpClient.withAuth( arguments.config.user, arguments.config.password ?: "" )
+		}
+		if ( arguments.config.keyExists( "oauth" ) ) {
+			mcpClient.withOAuth( arguments.config.oauth )
 		}
 
 		return mcpClient
