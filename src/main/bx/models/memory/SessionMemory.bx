@@ -40,14 +40,6 @@ class extends="WindowMemory" {
 	}
 
 	/**
-	 * Session memory finds the scope's messages in the session scope on every call, so it needs no child memories.
-	 */
-	private boolean function routesByScope() {
-		return false
-	}
-
-
-	/**
 	 * Override getAll to read from session storage
 	 *
 	 * @userId   Optional per-call user identifier (overrides instance default)

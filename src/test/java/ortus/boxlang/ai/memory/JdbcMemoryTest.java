@@ -721,4 +721,25 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "mine" ) ) ).isEqualTo( 1 );
 	}
 
+	@Test
+	@DisplayName( "Test JdbcMemory reads a scope afresh on every call, so a second instance sees what the first wrote" )
+	public void testPerCallScopeIsReadAfreshEachCall() {
+		runtime.executeSource(
+		    """
+		    reader = aiMemory( memory: "jdbc", key: "scoped-fresh", config: { datasource: "bxai_test" } )
+		    writer = aiMemory( memory: "jdbc", key: "scoped-fresh", config: { datasource: "bxai_test" } )
+		    reader.clear( "u1", "c1" )
+
+		    before = reader.getAll( "u1", "c1" ).len()
+		    writer.add( { role: "user", content: "from the other instance" }, "u1", "c1" )
+		    after = reader.getAll( "u1", "c1" ).len()
+
+		    reader.clear( "u1", "c1" )
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "before" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "after" ) ) ).isEqualTo( 1 );
+	}
 }

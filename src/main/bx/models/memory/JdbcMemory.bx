@@ -80,8 +80,12 @@ class extends="BaseMemory" {
 			)
 		}
 
-		// Ensure table exists
-		ensureTable()
+		// Ensure table exists (a child memory for one scope is told the parent already did)
+		if ( !( arguments.config.tableChecked ?: false ) ) {
+			ensureTable()
+		}
+		// only a hint for this call, not a setting to keep in the row
+		variables.config.delete( "tableChecked" )
 
 		// Load existing data from database if it exists
 		loadFromDatabase( variables.userId, variables.conversationId )
@@ -242,24 +246,22 @@ class extends="BaseMemory" {
 	// ========================================
 
 	/**
-	 * The messages are in the database, so the child memories of scopes not used lately can be forgotten and read back
-	 * the next time they are asked for.
+	 * Each user and conversation has a row of its own. A call that names another scope is answered by a child memory
+	 * made for the call, which reads that row (by key, user_id and conversation_id) and writes it back, so nothing about a
+	 * scope is kept in the process and two processes on one database see each other's messages.
 	 */
 	private boolean function routesByScope() {
 		return true
 	}
 
-	private numeric function maxScopes() {
-		return variables.config.maxScopes ?: 200
-	}
-
 	/**
-	 * A child memory reads and writes its own row of the same table.
+	 * A child memory reads and writes its own row of the same table. The table is known to exist, so it is not checked again.
 	 */
 	private struct function scopeConfig() {
 		var scoped = super.scopeConfig()
 		scoped.datasource = variables.datasource
 		scoped.table = variables.table
+		scoped.tableChecked = true
 		return scoped
 	}
 
