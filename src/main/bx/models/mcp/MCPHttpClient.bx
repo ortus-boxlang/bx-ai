@@ -248,7 +248,9 @@ class extends="BaseMCPClient" {
 	 * - store        Where tokens live: "cache" (default, the BoxLang cache), "file", "jdbc", a class path, or an IMCPTokenStore instance
 	 * - storeOptions Options of the store: { cacheName } for cache, { path } for file, { datasource, table } for jdbc, passed to a class path
 	 * - subject      Whose tokens a call uses: a name, or a function ( context ) => string. The context of a tool call has { chatRequest }, so
-	 *                ( context ) => context.chatRequest.getUserId() signs in each person on their own. Calls without a context (listing the tools) use "default".
+	 *                ( context ) => context.chatRequest.getUserId() signs in each person on their own. Calls without a context (listing the tools) use discoverySubject.
+	 * - discoverySubject  Whose tokens a call with no context uses, such as listing the tools when an agent starts: a name, or a function that takes
+	 *                no arguments. Default "default". The list of tools is the server's, the same for everyone, so one signed in person is enough to ask for it
 	 * - redirectUri  The address of your callback route (required to sign in)
 	 * - scopes       Array of scopes to ask for. When left out, the scope the server asks for, else everything it supports
 	 * - clientId     A client id you registered with the authorization server (and clientSecret, when it has one)
@@ -271,6 +273,7 @@ class extends="BaseMCPClient" {
 		var oauthOptions = arguments.options.copy()
 		oauthOptions[ "timeout" ] = oauthOptions.timeout ?: variables.timeout
 		variables.oauthSubject = oauthOptions.subject ?: "default"
+		variables.oauthDiscoverySubject = oauthOptions.discoverySubject ?: "default"
 		variables.oauth = new bxModules.bxai.models.mcp.oauth.MCPOAuthFlow(
 			variables.baseURL,
 			resolveTokenStore( oauthOptions.store ?: "cache", oauthOptions.storeOptions ?: {} ),
@@ -603,14 +606,25 @@ class extends="BaseMCPClient" {
 
 	/**
 	 * Whose tokens a call uses. The subject option is a name, or a function that gets the context of the call.
-	 * A call with no context (listing the tools at start up) uses the name "default".
+	 * A call with no context (listing the tools at start up) uses the discoverySubject option, "default" when there is none.
 	 */
 	private string function subjectFor( struct context = {} ) {
 		var subject = variables.oauthSubject
 		if( !isSimpleValue( subject ) ){
-			subject = arguments.context.isEmpty() ? "default" : subject( arguments.context )
+			subject = arguments.context.isEmpty() ? discoverySubject() : subject( arguments.context )
 		}
 		return len( subject ?: "" ) ? subject : "default"
+	}
+
+	/**
+	 * Whose tokens a call with no context uses: the discoverySubject option, a name or a function with no arguments.
+	 */
+	private string function discoverySubject() {
+		var discovery = variables.oauthDiscoverySubject ?: "default"
+		if( !isSimpleValue( discovery ) ){
+			discovery = discovery()
+		}
+		return len( discovery ?: "" ) ? discovery : "default"
 	}
 
 	/**

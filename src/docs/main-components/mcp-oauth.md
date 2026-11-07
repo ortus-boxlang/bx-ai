@@ -65,6 +65,7 @@ MCP( url ).withOAuth( {
 | `store` | `"cache"` | Where tokens live: `"cache"`, `"file"`, `"jdbc"`, a class path, or an `IMCPTokenStore` instance |
 | `storeOptions` | `{}` | Options of the store: `{ cacheName }`, `{ path }`, `{ datasource, table }`, or the arguments of your class |
 | `subject` | `"default"` | Whose tokens a call uses: a name, or a function `( context ) => string` |
+| `discoverySubject` | `"default"` | Whose tokens a call with no context uses, such as listing the tools when an agent starts: a name, or a function with no arguments |
 | `scopes` | | Scopes to ask for. When left out: the scope the server asked for in its `401`, else everything it supports |
 | `clientId`, `clientSecret` | | A client you registered with the authorization server yourself |
 | `clientMetadataUrl` | | The HTTPS address of your Client ID Metadata Document |
@@ -86,7 +87,7 @@ mcpClient.isAuthorized( "bob" )                // false: Bob has not signed in
 ```
 
 - `send( tool, args, context )` takes a `context` struct. The tools an agent builds from an MCP server (`MCPTool`) pass `{ chatRequest }`, so `context.chatRequest.getUserId()` is the person talking to the agent.
-- A call with no context, such as `listTools()` when the agent starts, uses the subject `"default"`. For a server that needs a sign in to list its tools, sign in `"default"` first or use a fixed subject.
+- A call with no context, such as `listTools()` when the agent starts, uses the `discoverySubject` option, `"default"` when you give none. The list of tools is the server's and the same for everyone, so one signed in person is enough to ask for it: give the name of a person who has signed in, or a function that returns one (`discoverySubject: () => lastPersonWhoSignedIn()`).
 - With `withHandshake( true )` each person also gets an MCP session of their own.
 
 ## 🗄️ Token Stores
