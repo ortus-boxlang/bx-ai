@@ -256,11 +256,11 @@ class extends="BaseMCPClient" {
 	 * - clientName   The name shown at sign in, when the client registers itself. Default "bx-ai"
 	 *
 	 * <pre>
-	 * client = MCP( "https://mail.example.com/mcp" ).withOAuth( {
+	 * mcpClient = MCP( "https://mail.example.com/mcp" ).withOAuth( {
 	 *     redirectUri : "https://app.example.com/oauth/callback",
 	 *     subject     : ( context ) => context.chatRequest.getUserId()
 	 * } )
-	 * link = client.startAuthorization( "alice" ).authorizationUrl
+	 * link = mcpClient.startAuthorization( "alice" ).authorizationUrl
 	 * </pre>
 	 *
 	 * @options The options above
@@ -662,6 +662,11 @@ class extends="BaseMCPClient" {
 		return ""
 	}
 
+	/**
+	 * Stop with a clear error when withOAuth() has not been called.
+	 *
+	 * @throws MCPOAuthNotEnabled when OAuth is off for this client
+	 */
 	private void function assertOAuth() {
 		if( !isObject( variables.oauth ) ){
 			throw( type: "MCPOAuthNotEnabled", message: "OAuth is not turned on for this client. Call withOAuth() first." )

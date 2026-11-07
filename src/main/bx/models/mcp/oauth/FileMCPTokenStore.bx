@@ -40,6 +40,13 @@ class implements="IMCPTokenStore" {
 		return this
 	}
 
+	/**
+	 * Read one record from its file.
+	 *
+	 * @key The key it was saved under
+	 *
+	 * @return The saved struct, or an empty struct when there is no file, it is damaged or the record has expired
+	 */
 	struct function get( required string key ) {
 		var path = fileFor( arguments.key )
 		if ( !fileExists( path ) ) {
@@ -61,6 +68,13 @@ class implements="IMCPTokenStore" {
 		return record.value
 	}
 
+	/**
+	 * Save one record in a file of its own, replacing what is there. The file is written next to the final one and then moved, so a reader never sees half of it.
+	 *
+	 * @key        The key to save it under
+	 * @value      The record
+	 * @ttlSeconds Seconds after which the record expires, 0 for never
+	 */
 	void function set( required string key, required struct value, numeric ttlSeconds = 0 ) {
 		var path    = fileFor( arguments.key )
 		var staging = path & "." & createUUID() & ".tmp"
@@ -75,6 +89,11 @@ class implements="IMCPTokenStore" {
 		fileMove( staging, path )
 	}
 
+	/**
+	 * Delete the file of one record. Nothing happens when there is none.
+	 *
+	 * @key The key to delete
+	 */
 	void function remove( required string key ) {
 		var path = fileFor( arguments.key )
 		if ( fileExists( path ) ) {
@@ -93,6 +112,9 @@ class implements="IMCPTokenStore" {
 		return variables.directoryPath & "/" & lCase( hash( arguments.key, "SHA-256" ) ) & ".json"
 	}
 
+	/**
+	 * @return The current time as milliseconds since 1970
+	 */
 	private numeric function epochMillis() {
 		return createObject( "java", "java.lang.System" ).currentTimeMillis()
 	}

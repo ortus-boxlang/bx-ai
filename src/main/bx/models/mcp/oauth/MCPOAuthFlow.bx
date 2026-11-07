@@ -374,6 +374,14 @@ class {
 		return registration
 	}
 
+	/**
+	 * The secret of this client, for the token endpoint: the one in the options, else the one the registration saved.
+	 *
+	 * @issuer      The authorization server the client is registered with
+	 * @redirectUri The redirect address the registration was made for
+	 *
+	 * @return The secret, or an empty string for a public client
+	 */
 	private string function clientSecretFor( required string issuer, required string redirectUri ) {
 		if ( len( variables.options.clientSecret ?: "" ) ) {
 			return variables.options.clientSecret
@@ -454,6 +462,13 @@ class {
 		}
 	}
 
+	/**
+	 * Whether an access token has expired, or is about to (inside the refresh margin).
+	 *
+	 * @tokens The saved token record
+	 *
+	 * @return True when it must be refreshed before use. A token saved without an expiry counts as valid until a 401 says otherwise
+	 */
 	private boolean function isExpired( required struct tokens ) {
 		var expiresAt = arguments.tokens.expiresAt ?: 0
 		// no expiry given by the server: assume valid until a 401 says otherwise
@@ -463,6 +478,14 @@ class {
 		return epochMillis() >= expiresAt - ( static.REFRESH_SKEW_SECONDS * 1000 )
 	}
 
+	/**
+	 * Stop with the error that says a person has to sign in.
+	 *
+	 * @subject Who has to sign in
+	 * @message What to tell them
+	 *
+	 * @throws MCPAuthorizationRequired always, with the subject and the resource in the detail
+	 */
 	private void function authorizationRequired( required string subject, required string message ) {
 		throw(
 			type   : "MCPAuthorizationRequired",
@@ -471,10 +494,25 @@ class {
 		)
 	}
 
+	/**
+	 * The store key of a person's tokens for this MCP server.
+	 *
+	 * @subject Whose tokens
+	 *
+	 * @return The key
+	 */
 	private string function tokenKey( required string subject ) {
 		return "token:" & variables.resource & "|" & arguments.subject
 	}
 
+	/**
+	 * The store key of a client registration. It names the authorization server that issued it, because a client id is only good there.
+	 *
+	 * @issuer      The authorization server's issuer
+	 * @redirectUri The redirect address the client registered
+	 *
+	 * @return The key
+	 */
 	private string function registrationKey( required string issuer, required string redirectUri ) {
 		return "client:" & arguments.issuer & "|" & arguments.redirectUri
 	}
@@ -517,6 +555,13 @@ class {
 	// HTTP
 	// -------------------------------------------------------------------------
 
+	/**
+	 * GET one address and read the answer.
+	 *
+	 * @target The address
+	 *
+	 * @return { status, headers, body, raw } where body is the parsed JSON when the answer was JSON
+	 */
 	private struct function get( required string target ) {
 		return send( "GET", arguments.target )
 	}
@@ -528,6 +573,16 @@ class {
 		return send( "POST", arguments.target, arguments.form, arguments.json )
 	}
 
+	/**
+	 * Send one HTTP request of the flow. Refuses an address that is not https (localhost excepted).
+	 *
+	 * @method The HTTP method
+	 * @target The address
+	 * @form   Form fields, for a form POST such as the token endpoint
+	 * @json   A JSON body, used instead of the form when given
+	 *
+	 * @return { status, headers, body, raw } where body is the parsed JSON when the answer was JSON
+	 */
 	private struct function send( required string method, required string target, struct form = {}, struct json = {} ) {
 		assertSecure( arguments.target )
 		var timeoutSeconds = max( 1, ceiling( variables.timeout / 1000 ) )
@@ -562,6 +617,13 @@ class {
 		return { "status": httpResult.status_code ?: 0, "headers": httpResult.responseheader ?: {}, "body": parsed, "raw": raw }
 	}
 
+	/**
+	 * A short reason from a failed answer: the OAuth error and its description, else the HTTP status.
+	 *
+	 * @answer The result of get() or send()
+	 *
+	 * @return Text to put in an error message
+	 */
 	private string function describeError( required struct answer ) {
 		if ( isStruct( arguments.answer.body ) && len( arguments.answer.body.error ?: "" ) ) {
 			return arguments.answer.body.error & ( len( arguments.answer.body.error_description ?: "" ) ? " (" & arguments.answer.body.error_description & ")" : "" )
@@ -588,6 +650,13 @@ class {
 		throw( type: "MCPOAuthInsecureUrl", message: "OAuth needs https. Refusing [#arguments.target#]." )
 	}
 
+	/**
+	 * Whether an address is on this machine, where plain http is allowed.
+	 *
+	 * @target The address
+	 *
+	 * @return True for localhost, 127.0.0.1 and ::1
+	 */
 	private boolean function isLoopback( required string target ) {
 		try {
 			var host = lCase( createObject( "java", "java.net.URI" ).create( arguments.target ).getHost() ?: "" )
@@ -597,11 +666,25 @@ class {
 		return [ "localhost", "127.0.0.1", "[::1]", "::1" ].contains( host )
 	}
 
+	/**
+	 * The scheme and authority of an address.
+	 *
+	 * @target The address
+	 *
+	 * @return For example https://auth.example.com:8443
+	 */
 	private string function originOf( required string target ) {
 		var address = createObject( "java", "java.net.URI" ).create( arguments.target )
 		return address.getScheme() & "://" & address.getRawAuthority()
 	}
 
+	/**
+	 * The path of an address, as written.
+	 *
+	 * @target The address
+	 *
+	 * @return The path, or an empty string
+	 */
 	private string function pathOf( required string target ) {
 		return createObject( "java", "java.net.URI" ).create( arguments.target ).getRawPath() ?: ""
 	}
@@ -619,14 +702,31 @@ class {
 		return lCase( address.getScheme() ) & "://" & lCase( address.getRawAuthority() ) & path & query
 	}
 
+	/**
+	 * Put an address in canonical form so two spellings of it compare equal.
+	 *
+	 * @target The address
+	 *
+	 * @return The canonical address, see canonical()
+	 */
 	private string function normalize( required string target ) {
 		return canonical( arguments.target )
 	}
 
+	/**
+	 * Percent-encode a value for a query string or a form (a space becomes %20).
+	 *
+	 * @value The text
+	 *
+	 * @return The encoded text
+	 */
 	private string function encode( required string value ) {
 		return createObject( "java", "java.net.URLEncoder" ).encode( arguments.value, "UTF-8" ).replace( "+", "%20", "all" )
 	}
 
+	/**
+	 * @return The current time as milliseconds since 1970
+	 */
 	private numeric function epochMillis() {
 		return createObject( "java", "java.lang.System" ).currentTimeMillis()
 	}
@@ -648,6 +748,13 @@ class {
 		return base64Url( digest )
 	}
 
+	/**
+	 * Encode bytes as URL safe base64 without padding, as PKCE and state values are.
+	 *
+	 * @bytes The bytes (a Java byte[])
+	 *
+	 * @return The text
+	 */
 	private string function base64Url( required any bytes ) {
 		return toBase64( arguments.bytes ).replace( "+", "-", "all" ).replace( "/", "_", "all" ).replace( "=", "", "all" )
 	}

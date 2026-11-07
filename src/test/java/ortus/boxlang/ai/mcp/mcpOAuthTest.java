@@ -41,11 +41,19 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 
 	private FakeOAuthMcpServer fake;
 
+	/**
+	 * Start a fresh fake OAuth protected MCP server for each test.
+	 *
+	 * @throws IOException when the port cannot be opened
+	 */
 	@BeforeEach
 	public void startFake() throws IOException {
 		this.fake = new FakeOAuthMcpServer();
 	}
 
+	/**
+	 * Stop the fake server after each test.
+	 */
 	@AfterEach
 	public void stopFake() {
 		this.fake.stop();
@@ -56,7 +64,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				client = MCP( "%s/mcp" ).withOAuth( {
+				mcpClient = MCP( "%s/mcp" ).withOAuth( {
 					redirectUri : "http://127.0.0.1:9/callback"%s
 				} )
 			""".formatted( this.fake.base(), extraOptions ),
@@ -70,7 +78,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				started = client.startAuthorization( "%s" )
+				started = mcpClient.startAuthorization( "%s" )
 				authUrl = started.authorizationUrl
 			""".formatted( subject ),
 			context
@@ -81,7 +89,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		variables.put( Key.of( "cbState" ), answer.get( "state" ) );
 		variables.put( Key.of( "cbIss" ), answer.getOrDefault( "iss", "" ) );
 		// @formatter:off
-		runtime.executeSource( "signedIn = client.completeAuthorization( cbCode, cbState, cbIss )", context );
+		runtime.executeSource( "signedIn = mcpClient.completeAuthorization( cbCode, cbState, cbIss )", context );
 		// @formatter:on
 	}
 
@@ -92,7 +100,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				started = client.startAuthorization( "alice" )
+				started = mcpClient.startAuthorization( "alice" )
 				authUrl = started.authorizationUrl
 				state   = started.state
 			""",
@@ -127,10 +135,10 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				authorized = client.isAuthorized( "default" )
-				listed     = client.listTools()
+				authorized = mcpClient.isAuthorized( "default" )
+				listed     = mcpClient.listTools()
 				listedOk   = listed.isSuccess()
-				called     = client.send( "inbox", {} )
+				called     = mcpClient.send( "inbox", {} )
 				calledText = called.getData().content[ 1 ].text
 				scope      = signedIn.scope
 			""",
@@ -161,10 +169,10 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 					( event ) => { fired.append( { subject: event.subject, reason: event.reason } ) },
 					"onMCPAuthorizationRequired"
 				)
-				response = client.listTools()
+				response = mcpClient.listTools()
 				ok       = response.isSuccess()
 				error    = response.getError()
-				authorized = client.isAuthorized( "default" )
+				authorized = mcpClient.isAuthorized( "default" )
 			""",
 			context
 		);
@@ -177,6 +185,11 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		runtimeAssertFired( "no_token" );
 	}
 
+	/**
+	 * Check that the onMCPAuthorizationRequired listener a test registered ran once, and with the given reason.
+	 *
+	 * @param reason The reason the event should have carried
+	 */
 	private void runtimeAssertFired( String reason ) {
 		// @formatter:off
 		runtime.executeSource( "firedCount = fired.len()\nfiredReason = fired.len() ? fired[ 1 ].reason : ''", context );
@@ -196,8 +209,8 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				first  = client.send( "inbox", {} ).getData().content[ 1 ].text
-				second = client.send( "inbox", {} ).getData().content[ 1 ].text
+				first  = mcpClient.send( "inbox", {} ).getData().content[ 1 ].text
+				second = mcpClient.send( "inbox", {} ).getData().content[ 1 ].text
 			""",
 			context
 		);
@@ -221,7 +234,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		signIn( "default" );
 
 		// @formatter:off
-		runtime.executeSource( "client.send( 'inbox', {} )\nclient.send( 'inbox', {} )", context );
+		runtime.executeSource( "mcpClient.send( 'inbox', {} )\nmcpClient.send( 'inbox', {} )", context );
 		// @formatter:on
 
 		assertThat( this.fake.tokenRequests.get( 1 ).get( "refresh_token" ) ).isEqualTo( this.fake.tokenRequests.get( 2 ).get( "refresh_token" ) );
@@ -238,10 +251,10 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				response   = client.send( "inbox", {} )
+				response   = mcpClient.send( "inbox", {} )
 				ok         = response.isSuccess()
 				error      = response.getError()
-				authorized = client.isAuthorized( "default" )
+				authorized = mcpClient.isAuthorized( "default" )
 			""",
 			context
 		);
@@ -263,7 +276,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				response = client.send( "inbox", {} )
+				response = mcpClient.send( "inbox", {} )
 				ok       = response.isSuccess()
 				text     = ok ? response.getData().content[ 1 ].text : ""
 			""",
@@ -293,7 +306,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 					( event ) => { fired.append( { reason: event.reason, subject: event.subject } ) },
 					"onMCPAuthorizationRequired"
 				)
-				response = client.send( "inbox", {} )
+				response = mcpClient.send( "inbox", {} )
 				ok       = response.isSuccess()
 				error    = response.getError()
 				status   = response.getStatusCode()
@@ -326,7 +339,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 					( event ) => { fired.append( { reason: event.reason, scope: event.scope } ) },
 					"onMCPAuthorizationRequired"
 				)
-				response = client.send( "inbox", {} )
+				response = mcpClient.send( "inbox", {} )
 				ok       = response.isSuccess()
 				status   = response.getStatusCode()
 				eventScope = fired.len() ? fired[ 1 ].scope : ""
@@ -354,13 +367,13 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 			"""
 				alice = { chatRequest: { getUserId: () => "alice" } }
 				bob   = { chatRequest: { getUserId: () => "bob" } }
-				aliceResponse = client.send( "inbox", {}, alice )
-				bobResponse   = client.send( "inbox", {}, bob )
+				aliceResponse = mcpClient.send( "inbox", {}, alice )
+				bobResponse   = mcpClient.send( "inbox", {}, bob )
 				aliceOk       = aliceResponse.isSuccess()
 				bobOk         = bobResponse.isSuccess()
 				aliceToken    = aliceOk ? aliceResponse.getData().content[ 1 ].text : ""
-				aliceAuthorized = client.isAuthorized( "alice" )
-				bobAuthorized   = client.isAuthorized( "bob" )
+				aliceAuthorized = mcpClient.isAuthorized( "alice" )
+				bobAuthorized   = mcpClient.isAuthorized( "bob" )
 			""",
 			context
 		);
@@ -376,9 +389,9 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				bobAfter  = client.send( "inbox", {}, bob )
+				bobAfter  = mcpClient.send( "inbox", {}, bob )
 				bobText   = bobAfter.getData().content[ 1 ].text
-				aliceText = client.send( "inbox", {}, alice ).getData().content[ 1 ].text
+				aliceText = mcpClient.send( "inbox", {}, alice ).getData().content[ 1 ].text
 			""",
 			context
 		);
@@ -396,7 +409,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 				tool = new bxModules.bxai.models.tools.MCPTool(
-					client,
+					mcpClient,
 					{ name: "inbox", description: "Read mail", inputSchema: { type: "object", properties: {} } },
 					""
 				)
@@ -419,7 +432,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		this.fake.sessions = true;
 		makeClient( ", subject: ( context ) => context.chatRequest.getUserId()" );
 		// @formatter:off
-		runtime.executeSource( "client.withHandshake( true )", context );
+		runtime.executeSource( "mcpClient.withHandshake( true )", context );
 		// @formatter:on
 		signIn( "alice" );
 		signIn( "bob" );
@@ -429,11 +442,11 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 			"""
 				alice = { chatRequest: { getUserId: () => "alice" } }
 				bob   = { chatRequest: { getUserId: () => "bob" } }
-				client.send( "inbox", {}, alice )
-				client.send( "inbox", {}, bob )
-				client.send( "inbox", {}, alice )
-				aliceSession = client.getSessionId( "alice" )
-				bobSession   = client.getSessionId( "bob" )
+				mcpClient.send( "inbox", {}, alice )
+				mcpClient.send( "inbox", {}, bob )
+				mcpClient.send( "inbox", {}, alice )
+				aliceSession = mcpClient.getSessionId( "alice" )
+				bobSession   = mcpClient.getSessionId( "bob" )
 			""",
 			context
 		);
@@ -456,7 +469,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				try { client.completeAuthorization( "code", "never-started" ) } catch ( any e ) { unknownType = e.type }
+				try { mcpClient.completeAuthorization( "code", "never-started" ) } catch ( any e ) { unknownType = e.type }
 			""",
 			context
 		);
@@ -468,7 +481,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				try { client.completeAuthorization( cbCode, cbState ) } catch ( any e ) { usedType = e.type }
+				try { mcpClient.completeAuthorization( cbCode, cbState ) } catch ( any e ) { usedType = e.type }
 			""",
 			context
 		);
@@ -482,7 +495,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		this.fake.issParameter = true;
 		makeClient( "" );
 		// @formatter:off
-		runtime.executeSource( "started = client.startAuthorization( 'default' )\nauthUrl = started.authorizationUrl", context );
+		runtime.executeSource( "started = mcpClient.startAuthorization( 'default' )\nauthUrl = started.authorizationUrl", context );
 		// @formatter:on
 		Map<String, String> answer = this.fake.authorize( variables.getAsString( Key.of( "authUrl" ) ) );
 		variables.put( Key.of( "cbCode" ), answer.get( "code" ) );
@@ -491,7 +504,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				try { client.completeAuthorization( cbCode, cbState, "https://evil.example" ) } catch ( any e ) { wrongType = e.type }
+				try { mcpClient.completeAuthorization( cbCode, cbState, "https://evil.example" ) } catch ( any e ) { wrongType = e.type }
 			""",
 			context
 		);
@@ -503,7 +516,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// a server that says it sends the issuer, and does not, is refused too
 		makeClient( "" );
 		// @formatter:off
-		runtime.executeSource( "started = client.startAuthorization( 'default' )\nauthUrl = started.authorizationUrl", context );
+		runtime.executeSource( "started = mcpClient.startAuthorization( 'default' )\nauthUrl = started.authorizationUrl", context );
 		// @formatter:on
 		answer = this.fake.authorize( variables.getAsString( Key.of( "authUrl" ) ) );
 		variables.put( Key.of( "cbCode" ), answer.get( "code" ) );
@@ -511,7 +524,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				try { client.completeAuthorization( cbCode, cbState ) } catch ( any e ) { missingType = e.type }
+				try { mcpClient.completeAuthorization( cbCode, cbState ) } catch ( any e ) { missingType = e.type }
 			""",
 			context
 		);
@@ -524,7 +537,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 	public void testPreRegisteredClient() {
 		makeClient( ", clientId: \"my-registered-client\", clientSecret: \"s3cret\"" );
 		// @formatter:off
-		runtime.executeSource( "started = client.startAuthorization( 'default' )\nauthUrl = started.authorizationUrl", context );
+		runtime.executeSource( "started = mcpClient.startAuthorization( 'default' )\nauthUrl = started.authorizationUrl", context );
 		// @formatter:on
 		String url = variables.getAsString( Key.of( "authUrl" ) );
 		assertThat( url ).contains( "client_id=my-registered-client" );
@@ -537,7 +550,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		this.fake.cimd = true;
 		makeClient( ", clientMetadataUrl: \"https://app.example.com/oauth/client.json\"" );
 		// @formatter:off
-		runtime.executeSource( "started = client.startAuthorization( 'default' )\nauthUrl = started.authorizationUrl", context );
+		runtime.executeSource( "started = mcpClient.startAuthorization( 'default' )\nauthUrl = started.authorizationUrl", context );
 		// @formatter:on
 		assertThat( variables.getAsString( Key.of( "authUrl" ) ) ).contains( "client_id=https%3A%2F%2Fapp.example.com%2Foauth%2Fclient.json" );
 		assertThat( this.fake.registrations ).isEmpty();
@@ -551,7 +564,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				try { client.startAuthorization( "default" ) } catch ( any e ) { noClientType = e.type; noClientMessage = e.message }
+				try { mcpClient.startAuthorization( "default" ) } catch ( any e ) { noClientType = e.type; noClientMessage = e.message }
 			""",
 			context
 		);
@@ -568,7 +581,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		// @formatter:off
 		runtime.executeSource(
 			"""
-				try { client.startAuthorization( "default" ) } catch ( any e ) { pkceType = e.type }
+				try { mcpClient.startAuthorization( "default" ) } catch ( any e ) { pkceType = e.type }
 			""",
 			context
 		);
@@ -633,7 +646,7 @@ public class mcpOAuthTest extends BaseIntegrationTest {
 		runtime.executeSource(
 			"""
 				agent = aiAgent( name: "oauth-tools-test" )
-				agent.withMCPServer( client )
+				agent.withMCPServer( mcpClient )
 				toolNames = agent.getTools().map( t => t.getName() )
 			""",
 			context

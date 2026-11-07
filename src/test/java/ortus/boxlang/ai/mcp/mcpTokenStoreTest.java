@@ -176,6 +176,9 @@ public class mcpTokenStoreTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "errorType" ) ) ).isEqualTo( "FileMCPTokenStore.MissingDirectory" );
 	}
 
+	/**
+	 * @return A BoxLang expression that builds a JDBC store on its own table, so a test never sees another test's records
+	 */
 	private String jdbcStore() {
 		return "new " + PACKAGE + "JdbcMCPTokenStore( \"bxai_test\", \"mcp_oauth_" + Long.toHexString( System.nanoTime() ) + "\" )";
 	}

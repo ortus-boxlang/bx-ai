@@ -40,11 +40,25 @@ class implements="IMCPTokenStore" {
 		return this
 	}
 
+	/**
+	 * Read one record from the cache.
+	 *
+	 * @key The key it was saved under
+	 *
+	 * @return The saved struct, or an empty struct when there is none or it has expired
+	 */
 	struct function get( required string key ) {
 		var found = variables.cache.get( static.KEY_PREFIX & arguments.key ).orElse( javacast( "null", "" ) )
 		return isNull( found ) || !isStruct( found ) ? {} : found
 	}
 
+	/**
+	 * Save one record in the cache, replacing what is there.
+	 *
+	 * @key        The key to save it under
+	 * @value      The record
+	 * @ttlSeconds Seconds after which the cache forgets it, 0 for never
+	 */
 	void function set( required string key, required struct value, numeric ttlSeconds = 0 ) {
 		if ( arguments.ttlSeconds > 0 ) {
 			// BoxLang cache timeouts are in seconds
@@ -54,6 +68,11 @@ class implements="IMCPTokenStore" {
 		}
 	}
 
+	/**
+	 * Delete one record from the cache. Nothing happens when there is none.
+	 *
+	 * @key The key to delete
+	 */
 	void function remove( required string key ) {
 		variables.cache.clear( static.KEY_PREFIX & arguments.key )
 	}

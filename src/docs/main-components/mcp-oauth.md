@@ -15,12 +15,12 @@ You turn it on with `withOAuth()`. After that the client finds the authorization
 ## 🚀 Quick Start
 
 ```javascript
-client = MCP( "https://mail.example.com/mcp" ).withOAuth( {
+mcpClient = MCP( "https://mail.example.com/mcp" ).withOAuth( {
     redirectUri : "https://app.example.com/oauth/callback"
 } )
 
 // 1. Start the sign in and send the person to the address
-started = client.startAuthorization( "default" )
+started = mcpClient.startAuthorization( "default" )
 location( started.authorizationUrl )
 ```
 
@@ -28,14 +28,14 @@ At your callback route, when the authorization server sends the person back:
 
 ```javascript
 // https://app.example.com/oauth/callback
-signedIn = client.completeAuthorization( url.code, url.state, url.iss ?: "" )
+signedIn = mcpClient.completeAuthorization( url.code, url.state, url.iss ?: "" )
 ```
 
 From now on the client is signed in:
 
 ```javascript
-tools    = client.listTools()
-response = client.send( "inbox", {} )
+tools    = mcpClient.listTools()
+response = mcpClient.send( "inbox", {} )
 ```
 
 The tokens were saved in a [store](#-token-stores). By default that is the BoxLang cache, in memory, so they are gone when the process stops. Use a `file` or `jdbc` store, or one of your own, to keep them.
@@ -75,14 +75,14 @@ MCP( url ).withOAuth( {
 One client can serve many people. The `subject` option says whose tokens each call uses.
 
 ```javascript
-client = MCP( "https://mail.example.com/mcp" ).withOAuth( {
+mcpClient = MCP( "https://mail.example.com/mcp" ).withOAuth( {
     redirectUri : "https://app.example.com/oauth/callback",
     subject     : ( context ) => context.chatRequest.getUserId()
 } )
 
-client.startAuthorization( "alice" )        // Alice signs in
-client.isAuthorized( "alice" )              // true once she has
-client.isAuthorized( "bob" )                // false: Bob has not signed in
+mcpClient.startAuthorization( "alice" )        // Alice signs in
+mcpClient.isAuthorized( "alice" )              // true once she has
+mcpClient.isAuthorized( "bob" )                // false: Bob has not signed in
 ```
 
 - `send( tool, args, context )` takes a `context` struct. The tools an agent builds from an MCP server (`MCPTool`) pass `{ chatRequest }`, so `context.chatRequest.getUserId()` is the person talking to the agent.
@@ -152,9 +152,9 @@ agent = aiAgent(
 An agent lists the server's tools when it starts. If nobody has signed in yet the listing fails, the failure is logged, and the agent starts with no tools from that server. After signing in, hand the signed-in client to the agent again:
 
 ```javascript
-client = MCP( url ).withOAuth( { ... } )
+mcpClient = MCP( url ).withOAuth( { ... } )
 // ... sign in ...
-agent.withMCPServer( client )
+agent.withMCPServer( mcpClient )
 ```
 
 ## ⚠️ When Someone Must Sign In

@@ -47,6 +47,13 @@ class implements="IMCPTokenStore" {
 		return this
 	}
 
+	/**
+	 * Read one record from the table.
+	 *
+	 * @key The key it was saved under
+	 *
+	 * @return The saved struct, or an empty struct when there is none, it cannot be read or it has expired
+	 */
 	struct function get( required string key ) {
 		var rows = queryExecute(
 			"SELECT store_value, expires_at FROM #variables.table# WHERE store_key = :key",
@@ -68,6 +75,15 @@ class implements="IMCPTokenStore" {
 		return isStruct( value ) ? value : {}
 	}
 
+	/**
+	 * Save one record in the table, replacing what is there.
+	 *
+	 * @key        The key to save it under
+	 * @value      The record. Its JSON must fit in 8000 characters
+	 * @ttlSeconds Seconds after which the record expires, 0 for never
+	 *
+	 * @throws JdbcMCPTokenStore.TooLarge when the record does not fit
+	 */
 	void function set( required string key, required struct value, numeric ttlSeconds = 0 ) {
 		var serialized = jsonSerialize( arguments.value )
 		if ( len( serialized ) > 8000 ) {
@@ -85,6 +101,11 @@ class implements="IMCPTokenStore" {
 		)
 	}
 
+	/**
+	 * Delete one record from the table. Nothing happens when there is none.
+	 *
+	 * @key The key to delete
+	 */
 	void function remove( required string key ) {
 		queryExecute(
 			"DELETE FROM #variables.table# WHERE store_key = :key",
@@ -97,10 +118,16 @@ class implements="IMCPTokenStore" {
 	// Private Helpers
 	// -------------------------------------------------------------------------
 
+	/**
+	 * @return The current time as milliseconds since 1970
+	 */
 	private numeric function epochMillis() {
 		return createObject( "java", "java.lang.System" ).currentTimeMillis()
 	}
 
+	/**
+	 * Create the table when the datasource does not have it yet.
+	 */
 	private void function ensureTable() {
 		bx:dbinfo
 			name="tables"

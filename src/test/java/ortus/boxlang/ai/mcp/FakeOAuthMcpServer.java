@@ -82,6 +82,11 @@ public class FakeOAuthMcpServer {
 	private final Set<String>						refreshTokens		= ConcurrentHashMap.newKeySet();
 	private final Set<String>						clients				= ConcurrentHashMap.newKeySet();
 
+	/**
+	 * Start the server on a free local port. Its endpoints are listed in the class comment.
+	 *
+	 * @throws IOException when the port cannot be opened
+	 */
 	public FakeOAuthMcpServer() throws IOException {
 		this.server	= HttpServer.create( new InetSocketAddress( "127.0.0.1", 0 ), 0 );
 		this.port	= this.server.getAddress().getPort();
@@ -111,14 +116,23 @@ public class FakeOAuthMcpServer {
 		this.server.start();
 	}
 
+	/**
+	 * @return The address of the server, for example http://127.0.0.1:41233 (also the issuer of its authorization server)
+	 */
 	public String base() {
 		return "http://127.0.0.1:" + this.port;
 	}
 
+	/**
+	 * @return The address of the protected MCP endpoint, which is also the canonical resource
+	 */
 	public String resource() {
 		return base() + "/mcp";
 	}
 
+	/**
+	 * Stop the server.
+	 */
 	public void stop() {
 		this.server.stop( 0 );
 	}
@@ -159,6 +173,14 @@ public class FakeOAuthMcpServer {
 	// Endpoints
 	// -------------------------------------------------------------------------
 
+	/**
+	 * The protected MCP endpoint: 401 with a WWW-Authenticate challenge until the bearer token is one it issued, then answers initialize, tools/list and
+	 * tools/call.
+	 *
+	 * @param exchange The request
+	 *
+	 * @throws IOException when the answer cannot be written
+	 */
 	private void mcp( HttpExchange exchange ) throws IOException {
 		String	body	= new String( exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8 );
 		String	auth	= exchange.getRequestHeaders().getFirst( "Authorization" );
@@ -193,6 +215,13 @@ public class FakeOAuthMcpServer {
 		json( exchange, 200, reply );
 	}
 
+	/**
+	 * The token endpoint: trades a code (checking the PKCE verifier, redirect address, client and resource) or a refresh token for new tokens.
+	 *
+	 * @param exchange The request
+	 *
+	 * @throws IOException when the answer cannot be written
+	 */
 	private void token( HttpExchange exchange ) throws IOException {
 		Map<String, String> form = parseForm( new String( exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8 ) );
 		this.tokenRequests.add( form );
@@ -233,6 +262,13 @@ public class FakeOAuthMcpServer {
 		json( exchange, 400, "{\"error\":\"unsupported_grant_type\"}" );
 	}
 
+	/**
+	 * Issue a new access token and build the token endpoint's JSON answer.
+	 *
+	 * @param refresh The refresh token to send back, or null to send none (a refresh that does not rotate)
+	 *
+	 * @return The JSON text
+	 */
 	private String tokenAnswer( String refresh ) {
 		String access = "at-" + this.counter.incrementAndGet();
 		this.accessTokens.add( access );
@@ -244,6 +280,13 @@ public class FakeOAuthMcpServer {
 	// Helpers
 	// -------------------------------------------------------------------------
 
+	/**
+	 * The S256 code challenge of a PKCE verifier: base64url( SHA-256( verifier ) ).
+	 *
+	 * @param verifier The code verifier the client sent
+	 *
+	 * @return The code challenge
+	 */
 	private static String challengeOf( String verifier ) {
 		try {
 			byte[] digest = MessageDigest.getInstance( "SHA-256" ).digest( verifier.getBytes( StandardCharsets.US_ASCII ) );
@@ -253,6 +296,13 @@ public class FakeOAuthMcpServer {
 		}
 	}
 
+	/**
+	 * Read a form or a query string into a map, decoding the values.
+	 *
+	 * @param form The text, such as a=1&b=2
+	 *
+	 * @return The fields in the order they came
+	 */
 	private static Map<String, String> parseForm( String form ) {
 		Map<String, String> out = new LinkedHashMap<>();
 		if ( form == null || form.isEmpty() ) {
@@ -267,6 +317,15 @@ public class FakeOAuthMcpServer {
 		return out;
 	}
 
+	/**
+	 * Send a JSON answer and close the exchange.
+	 *
+	 * @param exchange The request
+	 * @param status   The HTTP status
+	 * @param body     The JSON text
+	 *
+	 * @throws IOException when the answer cannot be written
+	 */
 	private static void json( HttpExchange exchange, int status, String body ) throws IOException {
 		byte[] bytes = body.getBytes( StandardCharsets.UTF_8 );
 		exchange.getResponseHeaders().add( "Content-Type", "application/json" );
