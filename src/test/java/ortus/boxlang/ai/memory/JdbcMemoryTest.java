@@ -909,4 +909,30 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "failures" ) ) ).isEqualTo( 0 );
 		assertThat( variables.getAsInteger( Key.of( "kept" ) ) ).isEqualTo( 12 );
 	}
+
+	/**
+	 * Summarizing a conversation that is too short to summarize, or on a memory with no summary model, does nothing.
+	 * It must not empty the row: doSummarize() returns without touching the messages, so what is written back has to be
+	 * the row's own.
+	 */
+	@Test
+	@DisplayName( "Test JdbcMemory summarize leaves a short conversation of another scope as it was" )
+	public void testSummarizeShortScopeKeepsMessages() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "jdbc", key: "short-summary", config: { datasource: "bxai_test", summaryThreshold: 5 } )
+		    memory.clear( "u1", "c1" )
+		    memory.add( { role: "user", content: "hello" }, "u1", "c1" )
+		    memory.add( { role: "assistant", content: "hi" }, "u1", "c1" )
+
+		    memory.summarize( {}, "u1", "c1" )
+		    kept = memory.getAll( "u1", "c1" ).len()
+
+		    memory.clear( "u1", "c1" )
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "kept" ) ) ).isEqualTo( 2 );
+	}
 }
