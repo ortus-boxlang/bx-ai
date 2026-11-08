@@ -843,4 +843,70 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 
 		assertThat( variables.getAsInteger( Key.of( "unscopedCount" ) ) ).isEqualTo( 2 );
 	}
+
+	/**
+	 * Twelve threads add to one conversation that has no row yet, on one memory shared by all of them, as a served agent
+	 * is. Every message has to be kept and none of the threads may fail on the row that another one just created.
+	 */
+	@Test
+	@DisplayName( "Test JdbcMemory keeps every message when many threads add to one new conversation" )
+	public void testConcurrentAddsToOneNewConversation() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "jdbc", key: "concurrent-new", config: { datasource: "bxai_test" } )
+		    memory.clear( "u1", "c1" )
+
+		    launch = ( n ) => runAsync( () => memory.add( { role: "user", content: "message #n#" }, "u1", "c1" ) )
+		    futures = []
+		    for ( i = 1; i <= 12; i++ ) {
+		        futures.append( launch( i ) )
+		    }
+		    failures = 0
+		    futures.each( f => {
+		        try { f.get() } catch ( any e ) { failures++ }
+		    } )
+		    kept = memory.getAll( "u1", "c1" ).len()
+
+		    memory.clear( "u1", "c1" )
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "failures" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "kept" ) ) ).isEqualTo( 12 );
+	}
+
+	/**
+	 * The same, with a memory of its own in every thread: two servers' worth of instances in one process meet in the row.
+	 */
+	@Test
+	@DisplayName( "Test JdbcMemory keeps every message when separate instances add to one conversation" )
+	public void testConcurrentAddsFromSeparateInstances() {
+		runtime.executeSource(
+		    """
+		    reader = aiMemory( memory: "jdbc", key: "concurrent-many", config: { datasource: "bxai_test" } )
+		    reader.clear( "u1", "c1" )
+
+		    launch = ( n ) => runAsync( () => {
+		        own = aiMemory( memory: "jdbc", key: "concurrent-many", config: { datasource: "bxai_test" } )
+		        own.add( { role: "user", content: "message #n#" }, "u1", "c1" )
+		    } )
+		    futures = []
+		    for ( i = 1; i <= 12; i++ ) {
+		        futures.append( launch( i ) )
+		    }
+		    failures = 0
+		    futures.each( f => {
+		        try { f.get() } catch ( any e ) { failures++ }
+		    } )
+		    kept = reader.getAll( "u1", "c1" ).len()
+
+		    reader.clear( "u1", "c1" )
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "failures" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "kept" ) ) ).isEqualTo( 12 );
+	}
 }
