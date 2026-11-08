@@ -59,4 +59,15 @@ interface {
 	 */
 	boolean function hasCapability( required string capability );
 
+	/**
+	 * Returns true if this provider's chatStream() can finish a tool-call batch that was
+	 * suspended for human approval (via a `_resumeContext`), instead of replaying the turn
+	 * against the LLM. AiAgent.resumeStream() checks this before streaming a resume.
+	 *
+	 * BaseService supplies a structural default, so providers extending it need do nothing.
+	 *
+	 * @return boolean
+	 */
+	boolean function supportsStreamingToolResume();
+
 }
