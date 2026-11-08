@@ -270,8 +270,9 @@ class extends="BaseMemory" {
 
 	/**
 	 * Add a message. For another user or conversation the row is read, the message appended, the limit applied and the
-	 * row written back, all in this call. Two processes adding to the same conversation at the same instant can lose a
-	 * message, as they can for this memory's own scope.
+	 * row written back, all in this call, under a lock that every memory in this process shares for that row, so threads
+	 * (and memories) adding to the same conversation at the same instant keep all their messages. Two processes adding
+	 * to the same conversation at the same instant can still lose a message: the lock does not reach across them.
 	 *
 	 * @message The message to add
 	 * @userId   Optional per-call user identifier
@@ -283,9 +284,11 @@ class extends="BaseMemory" {
 		if ( isOwnScope( arguments.userId, arguments.conversationId ) ) {
 			return super.add( arguments.message, arguments.userId, arguments.conversationId )
 		}
-		var messages = readScope( arguments.userId, arguments.conversationId )
-		messages.append( processMessage( arguments.message ), true )
-		writeScope( arguments.userId, arguments.conversationId, trimmed( messages ) )
+		lock name="#scopeLockName( arguments.userId, arguments.conversationId )#" type="exclusive" timeout="30" {
+			var messages = readScope( arguments.userId, arguments.conversationId )
+			messages.append( processMessage( arguments.message ), true )
+			writeScope( arguments.userId, arguments.conversationId, trimmed( messages ) )
+		}
 		return this
 	}
 
@@ -303,9 +306,11 @@ class extends="BaseMemory" {
 			return super.setSystemMessage( arguments.message, arguments.userId, arguments.conversationId )
 		}
 		// drop the old one first, as BaseMemory does, so there is never more than one
-		var messages = readScope( arguments.userId, arguments.conversationId ).filter( m => m.role != "system" )
-		messages.prepend( { role: "system", content: arguments.message, timestamp: now() } )
-		writeScope( arguments.userId, arguments.conversationId, trimmed( messages ) )
+		lock name="#scopeLockName( arguments.userId, arguments.conversationId )#" type="exclusive" timeout="30" {
+			var messages = readScope( arguments.userId, arguments.conversationId ).filter( m => m.role != "system" )
+			messages.prepend( { role: "system", content: arguments.message, timestamp: now() } )
+			writeScope( arguments.userId, arguments.conversationId, trimmed( messages ) )
+		}
 		return this
 	}
 
@@ -321,7 +326,9 @@ class extends="BaseMemory" {
 		if ( isOwnScope( arguments.userId, arguments.conversationId ) ) {
 			return super.removeSystemMessage( arguments.userId, arguments.conversationId )
 		}
-		writeScope( arguments.userId, arguments.conversationId, readScope( arguments.userId, arguments.conversationId ).filter( m => m.role != "system" ) )
+		lock name="#scopeLockName( arguments.userId, arguments.conversationId )#" type="exclusive" timeout="30" {
+			writeScope( arguments.userId, arguments.conversationId, readScope( arguments.userId, arguments.conversationId ).filter( m => m.role != "system" ) )
+		}
 		return this
 	}
 
@@ -442,19 +449,52 @@ class extends="BaseMemory" {
 				{ datasource: variables.datasource }
 			)
 		} else {
-			queryExecute(
-				"INSERT INTO #variables.table# (memory_key, user_id, conversation_id, memory_data, metadata_data, config_data)
-				 VALUES (:key, :userId, :conversationId, :messages, '{}', :config)",
-				{
-					key: params.key,
-					userId: uid,
-					conversationId: cid,
-					messages: params.messages,
-					config: jsonSerialize( variables.config )
-				},
-				{ datasource: variables.datasource }
-			)
+			try {
+				queryExecute(
+					"INSERT INTO #variables.table# (memory_key, user_id, conversation_id, memory_data, metadata_data, config_data)
+					 VALUES (:key, :userId, :conversationId, :messages, '{}', :config)",
+					{
+						key: params.key,
+						userId: uid,
+						conversationId: cid,
+						messages: params.messages,
+						config: jsonSerialize( variables.config )
+					},
+					{ datasource: variables.datasource }
+				)
+			} catch ( any e ) {
+				// another process created the row between the check and the insert: the row is there now, so this
+				// write is an update. If it is still not there, the insert failed for another reason.
+				if ( !scopeExists( uid, cid ) ) {
+					rethrow
+				}
+				queryExecute(
+					"UPDATE #variables.table# SET memory_data = :messages, updated_date = CURRENT_TIMESTAMP" & where,
+					params,
+					{ datasource: variables.datasource }
+				)
+			}
 		}
+	}
+
+	/**
+	 * The name of the lock that guards the read-modify-write of one row. It is built from where the row lives (the
+	 * datasource, the table and the key) and whose it is, and not from this instance, so every JdbcMemory in the
+	 * process that reaches the same row takes the same lock.
+	 *
+	 * @userId   The per-call user identifier (empty = the one this memory was built with)
+	 * @conversationId The per-call conversation identifier (empty = the one this memory was built with)
+	 *
+	 * @return A lock name
+	 */
+	private string function scopeLockName( string userId = "", string conversationId = "" ) {
+		return "bxai-jdbc-" & hash( jsonSerialize( [
+			variables.datasource,
+			variables.table,
+			variables.key,
+			resolveUserId( arguments.userId ),
+			resolveConversationId( arguments.conversationId )
+		] ) )
 	}
 
 	/**
