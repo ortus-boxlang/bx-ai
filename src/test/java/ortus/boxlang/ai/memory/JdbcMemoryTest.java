@@ -625,4 +625,139 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( stateB.getAsString( Key.of( "agent" ) ) ).isEqualTo( "bob" );
 		assertThat( stateB.getAsString( Key.of( "task" ) ) ).isEqualTo( "analyze" );
 	}
+
+	/**
+	 * One memory object, three scopes: two conversations of one user and a second user. Before the fix all three read
+	 * the same row, so c2 and the other user saw c1's messages. Also checks the rows themselves: the key carries the
+	 * scope (memory_key is the primary key, so it has to) and user_id and conversation_id are filled in.
+	 */
+	@Test
+	@DisplayName( "Test JdbcMemory keeps each user and conversation in a row of its own when ids are passed per call" )
+	public void testPerCallScopesAreSeparate() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "jdbc", key: "scoped-jdbc", config: { datasource: "bxai_test" } )
+		    memory.clear( "u1", "c1" )
+		    memory.clear( "u1", "c2" )
+		    memory.add( { role: "user", content: "alpha" }, "u1", "c1" )
+		    memory.add( { role: "user", content: "alpha2" }, "u1", "c1" )
+		    memory.add( { role: "user", content: "beta" }, "u1", "c2" )
+
+		    c1 = memory.getAll( "u1", "c1" ).len()
+		    c2 = memory.getAll( "u1", "c2" ).len()
+		    otherUser = memory.getAll( "u2", "c1" ).len()
+		    unscoped = memory.getAll().len()
+
+		    rows = queryExecute(
+		        "SELECT user_id, conversation_id FROM bx_ai_memories WHERE memory_key LIKE 'scoped-jdbc::%' ORDER BY conversation_id",
+		        {},
+		        { datasource: "bxai_test" }
+		    )
+		    rowCount = rows.recordCount
+		    firstRowConversation = rows.conversation_id[ 1 ]
+		    firstRowUser = rows.user_id[ 1 ]
+
+		    memory.clear( "u1", "c1" )
+		    memory.clear( "u1", "c2" )
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "c1" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsInteger( Key.of( "c2" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "otherUser" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "unscoped" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "rowCount" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsString( Key.of( "firstRowConversation" ) ) ).isEqualTo( "c1" );
+		assertThat( variables.getAsString( Key.of( "firstRowUser" ) ) ).isEqualTo( "u1" );
+	}
+
+	/**
+	 * The messages of another scope live in the database, not on the object: a new instance with the same key reads them
+	 * back, and clear() for one conversation deletes that row and leaves the other conversation's row.
+	 */
+	@Test
+	@DisplayName( "Test JdbcMemory reads a scope back from the database in a new instance, and clear only removes that scope" )
+	public void testPerCallScopesSurviveANewInstance() {
+		runtime.executeSource(
+		    """
+		    first = aiMemory( memory: "jdbc", key: "scoped-reload", config: { datasource: "bxai_test" } )
+		    first.clear( "u1", "c1" )
+		    first.clear( "u1", "c2" )
+		    first.add( { role: "user", content: "alpha" }, "u1", "c1" )
+		    first.add( { role: "user", content: "beta" }, "u1", "c2" )
+
+		    second = aiMemory( memory: "jdbc", key: "scoped-reload", config: { datasource: "bxai_test" } )
+		    readC1 = second.getAll( "u1", "c1" ).len()
+		    readC2 = second.getAll( "u1", "c2" ).len()
+
+		    second.clear( "u1", "c1" )
+		    afterClearC1 = second.getAll( "u1", "c1" ).len()
+		    afterClearC2 = second.getAll( "u1", "c2" ).len()
+
+		    third = aiMemory( memory: "jdbc", key: "scoped-reload", config: { datasource: "bxai_test" } )
+		    thirdC1 = third.getAll( "u1", "c1" ).len()
+		    thirdC2 = third.getAll( "u1", "c2" ).len()
+		    third.clear( "u1", "c2" )
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "readC1" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "readC2" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "afterClearC1" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "afterClearC2" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "thirdC1" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "thirdC2" ) ) ).isEqualTo( 1 );
+	}
+
+	/**
+	 * summarize() for a scope other than the memory's own used to throw JdbcMemory.UnsupportedScope. It now works on the
+	 * row for that scope. The row for c2 is empty here, so there is nothing to summarize; what is checked is that the
+	 * call does not throw and that this memory's own message is still there afterwards.
+	 */
+	@Test
+	@DisplayName( "Test JdbcMemory summarize for another scope no longer throws and leaves the memory's own messages alone" )
+	public void testSummarizeOtherScope() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "jdbc", key: "scoped-summarize", userId: "u1", conversationId: "c1", config: { datasource: "bxai_test" } )
+		    memory.clear()
+		    memory.add( { role: "user", content: "mine" } )
+		    memory.summarize( {}, "u1", "c2" )
+		    mine = memory.getAll().len()
+		    memory.clear()
+		    memory.clear( "u1", "c2" )
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "mine" ) ) ).isEqualTo( 1 );
+	}
+
+	/**
+	 * Nothing about another scope is cached in the process. The reader is created before the writer writes and still
+	 * sees the new message, as a second process on the same database would.
+	 */
+	@Test
+	@DisplayName( "Test JdbcMemory reads a scope afresh on every call, so a second instance sees what the first wrote" )
+	public void testPerCallScopeIsReadAfreshEachCall() {
+		runtime.executeSource(
+		    """
+		    reader = aiMemory( memory: "jdbc", key: "scoped-fresh", config: { datasource: "bxai_test" } )
+		    writer = aiMemory( memory: "jdbc", key: "scoped-fresh", config: { datasource: "bxai_test" } )
+		    reader.clear( "u1", "c1" )
+
+		    before = reader.getAll( "u1", "c1" ).len()
+		    writer.add( { role: "user", content: "from the other instance" }, "u1", "c1" )
+		    after = reader.getAll( "u1", "c1" ).len()
+
+		    reader.clear( "u1", "c1" )
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "before" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "after" ) ) ).isEqualTo( 1 );
+	}
 }
