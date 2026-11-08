@@ -626,6 +626,11 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( stateB.getAsString( Key.of( "task" ) ) ).isEqualTo( "analyze" );
 	}
 
+	/**
+	 * One memory object, three scopes: two conversations of one user and a second user. Before the fix all three read
+	 * the same row, so c2 and the other user saw c1's messages. Also checks the rows themselves: the key carries the
+	 * scope (memory_key is the primary key, so it has to) and user_id and conversation_id are filled in.
+	 */
 	@Test
 	@DisplayName( "Test JdbcMemory keeps each user and conversation in a row of its own when ids are passed per call" )
 	public void testPerCallScopesAreSeparate() {
@@ -667,6 +672,10 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "firstRowUser" ) ) ).isEqualTo( "u1" );
 	}
 
+	/**
+	 * The messages of another scope live in the database, not on the object: a new instance with the same key reads them
+	 * back, and clear() for one conversation deletes that row and leaves the other conversation's row.
+	 */
 	@Test
 	@DisplayName( "Test JdbcMemory reads a scope back from the database in a new instance, and clear only removes that scope" )
 	public void testPerCallScopesSurviveANewInstance() {
@@ -702,6 +711,11 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "thirdC2" ) ) ).isEqualTo( 1 );
 	}
 
+	/**
+	 * summarize() for a scope other than the memory's own used to throw JdbcMemory.UnsupportedScope. It now works on the
+	 * row for that scope. The row for c2 is empty here, so there is nothing to summarize; what is checked is that the
+	 * call does not throw and that this memory's own message is still there afterwards.
+	 */
 	@Test
 	@DisplayName( "Test JdbcMemory summarize for another scope no longer throws and leaves the memory's own messages alone" )
 	public void testSummarizeOtherScope() {
@@ -721,6 +735,10 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "mine" ) ) ).isEqualTo( 1 );
 	}
 
+	/**
+	 * Nothing about another scope is cached in the process. The reader is created before the writer writes and still
+	 * sees the new message, as a second process on the same database would.
+	 */
 	@Test
 	@DisplayName( "Test JdbcMemory reads a scope afresh on every call, so a second instance sees what the first wrote" )
 	public void testPerCallScopeIsReadAfreshEachCall() {
