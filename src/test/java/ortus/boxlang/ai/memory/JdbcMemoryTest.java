@@ -760,4 +760,87 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "before" ) ) ).isEqualTo( 0 );
 		assertThat( variables.getAsInteger( Key.of( "after" ) ) ).isEqualTo( 1 );
 	}
+
+	/**
+	 * A parent agent that delegates to a sub-agent hands over the user and the conversation it runs for. The sub-agent's
+	 * jdbc memory then keeps one row per person and conversation, instead of one row for everyone who ever delegated.
+	 */
+	@Test
+	@DisplayName( "Test a delegated sub-agent keeps memory per user and conversation of its parent" )
+	public void testSubAgentMemoryFollowsParentUserAndConversation() {
+		runtime.executeSource(
+		    """
+		    probe = aiMemory( memory: "jdbc", key: "sub-scope", config: { datasource: "bxai_test" } )
+		    probe.clear( "alice", "c1" )
+		    probe.clear( "bob", "c2" )
+		    probe.clear( "", "" )
+
+		    worker = aiAgent(
+		        name: "worker",
+		        description: "Does the work",
+		        model: aiModel( provider: "mock", options: { providerOptions: { responses: [ "worked" ] } } ),
+		        memory: aiMemory( memory: "jdbc", key: "sub-scope", config: { datasource: "bxai_test" } )
+		    )
+		    call = { toolCalls: [ { name: "delegate_to_worker", arguments: { task: "do it" } } ] }
+		    boss = aiAgent(
+		        name: "boss",
+		        model: aiModel( provider: "mock", options: { providerOptions: { responses: [ call, "done", call, "done" ] } } ),
+		        subAgents: [ worker ]
+		    )
+
+		    boss.run( "go", {}, { userId: "alice", conversationId: "c1" } )
+		    boss.run( "go", {}, { userId: "bob", conversationId: "c2" } )
+
+		    aliceCount  = probe.getAll( "alice", "c1" ).len()
+		    bobCount    = probe.getAll( "bob", "c2" ).len()
+		    sharedCount = probe.getAll( "", "" ).len()
+
+		    probe.clear( "alice", "c1" )
+		    probe.clear( "bob", "c2" )
+		    probe.clear( "", "" )
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "aliceCount" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsInteger( Key.of( "bobCount" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsInteger( Key.of( "sharedCount" ) ) ).isEqualTo( 0 );
+	}
+
+	/**
+	 * Without a user or a conversation on the parent, delegation behaves as it always did: the sub-agent uses its own
+	 * options, here none, so everything lands in the one unscoped row.
+	 */
+	@Test
+	@DisplayName( "Test a delegated sub-agent without ids on the parent still works unscoped" )
+	public void testSubAgentWithoutIdsStaysUnscoped() {
+		runtime.executeSource(
+		    """
+		    probe = aiMemory( memory: "jdbc", key: "sub-unscoped", config: { datasource: "bxai_test" } )
+		    probe.clear( "", "" )
+
+		    worker = aiAgent(
+		        name: "worker",
+		        description: "Does the work",
+		        model: aiModel( provider: "mock", options: { providerOptions: { responses: [ "worked" ] } } ),
+		        memory: aiMemory( memory: "jdbc", key: "sub-unscoped", config: { datasource: "bxai_test" } )
+		    )
+		    call = { toolCalls: [ { name: "delegate_to_worker", arguments: { task: "do it" } } ] }
+		    boss = aiAgent(
+		        name: "boss",
+		        model: aiModel( provider: "mock", options: { providerOptions: { responses: [ call, "done" ] } } ),
+		        subAgents: [ worker ]
+		    )
+
+		    boss.run( "go" )
+		    // Unscoped memory is the instance's own state, so read it through a fresh instance after the run
+		    fresh = aiMemory( memory: "jdbc", key: "sub-unscoped", config: { datasource: "bxai_test" } )
+		    unscopedCount = fresh.getAll().len()
+		    fresh.clear()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "unscopedCount" ) ) ).isEqualTo( 2 );
+	}
 }

@@ -1741,8 +1741,24 @@ class extends="AiBaseRunnable" {
 			name: toolName,
 			description: toolDescription,
 			callable: ( required task ) => {
+				// Carry the parent's user and conversation into the sub-agent, so its memory
+				// is scoped to the same person and conversation instead of one shared row.
+				// The request is injected by ClosureTool as `_chatRequest`. It is read from
+				// the arguments scope rather than declared, so it never appears in the tool
+				// schema the model sees. Only ids that are actually set are passed; with
+				// none, the sub-agent falls back to its own agent-level options as before.
+				var scope = {}
+				if ( arguments.keyExists( "_chatRequest" ) ) {
+					var parentRequest = arguments._chatRequest
+					if ( len( parentRequest.getUserId() ) ) {
+						scope.userId = parentRequest.getUserId()
+					}
+					if ( len( parentRequest.getConversationId() ) ) {
+						scope.conversationId = parentRequest.getConversationId()
+					}
+				}
 				// Invoke the sub-agent with the task
-				return subAgent.run( task )
+				return subAgent.run( task, {}, scope )
 			}
 		).describeArg( "task", "The task or question to delegate to the sub-agent" )
 	}
