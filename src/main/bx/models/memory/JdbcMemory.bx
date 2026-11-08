@@ -530,9 +530,14 @@ class extends="BaseMemory" {
 			try {
 				// doSummarize() leaves the old summary message out of the text it sends and adds currentSummary instead, so
 				// the summary already in the row is put back into currentSummary or it would be lost
-				var earlier = readScope( uid, cid ).filter( m => m.isSummary ?: false )
+				var held = readScope( uid, cid )
+				var earlier = held.filter( m => m.isSummary ?: false )
 				variables.currentSummary = earlier.len() ? earlier.last().content.replace( "[Previous conversation summary]: ", "" ) : ""
 				variables.hasSummary = earlier.len() > 0
+				// doSummarize() returns without touching the messages when there is nothing to summarize (a short
+				// conversation) or no summary model to do it with. What is written back is then these, the row's own,
+				// and never this memory's own messages, which belong to another scope and are usually empty.
+				variables.messages = held
 				doSummarize( arguments.config, uid, cid )
 				writeScope( uid, cid, variables.messages )
 			} finally {
