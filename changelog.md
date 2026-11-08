@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🐛 Fixed
 
+- **A sub-agent now runs for the same user and conversation as its parent.** The delegate tool called `subAgent.run( task )` with no ids, so every sub-agent with its own memory used the empty user and conversation: with jdbc memory, one row shared by everyone who ever delegated to it. The delegate tool now reads `userId` and `conversationId` from the parent's request and passes them on. With none set, nothing changes. `AiBaseRequest` has a new `conversationId` property and `getConversationId()`, next to `userId`.
+
 - **MCP OAuth in a web request.** The token request of a sign in was sent with an empty body when the app ran as a web server, because the form fields were held in an argument called `form`, which is a reserved scope there. It is renamed, so signing in works under CommandBox and the MiniServer, not only in a script.
 
 ## [3.7.0] - 2026-11-04
