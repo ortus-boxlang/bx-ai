@@ -935,4 +935,18 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 
 		assertThat( variables.getAsInteger( Key.of( "kept" ) ) ).isEqualTo( 2 );
 	}
+
+	@Test
+	@DisplayName( "Test JdbcMemory summarize keeps each conversation's summary to itself" )
+	public void testSummarizeKeepsSummaryPerConversation() {
+		runtime.executeSource( SummarizeScopeScript.of( "aiMemory( memory: \"jdbc\", key: \"summarize-scope\", config: { datasource: \"bxai_test\" } )" ),
+		    context );
+
+		assertThat( variables.getAsBoolean( Key.of( "bobPromptHasPrevious" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "alicePromptHasPrevious" ) ) ).isTrue();
+		// a summary message and the two kept
+		assertThat( variables.getAsInteger( Key.of( "aliceCount" ) ) ).isEqualTo( 3 );
+		assertThat( variables.getAsInteger( Key.of( "bobCount" ) ) ).isEqualTo( 3 );
+	}
+
 }

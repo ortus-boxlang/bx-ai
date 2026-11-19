@@ -177,6 +177,32 @@ abstract class implements="IAiMemory" {
 	}
 
 	/**
+	 * A call with no ids resolves to the ids this memory was built with, so it is the own scope. That is why code that
+	 * never passes ids behaves exactly as it did before.
+	 *
+	 * @userId The per-call userId (empty = use instance default)
+	 * @conversationId The per-call conversationId (empty = use instance default)
+	 *
+	 * @return True when the call names the user and conversation this memory was built with, or neither
+	 */
+	private boolean function isOwnScope( string userId = "", string conversationId = "" ) {
+		return resolveUserId( arguments.userId ) == variables.userId && resolveConversationId( arguments.conversationId ) == variables.conversationId
+	}
+
+	/**
+	 * The summary a conversation already carries, read from its own tagged summary message. variables.currentSummary
+	 * belongs to this memory's own scope only, so a summarize for another user or conversation reads it from here.
+	 *
+	 * @messages The messages of the conversation being summarized
+	 *
+	 * @return The text of its latest summary, or an empty string when it has none
+	 */
+	private string function previousSummaryOf( required array messages ) {
+		var earlier = arguments.messages.filter( msg => msg.isSummary ?: false )
+		return earlier.len() ? earlier.last().content.replace( "[Previous conversation summary]: ", "" ) : ""
+	}
+
+	/**
 	 * Build an instance-wide lock name for serializing summarize() calls.
 	 * doSummarize() writes its result into the single shared variables.messages field
 	 * regardless of which (userId, conversationId) scope it's summarizing, so the lock
@@ -964,9 +990,13 @@ abstract class implements="IAiMemory" {
 		// Build summarization prompt
 		var summaryPrompt = static.SUMMARY_PROMPT;
 
-		// Include previous summary if exists, for progressive accumulation
-		if ( variables.currentSummary.len() ) {
-			summaryPrompt &= "Previous conversation summary:\n#variables.currentSummary#\n\nNew messages to add to summary:\n";
+		// Include previous summary if exists, for progressive accumulation. variables.currentSummary is this memory's own
+		// scope's; another user's or conversation's summary is the one kept in its own messages, so one conversation's
+		// summary is never sent to the model while summarizing another
+		var ownScope = isOwnScope( arguments.userId, arguments.conversationId )
+		var previousSummary = ownScope ? variables.currentSummary : previousSummaryOf( nonSystemMessages )
+		if ( previousSummary.len() ) {
+			summaryPrompt &= "Previous conversation summary:\n#previousSummary#\n\nNew messages to add to summary:\n";
 		} else {
 			summaryPrompt &= "Messages to summarize:\n";
 		}
@@ -1004,8 +1034,11 @@ abstract class implements="IAiMemory" {
 				timestamp: now()
 			} );
 
-			variables.currentSummary = summary;
-			variables.hasSummary = true;
+			// only the own scope's summary is held on the object; another scope's lives in its messages
+			if ( ownScope ) {
+				variables.currentSummary = summary;
+				variables.hasSummary = true;
+			}
 
 			// Add back the recent messages
 			variables.messages.append( toKeep, true );

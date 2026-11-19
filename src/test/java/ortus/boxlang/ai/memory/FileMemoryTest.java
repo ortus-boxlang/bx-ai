@@ -551,4 +551,19 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		assertThat( stateY.getAsString( Key.of( "owner" ) ) ).isEqualTo( "bob" );
 	}
 
+	@Test
+	@DisplayName( "Test FileMemory summarize keeps each conversation's summary to itself" )
+	public void testSummarizeKeepsSummaryPerConversation() {
+		runtime.executeSource(
+		    SummarizeScopeScript
+		        .of( "aiMemory( memory: \"file\", key: \"summarize-scope\", config: { directoryPath: \"" + tempDir.toString().replace( "\\", "/" ) + "\" } )" ),
+		    context );
+
+		assertThat( variables.getAsBoolean( Key.of( "bobPromptHasPrevious" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "alicePromptHasPrevious" ) ) ).isTrue();
+		// a summary message and the two kept
+		assertThat( variables.getAsInteger( Key.of( "aliceCount" ) ) ).isEqualTo( 3 );
+		assertThat( variables.getAsInteger( Key.of( "bobCount" ) ) ).isEqualTo( 3 );
+	}
+
 }

@@ -333,16 +333,6 @@ class extends="BaseMemory" {
 	}
 
 	/**
-	 * A call with no ids resolves to the ids this memory was built with, so it is the own scope. That is why code that
-	 * never passes ids behaves exactly as it did before.
-	 *
-	 * @return True when the call names the user and conversation this memory was built with, or neither
-	 */
-	private boolean function isOwnScope( string userId = "", string conversationId = "" ) {
-		return resolveUserId( arguments.userId ) == variables.userId && resolveConversationId( arguments.conversationId ) == variables.conversationId
-	}
-
-	/**
 	 * The same limit BaseMemory.trim() applies, for messages that are not in variables.messages: the system message
 	 * does not count, and only the newest maxMessages of the others are kept. A maxMessages of 0 means no limit.
 	 *
@@ -513,11 +503,12 @@ class extends="BaseMemory" {
 	/**
 	 * Summarizes the row for another user or conversation.
 	 *
-	 * doSummarize() reads the messages through getAll() (so from the row) but builds its result in variables.messages,
-	 * variables.currentSummary and variables.hasSummary, which belong to this memory's own scope. They are saved first
-	 * and put back in the finally block, so summarizing another conversation never changes the one this memory holds.
+	 * doSummarize() reads the messages through getAll() (so from the row) and the row's earlier summary from the row's
+	 * own summary message, but builds its result in variables.messages, which belongs to this memory's own scope. It is
+	 * saved first and put back in the finally block, so summarizing another conversation never changes the one this
+	 * memory holds.
 	 *
-	 * The lock is the one summarize() takes for the own scope: doSummarize() writes into those shared fields, so every
+	 * The lock is the one summarize() takes for the own scope: doSummarize() writes into variables.messages, so every
 	 * summarize on this instance has to wait for the others.
 	 */
 	private IAiMemory function summarizeScope( struct config, string userId, string conversationId ) {
@@ -525,15 +516,8 @@ class extends="BaseMemory" {
 		var cid = resolveConversationId( arguments.conversationId )
 		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
 			var ownMessages = variables.messages
-			var ownSummary = variables.currentSummary
-			var ownHasSummary = variables.hasSummary
 			try {
-				// doSummarize() leaves the old summary message out of the text it sends and adds currentSummary instead, so
-				// the summary already in the row is put back into currentSummary or it would be lost
 				var held = readScope( uid, cid )
-				var earlier = held.filter( m => m.isSummary ?: false )
-				variables.currentSummary = earlier.len() ? earlier.last().content.replace( "[Previous conversation summary]: ", "" ) : ""
-				variables.hasSummary = earlier.len() > 0
 				// doSummarize() returns without touching the messages when there is nothing to summarize (a short
 				// conversation) or no summary model to do it with. What is written back is then these, the row's own,
 				// and never this memory's own messages, which belong to another scope and are usually empty.
@@ -542,8 +526,6 @@ class extends="BaseMemory" {
 				writeScope( uid, cid, variables.messages )
 			} finally {
 				variables.messages = ownMessages
-				variables.currentSummary = ownSummary
-				variables.hasSummary = ownHasSummary
 			}
 		}
 		return this
