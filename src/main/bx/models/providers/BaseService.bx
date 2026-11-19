@@ -164,6 +164,94 @@ abstract class implements="IAiService" {
 	}
 
 	/**
+	 * Decide which arguments a tool call is actually invoked with once beforeToolCall has run.
+	 *
+	 * Middleware can move the arguments in either of two places: the normalized `ctx.toolArgs`
+	 * (GuardrailMiddleware-style rewrites) or the provider-shaped tool call itself (`input`,
+	 * `parameters`, `function.arguments`). HumanInTheLoopMiddleware's "edit" decision now writes
+	 * BOTH, so the normalized slot is authoritative whenever it moved off the pre-hook snapshot.
+	 * The native slot is consulted only when the normalized one did not move — the case of a
+	 * third-party middleware that edits the tool call directly.
+	 *
+	 * Comparison is by canonical JSON, not equals(): BoxLang's null sentinel compares by identity,
+	 * so a struct holding a JSON null (`{ memo: null }`) never equals() its own duplicate() and
+	 * would report every such tool call as "edited".
+	 *
+	 * A non-struct `ctx.toolArgs` (a middleware serialized it, or deleted the key) is treated as no
+	 * edit rather than as an empty argument set: the tool runs with the native args, never with {}.
+	 *
+	 * @toolContext  The context struct that was handed to beforeToolCall
+	 * @originalArgs A deep snapshot of the arguments taken BEFORE the hook fired
+	 * @nativeArgs   Returns the provider-shaped arguments as a struct; called only when needed
+	 *               (Bedrock's accessor re-parses OpenAI-shaped JSON and logs on failure)
+	 */
+	public struct function resolveToolArgs(
+		required struct toolContext,
+		required struct originalArgs,
+		required function nativeArgs
+	){
+		var normalized = arguments.toolContext.toolArgs ?: "";
+		if ( !isStruct( normalized ) ) {
+			var recovered = arguments.nativeArgs();
+			return isStruct( recovered ) ? recovered : arguments.originalArgs;
+		}
+		var originalJSON = "";
+		try {
+			originalJSON = jsonSerialize( arguments.originalArgs );
+		} catch ( any e ) {
+			writeLog(
+				text : "resolveToolArgs: could not serialize the pre-hook argument snapshot: #local.e.message#",
+				type : "warning",
+				log  : "ai"
+			);
+			return local.normalized;
+		}
+		if ( !sameToolArgs( normalized, originalJSON ) ) {
+			return normalized;
+		}
+		var providerArgs = arguments.nativeArgs();
+		if ( isStruct( providerArgs ) && !sameToolArgs( providerArgs, originalJSON ) ) {
+			return providerArgs;
+		}
+		return normalized;
+	}
+
+	/**
+	 * Structural equality against an already-serialized snapshot, via canonical JSON (jsonSerialize
+	 * emits struct keys sorted). Compared with compare() rather than `==`: `==` is case-insensitive
+	 * for strings, so an edit that only changes the case of a value ("paris" -> "Paris") would be
+	 * reported as no edit and silently dropped. Anything unserializable is reported as different,
+	 * which errs toward honouring the candidate as an edit.
+	 */
+	private boolean function sameToolArgs( required any candidate, required string originalJSON ){
+		try {
+			return compare( jsonSerialize( arguments.candidate ), arguments.originalJSON ) == 0;
+		} catch ( any e ) {
+			return false;
+		}
+	}
+
+	/**
+	 * Whether this provider's chatStream() can finish a tool-call batch that was suspended for
+	 * human approval, instead of replaying the turn against the LLM.
+	 *
+	 * Detected structurally: a provider supports it exactly when it has a resumeToolBatchStream()
+	 * to hand the resume ledger to, so providers gain support by implementing that method — there
+	 * is no per-provider flag to keep in sync. Providers that override chatStream() wholesale
+	 * WITHOUT honouring `_resumeContext` must override this to return false, otherwise the
+	 * inherited method is a false positive.
+	 *
+	 * AiAgent.resumeStream() calls this before handing a resume context to stream(); a provider
+	 * that returns false gets a StreamingResumeUnsupported error rather than a silent LLM replay
+	 * that never runs the approved tools.
+	 *
+	 * @return boolean
+	 */
+	public boolean function supportsStreamingToolResume() {
+		return structKeyExists( variables, "resumeToolBatchStream" )
+	}
+
+	/**
 	 * ---------------------------------------------------------------------------------------------------------
 	 * Interface Methods
 	 * ---------------------------------------------------------------------------------------------------------

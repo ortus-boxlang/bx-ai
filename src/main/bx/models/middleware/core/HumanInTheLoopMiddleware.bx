@@ -503,12 +503,16 @@ class extends="BaseAiMiddleware" {
 	}
 
 	/**
-	 * Patch a pending tool call's live arguments in place with human-edited values.
-	 * Each provider reads the tool call's arguments back from the same struct reference
-	 * AFTER beforeToolCall returns, so in-place mutation is picked up automatically — but
-	 * the field/shape differs per provider, so detect which one is present.
+	 * Patch a pending tool call's arguments with human-edited values.
+	 *
+	 * Written to BOTH places a provider may read them from: the normalized `context.toolArgs`
+	 * (what BaseService::resolveToolArgs treats as authoritative) and the provider-shaped tool
+	 * call. Writing only the native slot lost the human's edit whenever an earlier middleware had
+	 * already rewritten `toolArgs` — the resolver saw the normalized slot had moved and never
+	 * looked at the tool call.
 	 */
 	private void function applyEditedArguments( required struct context, required struct newArgs ) {
+		arguments.context[ "toolArgs" ] = arguments.newArgs
 		if ( isNull( arguments.context.toolCall ) ) {
 			return
 		}
