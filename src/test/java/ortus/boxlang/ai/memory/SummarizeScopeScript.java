@@ -53,4 +53,56 @@ final class SummarizeScopeScript {
 		       """.formatted( memoryExpression );
 	}
 
+	/**
+	 * A memory bound to alice/c1 is summarized, then built again from scratch (a restart, or another server) and
+	 * summarized after more messages. The second prompt must still carry the first summary: it is stored with the
+	 * conversation, so a new instance finds it. Before, it was read from a property that a new instance starts empty.
+	 *
+	 * @param memoryExpression BoxLang expression that builds the memory bound to alice/c1 with the same key each time
+	 *
+	 * @return The script, which sets rebuiltPromptHasPrevious
+	 */
+	static String afterRebuild( String memoryExpression ) {
+		return """
+		       import bxModules.bxai.models.providers.MockService;
+
+		       config = { provider : "mock", model : "mock-model", keepRecent : 2 }
+		       fill = ( memory, tag, count ) => {
+		           for ( var i = 1; i <= count; i++ ) {
+		               memory.add( { role : ( i %% 2 ? "user" : "assistant" ), content : "#tag#-#i#" } )
+		           }
+		       }
+
+		       first = %1$s
+		       first.clear()
+		       fill( first, "alice", 6 )
+		       first.summarize( config )
+
+		       rebuilt = %1$s
+		       fill( rebuilt, "alice-more", 4 )
+		       MockService::clearRecorded()
+		       rebuilt.summarize( config )
+		       rebuiltPromptHasPrevious = MockService::getRecorded().last().messages.last().content.find( "Previous conversation summary" ) > 0
+		       rebuilt.clear()
+		       """.formatted( memoryExpression );
+	}
+
+	/**
+	 * A conversation shorter than keepRecent, named by the per-call ids on a memory with no ids of its own, is
+	 * summarized. There is nothing to summarize, so it must keep its one message.
+	 *
+	 * @param memoryExpression BoxLang expression that builds the memory, with no user or conversation of its own
+	 *
+	 * @return The script, which sets shortCount
+	 */
+	static String shortConversation( String memoryExpression ) {
+		return """
+		       memory = %s
+		       memory.add( { role : "user", content : "hello" }, "carol", "c3" )
+		       memory.summarize( { provider : "mock", model : "mock-model", keepRecent : 2 }, "carol", "c3" )
+		       shortCount = memory.getAll( "carol", "c3" ).len()
+		       memory.clear( "carol", "c3" )
+		       """.formatted( memoryExpression );
+	}
+
 }

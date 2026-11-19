@@ -566,4 +566,26 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "bobCount" ) ) ).isEqualTo( 3 );
 	}
 
+	@Test
+	@DisplayName( "Test FileMemory summarize finds the earlier summary after the memory is built again" )
+	public void testSummarizeAfterRebuild() {
+		runtime.executeSource( SummarizeScopeScript
+		    .afterRebuild( "aiMemory( memory: \"file\", key: \"summarize-rebuild\", userId: \"alice\", conversationId: \"c1\", config: { directoryPath: \""
+		        + tempDir.toString().replace( "\\", "/" ) + "\" } )" ),
+		    context );
+
+		assertThat( variables.getAsBoolean( Key.of( "rebuiltPromptHasPrevious" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Test FileMemory summarize leaves a short conversation of another scope alone" )
+	public void testSummarizeShortConversation() {
+		runtime.executeSource(
+		    SummarizeScopeScript.shortConversation(
+		        "aiMemory( memory: \"file\", key: \"summarize-short\", config: { directoryPath: \"" + tempDir.toString().replace( "\\", "/" ) + "\" } )" ),
+		    context );
+
+		assertThat( variables.getAsInteger( Key.of( "shortCount" ) ) ).isEqualTo( 1 );
+	}
+
 }

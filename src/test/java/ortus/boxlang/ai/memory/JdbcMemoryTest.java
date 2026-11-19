@@ -949,4 +949,25 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "bobCount" ) ) ).isEqualTo( 3 );
 	}
 
+	@Test
+	@DisplayName( "Test JdbcMemory summarize finds the earlier summary after the memory is built again" )
+	public void testSummarizeAfterRebuild() {
+		runtime.executeSource(
+		    SummarizeScopeScript.afterRebuild(
+		        "aiMemory( memory: \"jdbc\", key: \"summarize-rebuild\", userId: \"alice\", conversationId: \"c1\", config: { datasource: \"bxai_test\" } )" ),
+		    context );
+
+		assertThat( variables.getAsBoolean( Key.of( "rebuiltPromptHasPrevious" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Test JdbcMemory summarize leaves a short conversation of another scope alone" )
+	public void testSummarizeShortConversation() {
+		runtime.executeSource(
+		    SummarizeScopeScript.shortConversation( "aiMemory( memory: \"jdbc\", key: \"summarize-short\", config: { datasource: \"bxai_test\" } )" ),
+		    context );
+
+		assertThat( variables.getAsInteger( Key.of( "shortCount" ) ) ).isEqualTo( 1 );
+	}
+
 }

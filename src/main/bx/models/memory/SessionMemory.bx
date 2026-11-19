@@ -316,22 +316,25 @@ class extends="WindowMemory" {
 	}
 
 	/**
-	 * AI-summarize older messages and persist the result to session storage.
+	 * Writes the summarized conversation back to its own session entry.
 	 *
-	 * @config Optional struct with keys: keepRecent, model, provider
-	 * @userId   Optional per-call user identifier (overrides instance default)
-	 * @conversationId Optional per-call conversation identifier (overrides instance default)
-	 *
-	 * @return IAiMemory for chaining
+	 * @userId The per-call userId (empty = use instance default)
+	 * @conversationId The per-call conversationId (empty = use instance default)
+	 * @messages The conversation's messages after summarizing
 	 */
-	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
-		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
-			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
-			var sessionKey = buildSessionKey( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
-			ensureSessionStorage( sessionKey )
-			session[ sessionKey ].messages = variables.messages
-		}
-		return this
+	private void function saveSummarized( string userId = "", string conversationId = "", required array messages ) {
+		var sessionKey = buildSessionKey( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
+		ensureSessionStorage( sessionKey )
+		session[ sessionKey ].messages = arguments.messages
+	}
+
+	/**
+	 * Every conversation's summary is read from its own stored summary message, never kept on the object.
+	 *
+	 * @return False
+	 */
+	private boolean function keepsSummaryOnObject() {
+		return false
 	}
 
 	/**
