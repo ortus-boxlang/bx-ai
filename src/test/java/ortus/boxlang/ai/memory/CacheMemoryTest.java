@@ -685,4 +685,34 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		assertThat( ( ( Number ) variables.get( Key.of( "timeout" ) ) ).longValue() ).isEqualTo( 300L );
 	}
 
+	@Test
+	@DisplayName( "Test CacheMemory summarize keeps each conversation's summary to itself" )
+	public void testSummarizeKeepsSummaryPerConversation() {
+		runtime.executeSource( SummarizeScopeScript.of( "aiMemory( \"cache\", \"summarize-scope\" )" ), context );
+
+		assertThat( variables.getAsBoolean( Key.of( "bobPromptHasPrevious" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "alicePromptHasPrevious" ) ) ).isTrue();
+		// a summary message and the two kept
+		assertThat( variables.getAsInteger( Key.of( "aliceCount" ) ) ).isEqualTo( 3 );
+		assertThat( variables.getAsInteger( Key.of( "bobCount" ) ) ).isEqualTo( 3 );
+	}
+
+	@Test
+	@DisplayName( "Test CacheMemory summarize finds the earlier summary after the memory is built again" )
+	public void testSummarizeAfterRebuild() {
+		runtime.executeSource(
+		    SummarizeScopeScript.afterRebuild( "aiMemory( memory: \"cache\", key: \"summarize-rebuild\", userId: \"alice\", conversationId: \"c1\" )" ),
+		    context );
+
+		assertThat( variables.getAsBoolean( Key.of( "rebuiltPromptHasPrevious" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Test CacheMemory summarize leaves a short conversation of another scope alone" )
+	public void testSummarizeShortConversation() {
+		runtime.executeSource( SummarizeScopeScript.shortConversation( "aiMemory( \"cache\", \"summarize-short\" )" ), context );
+
+		assertThat( variables.getAsInteger( Key.of( "shortCount" ) ) ).isEqualTo( 1 );
+	}
+
 }
