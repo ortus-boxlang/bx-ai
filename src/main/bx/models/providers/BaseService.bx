@@ -923,16 +923,76 @@ abstract class implements="IAiService" {
 	private any function extractJSONContent( required string content ){
 		var result = new JSONExtractorTransformer( { strictMode : false } ).transform( arguments.content );
 
-		// Extraction found nothing usable - warn so this degraded path isn't silent, but never throw
+		// An empty struct is ambiguous in lenient mode: it is both "nothing was found" AND the
+		// correct parse of a literal `{}` reply. Ask the strict/returnRaw extractor which one it
+		// was — it throws only when there is genuinely nothing to extract — so a model that
+		// legitimately answered `{}` no longer logs a false warning.
 		if ( isStruct( result ) && structIsEmpty( result ) && len( arguments.content.trim() ) > 0 ) {
-			writeLog(
-				text: "aiChat returnFormat json: no parseable JSON found in model reply (first 200 chars): " & left( arguments.content, 200 ),
-				type: "warn",
-				log : "ai"
-			);
+			// `local.` on every read/write: inside a catch block an unqualified identifier resolves
+			// to variables/methods BEFORE locals, so a bare `foundJSON = false` here would write to
+			// the instance scope and leave the local still true — the warning would never fire.
+			local.foundJSON = true;
+			try {
+				new JSONExtractorTransformer( { strictMode : true, returnRaw : true } ).transform( arguments.content );
+			} catch( any e ){
+				local.foundJSON = false;
+			}
+			if ( !local.foundJSON ) {
+				writeLog(
+					text: "aiChat returnFormat json: no parseable JSON found in model reply (first 200 chars): " & left( arguments.content, 200 ),
+					type: "warn",
+					log : "ai"
+				);
+			}
 		}
 
 		return result;
+	}
+
+	/**
+	 * Parse the raw structured-output payload into a native value.
+	 *
+	 * Fast path: strip a markdown fence and deserialize directly, which covers providers that
+	 * hand back clean JSON (Claude/Bedrock re-serialise the tool_use input). Slow path: fall back
+	 * to the lenient JSONExtractorTransformer so a reply like "Here is the result: {...}" still
+	 * populates instead of blowing up in jsonDeserialize().
+	 *
+	 * @content The raw content from the LLM
+	 * @chatRequest The request carrying the structured output definition
+	 *
+	 * @throws StructuredOutputError if no parseable JSON can be recovered from the content
+	 *
+	 * @return The parsed value - struct, array, or scalar
+	 */
+	private any function parseStructuredOutputContent( required string content, required AiChatRequest chatRequest ){
+		var jsonContent = extractFromCodeBlock( arguments.content, "json" ).trim();
+
+		if( isJSON( jsonContent ) ){
+			return jsonDeserialize( jsonContent );
+		}
+
+		// Lenient recovery - prose-wrapped JSON, stray fences, leading/trailing commentary.
+		// strictMode + returnRaw make "found nothing" an exception rather than an empty struct,
+		// so a model reply of "Here you go: {}" populates an empty struct instead of being
+		// mistaken for a failed extraction.
+		try {
+			var rawJSON = new JSONExtractorTransformer( { strictMode : true, returnRaw : true } ).transform( arguments.content );
+			// Deserialize INSIDE the same try: returnRaw hands back a string the extractor believed
+			// was JSON, and a malformed one threw a bare JSON parse error past this method instead
+			// of the documented StructuredOutputError.
+			return jsonDeserialize( rawJSON );
+		} catch( any e ){
+			writeLog(
+				text: "Structured output requested but no parseable JSON found in model reply (first 200 chars): " & left( arguments.content, 200 ),
+				type: "error",
+				log : "ai"
+			);
+			throw(
+				type   : "StructuredOutputError",
+				message: "Model reply contained no parseable JSON for the requested structured output.",
+				detail : "Reply (first 500 chars): " & left( arguments.content, 500 ) & " | Extractor: " & e.message
+			);
+		}
 	}
 
 	/**
@@ -942,12 +1002,15 @@ abstract class implements="IAiService" {
 	 * @content The JSON content from the LLM
 	 * @chatRequest The request containing the structured output definition
 	 *
+	 * @throws StructuredOutputError if the content carries no parseable JSON
+	 *
 	 * @return Populated class instance, struct, or array
 	 */
 	private any function populateStructuredOutput( required string content, required AiChatRequest chatRequest ){
 
-		// Extract from code block if needed
-		var jsonContent = extractFromCodeBlock( arguments.content, "json" );
+		// Parse leniently: fenced, bare, or prose-wrapped JSON all land as a native value here,
+		// so every SchemaBuilder call below receives already-parsed data instead of a raw string.
+		var jsonContent = parseStructuredOutputContent( arguments.content, arguments.chatRequest );
 		// The structured output definition: class, struct, or array
 		var outputDefinition = arguments.chatRequest.getStructuredOutputDefinition();
 
@@ -966,10 +1029,10 @@ abstract class implements="IAiService" {
 		// Array of class instances
 		// Note: Arrays are wrapped in { items: [...] } due to OpenAI requirement
 		if( isArray( outputDefinition ) ){
-			var data = jsonDeserialize( jsonContent );
+			var data = jsonContent;
 			// Extract the items array from the wrapper object
-			var itemsArray = data.keyExists( "items" ) ? data.items : data;
-			return SchemaBuilder::populateArray( outputDefinition.first(), jsonSerialize( itemsArray ) );
+			var itemsArray = ( isStruct( data ) && data.keyExists( "items" ) ) ? data.items : data;
+			return SchemaBuilder::populateArray( outputDefinition.first(), itemsArray );
 		}
 
 		// Struct schema - check if it's a merged schema
@@ -978,7 +1041,7 @@ abstract class implements="IAiService" {
 			if( outputDefinition.keyExists( "_originalSchemas" ) && !outputDefinition._originalSchemas.isEmpty() ) {
 				// Merged schema - deserialize and populate each property
 				var result = {};
-				var data = jsonDeserialize( jsonContent );
+				var data = jsonContent;
 
 				// Populate each named schema
 				for( var schemaInfo in outputDefinition._originalSchemas ) {
@@ -1019,7 +1082,7 @@ abstract class implements="IAiService" {
 
 			if( hasComplexValues ) {
 				var result = {};
-				var data = jsonDeserialize( jsonContent );
+				var data = jsonContent;
 
 				for( var key in outputDefinition ) {
 					if( !data.keyExists( key ) ) continue;
@@ -1043,7 +1106,7 @@ abstract class implements="IAiService" {
 		}
 
 		// Raw JSON schema - just deserialize
-		return jsonDeserialize( jsonContent );
+		return jsonContent;
 	}
 
 	/**
