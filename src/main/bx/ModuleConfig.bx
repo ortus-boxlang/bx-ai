@@ -106,15 +106,6 @@ class {
 	 * Called by the ModuleService on module registration
 	 */
 	function configure(){
-		// The JVM already registers BoxAiService through SPI. MatchBox loads the
-		// module's precompiled plugin before configure(), on the service's owner VM.
-		if ( boxRuntime.getFunctionService().hasGlobalFunction( "bxAiNativeServerMap" ) ) {
-			variables.globalServices = [ new bxModules.bxai.models.registry.NativeBoxAiService( bxAiNativeServerMap() ) ]
-			variables.classProviders.append( {
-				name: "java:ortus.boxlang.ai.util.AtomicValues",
-				provider: () => new bxModules.bxai.models.util.NativeAtomicValues()
-			} )
-		}
 		settings = {
 			// The default provider LLM AI: openai, deepseek, etc
 			provider : "openai",

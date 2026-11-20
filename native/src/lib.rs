@@ -1,6 +1,7 @@
 //! Native backing map for BoxAiService. One instance per declaring module/VM.
 //! Only capability tables are process-global. No VM value or mutable registry is.
 mod atomic_integer;
+mod atomic_values;
 use matchbox_plugin_sdk::*;
 use std::{cell::RefCell, collections::HashMap, ffi::c_void, sync::OnceLock};
 
@@ -10,6 +11,7 @@ struct Api {
     collections: &'static CollectionsV1,
     types: &'static TypesV1,
     integers: &'static IntegersV1,
+    state: &'static ObjectStateV1,
 }
 static API: OnceLock<Api> = OnceLock::new();
 struct Entry {
@@ -161,7 +163,16 @@ pub unsafe extern "C" fn matchbox_plugin_init_v1(host: *const HostV1, ctx: Conte
             types: require!(require_types),
             collections: require!(require_collections),
             integers: require!(require_integers),
+            state: require!(require_object_state),
         });
+        if let Err(status) = atomic_values::register(host, ctx) {
+            return status;
+        }
+        let services = require!(require_global_services);
+        let status = (services.declare)(ctx, Text::new("models/registry/NativeBoxAiService.bx"));
+        if status != 0 {
+            return status;
+        }
         let factory = Operation {
             name: "bxAiNativeServerMap",
             params: &[],

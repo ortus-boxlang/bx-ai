@@ -45,16 +45,22 @@ unsafe extern "C" fn create(
     unsafe {
         guarded(ctx, values, out, || {
             let call = Call::new(ctx, values, args, len);
-            let integers = API.get().ok_or("bx-ai capabilities unavailable")?.integers;
-            let initial = i32::try_from(call.integer(integers, call.argument(0)?)?)
-                .map_err(|_| "Expected a signed 32-bit integer")?;
-            let data = Box::into_raw(Box::new(AtomicI32::new(initial))).cast();
-            let result = call.object_new(COUNTER, data, drop_counter, r#"{"get":"bxAiCounterGet","incrementAndGet":"bxAiCounterIncrement","decrementAndGet":"bxAiCounterDecrement"}"#);
-            if result.is_err() {
-                drop_counter(data);
-            }
-            result
+            new_counter(&call, call.argument(0)?)
         })
+    }
+}
+
+pub(super) fn new_counter(call: &Call<'_>, value: Value) -> Result<Value, String> {
+    unsafe {
+        let integers = API.get().ok_or("bx-ai capabilities unavailable")?.integers;
+        let initial = i32::try_from(call.integer(integers, value)?)
+            .map_err(|_| "Expected a signed 32-bit integer")?;
+        let data = Box::into_raw(Box::new(AtomicI32::new(initial))).cast();
+        let result = call.object_new(COUNTER, data, drop_counter, r#"{"get":"bxAiCounterGet","incrementAndGet":"bxAiCounterIncrement","decrementAndGet":"bxAiCounterDecrement"}"#);
+        if result.is_err() {
+            drop_counter(data);
+        }
+        result
     }
 }
 

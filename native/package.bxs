@@ -1,0 +1,72 @@
+/**
+ * Build one installable bx-ai ZIP for the Rust host target. Run after
+ * ./gradlew shadowJar: boxlang native/package.bxs
+ *
+ * MATCHBOX_SDK selects a local matchbox-plugin-sdk directory. Relative paths
+ * are resolved from the bx-ai root. build/module is never modified.
+ */
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+
+function run( required string executable, required array commandArgs ) {
+	var result = systemExecute( name = executable, arguments = commandArgs, timeout = 1800 );
+	if ( result.exitCode != 0 ) {
+		throw( message = "#executable# failed (#result.exitCode#): #result.error##result.output#" );
+	}
+	return result.output;
+}
+
+root      = Path::of( getCurrentTemplatePath() ).getParent().getParent();
+moduleDir = root.resolve( "build/module" ).toString();
+buildDir  = root.resolve( "build/bxai-cargo" ).toString();
+outputDir = root.resolve( "build/distributions" );
+sdk       = root.resolve( getSystemSetting( "MATCHBOX_SDK", "../matchbox/crates/matchbox-plugin-sdk" ) ).normalize();
+if ( !fileExists( moduleDir & "/models/registry/NativeBoxAiService.bx" ) || !directoryExists( moduleDir & "/libs" ) || directoryList( moduleDir & "/libs", false, "name", "*.jar" ).isEmpty() ) {
+	throw( message = "Build the JVM module with ./gradlew shadowJar first." );
+}
+
+hostLines = run( "rustc", [ "-vV" ] ).listToArray( char( 10 ) ).filter( line => line.startsWith( "host: " ) );
+if ( hostLines.isEmpty() ) {
+	throw( message = "No host triple in rustc -vV output." );
+}
+target = hostLines[ 1 ].listRest( " " ).trim();
+if ( target.contains( "-linux-" ) ) {
+	library = "libbx_ai_native.so";
+} else if ( target.endsWith( "-apple-darwin" ) ) {
+	library = "libbx_ai_native.dylib";
+} else {
+	throw( message = "Unsupported host for native bx-ai packaging: #target#" );
+}
+
+run( "cargo", [
+	"build", "--release", "--offline", "--locked", "--target", target, "--target-dir", buildDir,
+	"--manifest-path", root.resolve( "native/Cargo.toml" ).toString(),
+	"--config", "patch.crates-io.matchbox-plugin-sdk.path=" & jsonSerialize( sdk.toString() )
+] );
+
+// Keep the staging tree and ZIP on the destination filesystem for atomic publication.
+if ( !directoryExists( outputDir.toString() ) ) {
+	directoryCreate( outputDir.toString(), true );
+}
+staging = outputDir.resolve( "stage-" & createUUID() );
+directoryCreate( staging.toString() );
+try {
+	combined = staging.resolve( "bxai" ).toString();
+	directoryCopy( moduleDir, combined, true );
+	directoryCreate( combined & "/native", true, true );
+	artifact = "native/" & library;
+	fileCopy( buildDir & "/" & target & "/release/" & library, combined & "/" & artifact );
+	manifest = jsonDeserialize( fileRead( combined & "/box.json" ) );
+	manifest.matchbox.artifacts[ target ] = {
+		"abi": 1, "path": artifact, "sha256": lCase( hash( fileReadBinary( combined & "/" & artifact ), "SHA-256" ) )
+	};
+	fileWrite( combined & "/box.json", jsonSerialize( data = manifest, pretty = true ) & char( 10 ) );
+	temporaryZip = staging.resolve( "combined.zip" );
+	zipPath      = outputDir.resolve( "bx-ai-#manifest.version#-#target#.zip" );
+	compress( format = "zip", source = combined, destination = temporaryZip.toString(), includeBaseFolder = false );
+	Files::move( temporaryZip, zipPath, [ StandardCopyOption.ATOMIC_MOVE ] castAs "java.nio.file.CopyOption[]" );
+	println( zipPath.toString() );
+} finally {
+	directoryDelete( staging.toString(), true );
+}

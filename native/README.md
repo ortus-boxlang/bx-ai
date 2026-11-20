@@ -1,17 +1,17 @@
 # Native bx-ai service (MatchBox, no JNI)
 
-`BoxAiService.java` is still the JVM service provider. For a combined package, MatchBox loads the precompiled plugin, then `ModuleConfig.bx` declares a `NativeBoxAiService` using its `bxAiNativeServerMap()` factory. Both consumers call `getBoxRuntime().getGlobalService("aiService")`; there is no per-request runtime switch. This requires the native module service lifecycle on the local `feature/bx-ai-changes` MatchBox branch. A Java class import is not a service lookup.
+`BoxAiService.java` is still the JVM service provider. For a combined package, The precompiled plugin declares `models/registry/NativeBoxAiService.bx` through `matchbox.global-services.v1`. MatchBox constructs the service before `onLoad()` and shuts it down on unload or failed activation. The shared `ModuleConfig.bx` does not detect either backend. Both consumers call `getBoxRuntime().getGlobalService("aiService")`; there is no per-request runtime switch. Use MatchBox's `feature/native-class-providers` branch until the required SDK and host capabilities are released. A Java class import is not a service lookup.
 
 ## Build and check locally
 
-From the bx-ai checkout with a JDK and Rust toolchain available:
+From the bx-ai checkout with JVM BoxLang, a JDK and a Rust toolchain available:
 
 ```bash
 ./gradlew shadowJar
-native/package.sh
+boxlang native/package.bxs
 ```
 
-`package.sh` uses the sibling MatchBox SDK by default; set `MATCHBOX_SDK` to choose another local SDK checkout. It writes a target-specific ZIP in `build/distributions/` containing the complete JVM module, shared `.bx` files, native library, target, ABI and SHA-256. `build/module` remains the ordinary JVM staging directory. Linux x86-64 GNU is tested. No consumer Cargo build or startup download is needed.
+`package.bxs` uses the sibling MatchBox SDK by default; set `MATCHBOX_SDK` to choose another local SDK checkout. It writes a target-specific ZIP in `build/distributions/` containing the complete JVM module, shared `.bx` files, native library, target, ABI and SHA-256. `build/module` remains the ordinary JVM staging directory. Linux x86-64 GNU is tested. No consumer Cargo build or startup download is needed.
 
 Extract the combined ZIP into an empty `bxai/` directory. With a fresh runtime home, run `matchbox --module /path/to/bxai src/test/bx/mcp/serviceRegistryContract.bxs`. On JVM BoxLang install that same directory as `$BOXLANG_HOME/modules/bxai` and run `boxlang src/test/bx/mcp/serviceRegistryContract.bxs`. Run `src/test/bx/mcp/atomicStatsContract.bxs` the same way to check the stats factory and reset semantics. `src/test/bx/mcp/namedServerContract.bxs` now also passes on no-JNI MatchBox: it constructs the real server, registers a closure, and makes two direct JSON-RPC tool calls through separate named lookups. These scripts do not exercise HTTP.
 
@@ -24,4 +24,4 @@ Extract the combined ZIP into an empty `bxai/` directory. With a fresh runtime h
 
 ## MCP statistics
 
-Both stats classes import the bx-ai-owned `ortus.boxlang.ai.util.AtomicValues`. `integer(initial)` returns a JVM `AtomicInteger` or a native signed 32-bit counter (`get`, `incrementAndGet`, `decrementAndGet`). The native operations use sequentially consistent atomics and wrap on overflow. `reference(initial)` returns a JVM `AtomicReference` or a GC-traced MatchBox cell with `get` and `set`. The native cell only holds values in its owning VM and never serializes or moves a timestamp to another worker. These factories do not register any `java.util.*` names.
+Both stats classes import the bx-ai-owned `ortus.boxlang.ai.util.AtomicValues`. `integer(initial)` returns a JVM `AtomicInteger` or a native signed 32-bit counter (`get`, `incrementAndGet`, `decrementAndGet`). The native operations use sequentially consistent atomics and wrap on overflow. `reference(initial)` returns a JVM `AtomicReference` or a GC-traced MatchBox cell with `get` and `set`. The native cell only holds values in its owning VM and never serializes or moves a timestamp to another worker. The Rust plugin declares the exact `java:ortus.boxlang.ai.util.AtomicValues` provider during initialization. No BoxLang wrapper or descriptor entry is needed for this class. The plugin requires MatchBox's ABI-1 `matchbox.class-providers.v1` and `matchbox.object-state.v1` capabilities; a host without them cannot load this version. Use the matching SDK when building with `MATCHBOX_SDK`. The JVM class is unchanged. These factories do not register any `java.util.*` names; the `aiService` startup and shutdown lifecycle is separate.

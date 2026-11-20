@@ -81,7 +81,13 @@ class {
 		return response.content;
 	}
 
-	/** Dispatch a MatchBox routed HTTP event on the VM that owns the named server. */
+	/**
+	 * Dispatch a routed HTTP request on the VM that owns the named server.
+	 * Write the response status, body and headers to the same event.
+	 *
+	 * @event MatchBox HTTP route event.
+	 * @serverName Name of the registered MCP server.
+	 */
 	static void function processRoutedHttp( required any event, required string serverName ) {
 		var headers = arguments.event.getHTTPHeaders()
 		var result = processWithTransport( static.httpTransport, {
