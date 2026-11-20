@@ -569,4 +569,39 @@ public class SummaryMemoryTest extends BaseIntegrationTest {
 		assertThat( countAfterSecond ).isAtMost( 4 ); // summary + threshold messages
 	}
 
+	@Test
+	@DisplayName( "Test SummaryMemory keeps each user and conversation apart" )
+	public void testConversationIsolation() {
+		runtime.executeSource(
+		    ConversationIsolationScript.of( "aiMemory( memory: \"summary\", key: \"isolation\", config: { maxMessages: 50, summaryThreshold: 2 } )" ),
+		    context );
+
+		ConversationIsolationScript.assertIsolated( variables );
+	}
+
+	@Test
+	@DisplayName( "Test SummaryMemory summarizes only the conversation that reached its limit" )
+	public void testAutoSummarizePerConversation() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "summary", key: "auto-per-conversation", config: {
+		        maxMessages: 4, summaryThreshold: 2, summaryProvider: "mock", summaryModel: "mock-model"
+		    } )
+		    memory.add( "bob-1", "bob", "c2" )
+		    memory.add( "bob-2", "bob", "c2" )
+		    for ( i = 1; i <= 4; i++ ) {
+		        memory.add( "alice-#i#", "alice", "c1" )
+		    }
+		    aliceSummaries = memory.getAll( "alice", "c1" ).filter( m => m.isSummary ?: false ).len()
+		    bob = memory.getAll( "bob", "c2" ).map( m => m.content ).toList()
+		    ownCount = memory.getAll().len()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "aliceSummaries" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsString( Key.of( "bob" ) ) ).isEqualTo( "bob-1,bob-2" );
+		assertThat( variables.getAsInteger( Key.of( "ownCount" ) ) ).isEqualTo( 0 );
+	}
+
 }

@@ -308,15 +308,6 @@ class extends="BaseMemory" {
 	}
 
 	/**
-	 * Every conversation's summary is read from its own stored summary message, never kept on the object.
-	 *
-	 * @return False
-	 */
-	private boolean function keepsSummaryOnObject() {
-		return false
-	}
-
-	/**
 	 * --------------------------------------------------------------------------
 	 * Private Helpers
 	 * --------------------------------------------------------------------------

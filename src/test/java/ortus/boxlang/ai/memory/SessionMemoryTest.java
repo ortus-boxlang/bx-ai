@@ -471,4 +471,12 @@ public class SessionMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "shortCount" ) ) ).isEqualTo( 1 );
 	}
 
+	@Test
+	@DisplayName( "Test SessionMemory keeps each user and conversation apart" )
+	public void testConversationIsolation() {
+		runtime.executeSource( ConversationIsolationScript.of( "aiMemory( \"session\", \"isolation\" )" ), context );
+
+		ConversationIsolationScript.assertIsolated( variables );
+	}
+
 }

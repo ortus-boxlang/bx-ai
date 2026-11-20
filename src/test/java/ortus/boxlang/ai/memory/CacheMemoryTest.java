@@ -715,4 +715,12 @@ public class CacheMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "shortCount" ) ) ).isEqualTo( 1 );
 	}
 
+	@Test
+	@DisplayName( "Test CacheMemory keeps each user and conversation apart" )
+	public void testConversationIsolation() {
+		runtime.executeSource( ConversationIsolationScript.of( "aiMemory( \"cache\", \"isolation\" )" ), context );
+
+		ConversationIsolationScript.assertIsolated( variables );
+	}
+
 }
