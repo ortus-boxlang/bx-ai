@@ -81,6 +81,29 @@ class {
 		return response.content;
 	}
 
+	/** Dispatch a MatchBox routed HTTP event on the VM that owns the named server. */
+	static void function processRoutedHttp( required any event, required string serverName ) {
+		var headers = arguments.event.getHTTPHeaders()
+		var result = processWithTransport( static.httpTransport, {
+			serverName: arguments.serverName,
+			method: arguments.event.getHTTPMethod(),
+			body: arguments.event.getHTTPContent(),
+			headers: headers,
+			params: arguments.event.getQueryParams(),
+			origin: headers[ "Origin" ] ?: "",
+			acceptHeader: headers[ "Accept" ] ?: "application/json",
+			requestId: headers[ "X-Request-ID" ] ?: createUUID(),
+			metadata: { protocol: "http", remoteAddr: arguments.event.getRemoteAddr(),
+				userAgent: headers[ "User-Agent" ] ?: "", requestUri: arguments.event.getPath(), requestTime: now() }
+		} )
+		arguments.event.setHTTPStatus( result.statusCode )
+		arguments.event.renderText( result.content )
+		for ( var headerName in result.headers ) {
+			arguments.event.setHTTPHeader( headerName, result.headers[ headerName ] )
+		}
+		arguments.event.setHTTPHeader( "Content-Type", result.contentType )
+	}
+
 	/**
 	 * Start STDIO transport and process requests in a loop
 	 * This is the entry point for command-line MCP servers

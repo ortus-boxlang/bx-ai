@@ -24,11 +24,15 @@ probe=$(mktemp -d)
 mkdir -p "$probe/site" "$probe/module-home/modules/bxai"
 cp src/test/bx/mcp/http/{Application.bx,mcp.bxm} "$probe/site/"
 unzip -q "$zip" -d "$probe/module-home/modules/bxai"
-BOXLANG_HOME="$probe/module-home" MATCHBOX_HOME="$probe/runtime" "$matchbox_server" \
+MATCHBOX_HOME="$probe/module-home" "$matchbox_server" \
   --host 127.0.0.1 --port 18964 --webroot "$probe/site"
 ```
 
 Run the same Python probe as above. The no-JNI standalone server and JVM MiniServer passed against the same combined package. The native test used one application VM, not multiple workers. No external provider or image service participates.
+
+## MatchBox: routed MCP dispatch
+
+Copy `routed-mcp.bxs` to an isolated application directory. Extract the combined bx-ai ZIP to `$MATCHBOX_HOME/modules/bxai` in a fresh runtime home. Run `matchbox_server --app /path/to/routed-mcp.bxs` and `python3 src/test/bx/mcp/probes/http_smoke.py --tools-only` (default loopback port 18964). Use a fresh process each time. `processRoutedHttp(event, name)` uses the real HTTP processor on the route callback's VM; rendering a view would use a different VM. For current MatchBox builds, the module home variable is `MATCHBOX_HOME`.
 
 ## MatchBox: routed VM ownership only
 
