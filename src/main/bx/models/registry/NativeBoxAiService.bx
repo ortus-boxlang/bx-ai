@@ -1,0 +1,41 @@
+/** MatchBox service facade. Only constructed when the bx-ai native plugin is installed. */
+class {
+	function init( required any serverMap ) {
+		variables.servers = arguments.serverMap
+		variables.logger = getBoxRuntime().getLoggingService().getLogger( "ai" )
+		return this
+	}
+
+	string function getName() { return "aiService" }
+	function getLogger() { return variables.logger }
+	void function onConfigurationLoad() {}
+	void function onStartup() { variables.logger.debug( "+ AI Service started" ) }
+	void function onShutdown( required boolean force ) {
+		variables.logger.debug( "+ AI Service shutdown requested" )
+		clearAllServers()
+	}
+
+	function getAllServers() { return variables.servers }
+	numeric function getServerCount() { return variables.servers.size() }
+	function getServer( required string name ) { return variables.servers.get( arguments.name ) }
+	boolean function hasServer( required string name ) { return variables.servers.containsKey( arguments.name ) }
+	function putServer( required string name, required any serverInstance ) {
+		assertServerInstance( arguments.serverInstance )
+		return variables.servers.put( arguments.name, arguments.serverInstance )
+	}
+	function getOrBuildServer( required string name, required any serverInstance ) {
+		assertServerInstance( arguments.serverInstance )
+		return variables.servers.getOrInsert( arguments.name, arguments.serverInstance )
+	}
+	private void function assertServerInstance( required any candidate ) {
+		if ( !isInstanceOf( arguments.candidate, "component" ) ) {
+			throw( type: "InvalidArgument", message: "Expected a BoxLang server instance" )
+		}
+	}
+	boolean function removeServer( required string name ) { return !isNull( variables.servers.remove( arguments.name ) ) }
+	array function getServerNames() { return variables.servers.names() }
+	void function clearAllServers() {
+		variables.servers.clear()
+		variables.logger.debug( "All MCP servers cleared" )
+	}
+}

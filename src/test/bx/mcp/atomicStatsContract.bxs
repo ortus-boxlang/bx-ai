@@ -1,0 +1,33 @@
+// Run with the module loaded, on both JVM BoxLang and no-JNI MatchBox.
+import java:ortus.boxlang.ai.util.AtomicValues;
+
+counter = AtomicValues::integer( 2147483647 )
+if ( counter.incrementAndGet() != -2147483648 || counter.decrementAndGet() != 2147483647 ) {
+	throw "Atomic counter must return the updated signed 32-bit value"
+}
+cell = AtomicValues::reference( "" )
+stamp = now()
+cell.set( stamp )
+if ( cell.get() !== stamp ) throw "Reference lost the original timestamp"
+labels = []
+cell.set( labels )
+labels.append( "retained" )
+if ( cell.get()[1] != "retained" ) throw "Reference copied its payload"
+cell.set( null )
+if ( !isNull( cell.get() ) ) throw "Reference did not release its value"
+
+stats = new bxModules.bxai.models.mcp.MCPServerStats()
+stats.incrementActive()
+stats.recordRequest( "tools/list", 7 )
+beforeReset = stats.getSummary()
+if ( beforeReset.activeRequests != 1 || beforeReset.totalRequests != 1 || !isDate( beforeReset.lastRequestAt ) ) throw "Request not recorded"
+stats.reset()
+afterReset = stats.getSummary()
+if ( afterReset.activeRequests != 1 || afterReset.totalRequests != 0 || afterReset.lastRequestAt != "" ) throw "Incorrect reset"
+stats.decrementActive()
+if ( stats.getActiveRequests() != 0 ) throw "In-flight request lost its counter"
+clientStats = new bxModules.bxai.models.mcp.MCPClientStats()
+clientStats.recordCall( "tool", "echo", 7 )
+clientSummary = clientStats.getSummary()
+if ( clientSummary.totalCalls != 1 || !isDate( clientSummary.lastCallAt ) ) throw "Client call not recorded"
+println( "PASS: atomic stats retain timestamps and preserve in-flight requests across reset" )

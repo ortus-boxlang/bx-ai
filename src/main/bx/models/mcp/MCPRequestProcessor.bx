@@ -448,7 +448,7 @@ class {
 				"capabilities": arguments.targetServer.getCapabilities(),
 				"serverInfo": arguments.targetServer.getServerInfo()
 			},
-			"id": arguments.urlParams.id ?: javacast( "null", "" )
+			"id": arguments.urlParams.id ?: null
 		}.toJson()
 
 		return arguments.response;

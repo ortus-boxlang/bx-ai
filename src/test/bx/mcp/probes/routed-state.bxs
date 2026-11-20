@@ -1,0 +1,21 @@
+// MatchBox ownership probe, NOT an MCP endpoint. No bx-ai module is loaded.
+import boxlang.web
+
+function makeRecorder() {
+	var labels = []
+	return function( label ) {
+		labels.append( label )
+		return labels.toList( "," )
+	}
+}
+
+function registerRoutes( app ) {
+	var recorders = { default: makeRecorder() }
+	app.post( "/record/:label", function( event, rc, prc ) {
+		event.renderJson( { history: recorders.default( rc.label ) } )
+	} )
+}
+
+app = web.server()
+registerRoutes( app )
+app.listen( { host: "127.0.0.1", port: 18965 } )

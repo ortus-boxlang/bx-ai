@@ -1750,7 +1750,7 @@ class {
 	 * The rate limit gate used by the request processor. Null when there is no rate limit or it is turned off.
 	 */
 	function getRateLimitGate() {
-		return isRateLimitEnabled() ? variables.rateLimitGate : javacast( "null", "" )
+		return isRateLimitEnabled() ? variables.rateLimitGate : null
 	}
 
 	/**

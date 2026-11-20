@@ -17,8 +17,7 @@
  * Tracks performance and usage metrics for MCP server instances.
  * All stats are in-memory aggregates for real-time monitoring.
  */
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+import java:ortus.boxlang.ai.util.AtomicValues;
 
 class {
 
@@ -82,7 +81,7 @@ class {
 		variables.enabled       = arguments.enabled
 		variables.createdAt     = now()
 		variables.statsId       = createUUID()
-		variables.activeRequests = new AtomicInteger( 0 )
+		variables.activeRequests = AtomicValues::integer( 0 )
 		reset()
 		return this
 	}
@@ -93,19 +92,19 @@ class {
 	 */
 	MCPServerStats function reset() {
 		variables.requests = {
-			"total"          : new AtomicInteger( 0 ),
-			"successful"     : new AtomicInteger( 0 ),
-			"failed"         : new AtomicInteger( 0 ),
+			"total"          : AtomicValues::integer( 0 ),
+			"successful"     : AtomicValues::integer( 0 ),
+			"failed"         : AtomicValues::integer( 0 ),
 			"byMethod"       : {},
 			"responseTimes"  : [],
 			"avgResponseTime": 0,
 			"minResponseTime": 0,
 			"maxResponseTime": 0,
-			"lastRequestAt"  : new AtomicReference( "" )
+			"lastRequestAt"  : AtomicValues::reference( "" )
 		}
 
 		variables.tools = {
-			"totalInvocations": new AtomicInteger( 0 ),
+			"totalInvocations": AtomicValues::integer( 0 ),
 			"byTool"          : {},
 			"executionTimes"  : [],
 			"avgExecutionTime": 0,
@@ -114,28 +113,28 @@ class {
 		}
 
 		variables.resources = {
-			"totalReads": new AtomicInteger( 0 ),
+			"totalReads": AtomicValues::integer( 0 ),
 			"byUri"     : {}
 		}
 
 		variables.prompts = {
-			"totalGenerations": new AtomicInteger( 0 ),
+			"totalGenerations": AtomicValues::integer( 0 ),
 			"byName"          : {}
 		}
 
 		variables.errors = {
-			"total"    : new AtomicInteger( 0 ),
+			"total"    : AtomicValues::integer( 0 ),
 			"byCode"   : {},
 			"byTool"   : {},
 			"lastError": {}
 		}
 
 		variables.security = {
-			"authFailures"      : new AtomicInteger( 0 ),
-			"apiKeyFailures"    : new AtomicInteger( 0 ),
-			"bodySizeViolations": new AtomicInteger( 0 ),
-			"ipFilterFailures"  : new AtomicInteger( 0 ),
-			"rateLimitFailures" : new AtomicInteger( 0 )
+			"authFailures"      : AtomicValues::integer( 0 ),
+			"apiKeyFailures"    : AtomicValues::integer( 0 ),
+			"bodySizeViolations": AtomicValues::integer( 0 ),
+			"ipFilterFailures"  : AtomicValues::integer( 0 ),
+			"rateLimitFailures" : AtomicValues::integer( 0 )
 		}
 
 		return this

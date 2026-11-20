@@ -1,0 +1,14 @@
+class {
+	static {
+		final LABELS = []
+	}
+
+	static function bindings() {
+		return static
+	}
+
+	static function record( required string label ) {
+		static.LABELS.append( arguments.label )
+		return static.LABELS.toList( "," )
+	}
+}

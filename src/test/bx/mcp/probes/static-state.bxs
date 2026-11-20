@@ -1,0 +1,27 @@
+// Execute as a fresh process from this directory, without loading bx-ai.
+if ( classes.StaticRecorder::record( "first" ) != "first" ) {
+	throw "Static initializer did not run before the first static method call"
+}
+new classes.StaticRecorder()
+if ( classes.StaticRecorder::record( "second" ) != "first,second" ) {
+	throw "Creating an instance discarded or reinitialized the class state"
+}
+bindings = classes.StaticRecorder::bindings()
+for ( change in [
+	() => { bindings.labels = [] },
+	() => { bindings[ "LaBeLs" ] = [] },
+	() => { structUpdate( bindings, "labels", [] ) },
+	() => { structDelete( bindings, "labels" ) }
+] ) {
+	try {
+		change()
+	} catch ( any err ) {
+		if ( !findNoCase( "final key", err.message ) ) { rethrow }
+		continue
+	}
+	throw "Modification of a final static binding was accepted"
+}
+if ( classes.StaticRecorder::record( "third" ) != "first,second,third" ) {
+	throw "Refused write changed the recorded labels"
+}
+println( "PASS: final static binding survives construction and refuses replacement or deletion" )

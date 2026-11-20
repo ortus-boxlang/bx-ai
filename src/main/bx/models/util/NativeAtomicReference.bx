@@ -1,0 +1,19 @@
+/**
+ * MatchBox references belong to one VM. Each operation is one slot read or write
+ * with no callbacks or suspension. The GC traces the slot, including cycles;
+ * no plugin root can outlive the cell. These handles are not shared by workers.
+ */
+class {
+	function init( any initial = null ) {
+		variables.value = arguments.initial
+		return this
+	}
+
+	function get() {
+		return variables.value
+	}
+
+	void function set( any value = null ) {
+		variables.value = arguments.value
+	}
+}
