@@ -82,17 +82,16 @@ class extends="BaseMCPClient" {
 		BATCH_FILE           = "\.(cmd|bat)$";
 		// The extensions Windows tries when the PATHEXT variable is not set
 		DEFAULT_PATHEXT      = ".COM;.EXE;.BAT;.CMD";
-		// The live clients, so they can be closed when the module unloads
-		LIVE_CLIENTS       = createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init();
-		// Whether the JVM shutdown hook is registered
-		HOOK_STATE         = createObject( "java", "java.util.concurrent.atomic.AtomicBoolean" ).init( false );
+		// An HTTP-only application has no stdio processes to clean up.
+		CLIENT_TRACKER = {};
 	}
 
 	/**
 	 * Close every live stdio client. Called when the module unloads and when the JVM shuts down.
 	 */
 	static function closeAll() {
-		var clients = static.LIVE_CLIENTS.values().toArray()
+		if ( static.CLIENT_TRACKER.isEmpty() ) return;
+		var clients = static.CLIENT_TRACKER.liveClients.values().toArray()
 		for ( var liveClient in clients ) {
 			try {
 				liveClient.close()
@@ -130,6 +129,19 @@ class extends="BaseMCPClient" {
 		}
 		if ( arguments.config.keyExists( "timeout" ) ) {
 			variables.timeout = arguments.config.timeout
+		}
+
+		// Publish the map and hook flag together. Only constructing a stdio client
+		// needs the JVM process backend, not unloading a module that never used it.
+		if ( static.CLIENT_TRACKER.isEmpty() ) {
+			lock name="bxai-mcp-stdio-tracker-init" type="exclusive" timeout="30" {
+				if ( static.CLIENT_TRACKER.isEmpty() ) {
+					static.CLIENT_TRACKER = {
+						liveClients: createObject( "java", "java.util.concurrent.ConcurrentHashMap" ).init(),
+						hookState: createObject( "java", "java.util.concurrent.atomic.AtomicBoolean" ).init( false )
+					}
+				}
+			}
 		}
 
 		// Process state
@@ -244,7 +256,7 @@ class extends="BaseMCPClient" {
 		} finally {
 			variables.stateLock.unlock()
 		}
-		static.LIVE_CLIENTS.remove( variables.instanceId )
+		static.CLIENT_TRACKER.liveClients.remove( variables.instanceId )
 		return this
 	}
 
@@ -463,7 +475,7 @@ class extends="BaseMCPClient" {
 		var stderrTask = asyncRun( () => readStderr( stderrReader ), "io-tasks" )
 		asyncRun( () => readStdout( stdoutReader, childProcess, pendingMap, stderrTask ), "io-tasks" )
 
-		static.LIVE_CLIENTS.put( variables.instanceId, this )
+		static.CLIENT_TRACKER.liveClients.put( variables.instanceId, this )
 		registerShutdownHook()
 	}
 
@@ -621,12 +633,12 @@ class extends="BaseMCPClient" {
 	 * Make sure the JVM closes the child processes when it shuts down, once
 	 */
 	private void function registerShutdownHook() {
-		if ( static.HOOK_STATE.compareAndSet( false, true ) ) {
+		if ( static.CLIENT_TRACKER.hookState.compareAndSet( false, true ) ) {
 			try {
 				var hook = createObject( "java", "java.lang.Thread" ).init( () => closeAllLive() )
 				createObject( "java", "java.lang.Runtime" ).getRuntime().addShutdownHook( hook )
 			} catch ( any e ) {
-				static.HOOK_STATE.set( false )
+				static.CLIENT_TRACKER.hookState.set( false )
 			}
 		}
 	}
@@ -635,7 +647,7 @@ class extends="BaseMCPClient" {
 	 * Body of the shutdown hook: a static function cannot be handed to a thread directly
 	 */
 	private void function closeAllLive() {
-		var clients = static.LIVE_CLIENTS.values().toArray()
+		var clients = static.CLIENT_TRACKER.liveClients.values().toArray()
 		for ( var liveClient in clients ) {
 			try {
 				liveClient.close()
