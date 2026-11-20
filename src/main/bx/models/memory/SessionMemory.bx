@@ -316,25 +316,28 @@ class extends="WindowMemory" {
 	}
 
 	/**
-	 * Writes the summarized conversation back to its own session entry.
+	 * The messages of one user and conversation: its own session entry.
 	 *
 	 * @userId The per-call userId (empty = use instance default)
 	 * @conversationId The per-call conversationId (empty = use instance default)
-	 * @messages The conversation's messages after summarizing
+	 *
+	 * @return The conversation's messages
 	 */
-	private void function saveSummarized( string userId = "", string conversationId = "", required array messages ) {
-		var sessionKey = buildSessionKey( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
-		ensureSessionStorage( sessionKey )
-		session[ sessionKey ].messages = arguments.messages
+	private array function readMessages( string userId = "", string conversationId = "" ) {
+		return getAll( arguments.userId, arguments.conversationId )
 	}
 
 	/**
-	 * Every conversation's summary is read from its own stored summary message, never kept on the object.
+	 * Replaces the messages of one user and conversation in its own session entry.
 	 *
-	 * @return False
+	 * @userId The per-call userId (empty = use instance default)
+	 * @conversationId The per-call conversationId (empty = use instance default)
+	 * @messages The conversation's messages
 	 */
-	private boolean function keepsSummaryOnObject() {
-		return false
+	private void function writeMessages( string userId = "", string conversationId = "", required array messages ) {
+		var sessionKey = buildSessionKey( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
+		ensureSessionStorage( sessionKey )
+		session[ sessionKey ].messages = arguments.messages
 	}
 
 	/**

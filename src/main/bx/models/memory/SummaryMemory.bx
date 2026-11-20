@@ -146,21 +146,6 @@ class extends="WindowMemory" {
 	}
 
 	/**
-	 * Clear all messages and reset summary
-	 *
-	 * @userId   Optional per-call user identifier (ignored — SummaryMemory is an on-object store)
-	 * @conversationId Optional per-call conversation identifier (ignored — SummaryMemory is an on-object store)
-	 *
-	 * @return IAiMemory for chaining
-	 */
-	public IAiMemory function clear( string userId = "", string conversationId = "" ) {
-		super.clear( userId, conversationId );
-		variables.currentSummary = "";
-		variables.hasSummary = false;
-		return this;
-	}
-
-	/**
 	 * Get a summary of this memory instance
 	 * Overrides base to add SummaryMemory-specific fields
 	 *
@@ -175,9 +160,7 @@ class extends="WindowMemory" {
 		summary.summaryThreshold = variables.summaryThreshold;
 		summary.summaryModel = variables.summaryModel;
 		summary.summaryProvider = variables.summaryProvider;
-		summary.hasSummary = variables.hasSummary;
-		summary.summaryLength = len( variables.currentSummary );
-		summary.summarizedMessageCount = variables.hasSummary ? summary.messageCount - variables.summaryThreshold : 0;
+		summary.summarizedMessageCount = summary.hasSummary ? summary.messageCount - variables.summaryThreshold : 0;
 		summary.recentMessageCount = variables.summaryThreshold;
 
 		return summary;
@@ -195,8 +178,6 @@ class extends="WindowMemory" {
 		exported.summaryThreshold = variables.summaryThreshold;
 		exported.summaryModel = variables.summaryModel;
 		exported.summaryProvider = variables.summaryProvider;
-		exported.currentSummary = variables.currentSummary;
-		exported.hasSummary = variables.hasSummary;
 		return exported;
 	}
 

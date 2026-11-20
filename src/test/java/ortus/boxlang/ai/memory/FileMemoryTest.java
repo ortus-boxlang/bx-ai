@@ -588,4 +588,13 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "shortCount" ) ) ).isEqualTo( 1 );
 	}
 
+	@Test
+	@DisplayName( "Test FileMemory keeps each user and conversation apart" )
+	public void testConversationIsolation() {
+		runtime.executeSource( ConversationIsolationScript.of(
+		    "aiMemory( memory: \"file\", key: \"isolation\", config: { directoryPath: \"" + tempDir.toString().replace( "\\", "/" ) + "\" } )" ), context );
+
+		ConversationIsolationScript.assertIsolated( variables );
+	}
+
 }
