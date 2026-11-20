@@ -176,6 +176,32 @@ abstract class implements="IAiMemory" {
 		return len( arguments.conversationId ) ? arguments.conversationId : variables.conversationId
 	}
 
+
+	/**
+	 * The summary a conversation already carries, read from its own tagged summary message (isSummary). It is stored
+	 * with the conversation, so it belongs to that user and conversation only and survives a new instance.
+	 *
+	 * @messages The messages of the conversation being summarized
+	 *
+	 * @return The text of its latest summary, or an empty string when it has none
+	 */
+	private string function previousSummaryOf( required array messages ) {
+		var earlier = arguments.messages.filter( msg => msg.isSummary ?: false )
+		return earlier.len() ? earlier.last().content.replace( "[Previous conversation summary]: ", "" ) : ""
+	}
+
+	/**
+	 * The summary to report for a conversation: currentSummary when this memory keeps it on the object, otherwise the
+	 * one in the conversation's own summary message.
+	 *
+	 * @messages The conversation's messages
+	 *
+	 * @return The summary text, or an empty string when there is none
+	 */
+	private string function summaryText( required array messages ) {
+		return keepsSummaryOnObject() ? variables.currentSummary : previousSummaryOf( arguments.messages )
+	}
+
 	/**
 	 * Build an instance-wide lock name for serializing summarize() calls.
 	 * doSummarize() writes its result into the single shared variables.messages field
@@ -419,8 +445,8 @@ abstract class implements="IAiMemory" {
 			timestamp: now()
 		} )
 
-		// Trim to max size, just in case
-		this.trim()
+		// Trim to max size, just in case: the conversation that was just changed
+		this.trim( arguments.userId, arguments.conversationId )
 
 		return this
 	}
@@ -582,6 +608,7 @@ abstract class implements="IAiMemory" {
 	 */
 	public struct function getSummary() {
 		var allMessages = getAll()
+		var heldSummary = summaryText( allMessages )
 		var summary = {
 			"type": this.name(),
 			"key": this.key(),
@@ -600,8 +627,8 @@ abstract class implements="IAiMemory" {
 			"summaryModel": variables.summaryModel,
 			"summaryProvider": variables.summaryProvider,
 			"summaryThreshold": variables.summaryThreshold,
-			"hasSummary": variables.hasSummary,
-			"summaryLength": len( variables.currentSummary )
+			"hasSummary": heldSummary.len() > 0,
+			"summaryLength": len( heldSummary )
 		}
 
 		// Add role distribution stats
@@ -639,6 +666,8 @@ abstract class implements="IAiMemory" {
 	 * @return Struct containing all memory data
 	 */
 	public struct function export( String userId = "", String conversationId = "" ) {
+		var messages = getAll( arguments.userId, arguments.conversationId )
+		var heldSummary = summaryText( messages )
 		return {
 			"type":this. name(),
 			"key": this.key(),
@@ -646,14 +675,14 @@ abstract class implements="IAiMemory" {
 			"conversationId": resolveConversationId( arguments.conversationId ),
 			"metadata": this.metadata(),
 			"config": getConfig(),
-			"messages": getAll( arguments.userId, arguments.conversationId ),
+			"messages": messages,
 			"maxMessages": variables.maxMessages,
 			"maxTokens": variables.maxTokens,
 			"summaryModel": variables.summaryModel,
 			"summaryProvider": variables.summaryProvider,
 			"summaryThreshold": variables.summaryThreshold,
-			"currentSummary": variables.currentSummary,
-			"hasSummary": variables.hasSummary
+			"currentSummary": heldSummary,
+			"hasSummary": heldSummary.len() > 0
 		}
 	}
 
@@ -701,10 +730,11 @@ abstract class implements="IAiMemory" {
 		if ( arguments.data.keyExists( "summaryThreshold" ) ) {
 			variables.summaryThreshold = arguments.data.summaryThreshold
 		}
-		if ( arguments.data.keyExists( "currentSummary" ) ) {
+		// a memory that stores its conversations elsewhere carries the summary in the imported messages instead
+		if ( keepsSummaryOnObject() && arguments.data.keyExists( "currentSummary" ) ) {
 			variables.currentSummary = arguments.data.currentSummary
 		}
-		if ( arguments.data.keyExists( "hasSummary" ) ) {
+		if ( keepsSummaryOnObject() && arguments.data.keyExists( "hasSummary" ) ) {
 			variables.hasSummary = arguments.data.hasSummary
 		}
 
@@ -887,16 +917,46 @@ abstract class implements="IAiMemory" {
 	 */
 	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
 		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
-			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
+			var outcome = doSummarize( arguments.config, arguments.userId, arguments.conversationId )
+			// nothing is written when there was nothing to summarize (a short conversation) or no model to do it with,
+			// so a conversation is never replaced by anything but its own summarized messages
+			if ( outcome.changed ) {
+				saveSummarized( arguments.userId, arguments.conversationId, outcome.messages )
+			}
 		}
 		return this
 	}
 
 	/**
-	 * The actual summarization algorithm - reads, calls the AI model, and rebuilds
-	 * variables.messages. Not locked itself; callers (summarize() and the persist-after-summarize
-	 * overrides in JdbcMemory/CacheMemory/FileMemory/SessionMemory) must run it inside a
-	 * buildSummarizeLockName() lock so the read -> mutate -> persist sequence is atomic per scope.
+	 * Stores the messages a summarize produced for one user and conversation. This memory keeps its messages on the
+	 * object, so they replace variables.messages. A memory that stores them elsewhere (cache, file, session, database)
+	 * overrides this to write them where that conversation lives.
+	 *
+	 * @userId The per-call userId (empty = use instance default)
+	 * @conversationId The per-call conversationId (empty = use instance default)
+	 * @messages The conversation's messages after summarizing
+	 */
+	private void function saveSummarized( string userId = "", string conversationId = "", required array messages ) {
+		variables.messages = arguments.messages
+	}
+
+	/**
+	 * Whether this memory's summary is kept on the object (currentSummary and hasSummary). True for a memory whose
+	 * messages are on the object too (window, summary): the object is the conversation. A memory that stores every
+	 * conversation elsewhere overrides this to false, and the summary of any conversation is then read from that
+	 * conversation's own tagged summary message, so a new instance or another server finds it as well.
+	 *
+	 * @return True when currentSummary holds the summary
+	 */
+	private boolean function keepsSummaryOnObject() {
+		return true
+	}
+
+	/**
+	 * The actual summarization algorithm: reads the conversation, calls the AI model and builds the new messages. It
+	 * stores nothing and never touches variables.messages, so summarizing one conversation cannot change another;
+	 * summarize() saves the result through saveSummarized(). Not locked itself: summarize() runs it inside a
+	 * buildSummarizeLockName() lock so the read, summarize and save happen together.
 	 *
 	 * @config Optional struct with keys:
 	 *   - keepRecent: Number of recent messages to keep (default: summaryThreshold or 10)
@@ -905,9 +965,10 @@ abstract class implements="IAiMemory" {
 	 * @userId   Optional per-call user identifier (overrides instance default)
 	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
-	 * @return IAiMemory for chaining
+	 * @return { changed, messages }: changed is false when there was nothing to summarize or no model to do it with, and
+	 *         messages is then empty; otherwise messages is the conversation to store
 	 */
-	private IAiMemory function doSummarize( struct config = {}, string userId = "", string conversationId = "" ) {
+	private struct function doSummarize( struct config = {}, string userId = "", string conversationId = "" ) {
 		// Resolve keepRecent: arg > summaryThreshold > default
 		var keepRecent = config.keyExists( "keepRecent" ) && config.keepRecent > 0
 			? config.keepRecent
@@ -919,8 +980,9 @@ abstract class implements="IAiMemory" {
 
 		// Need at least (keepRecent + 1) messages to make summarization worthwhile
 		var nonSystemMessages = getNonSystemMessages( arguments.userId, arguments.conversationId );
+		var unchanged = { changed : false, messages : [] }
 		if ( nonSystemMessages.len() <= keepRecent ) {
-			return this;
+			return unchanged;
 		}
 
 		// If per-call overrides differ from instance config, build a one-shot model
@@ -943,7 +1005,7 @@ abstract class implements="IAiMemory" {
 					type: "error",
 					log: "ai"
 				)
-				return this
+				return unchanged
 			}
 		} else if ( !isObject( useModelInstance ) ) {
 			// Try to build from instance config
@@ -953,7 +1015,7 @@ abstract class implements="IAiMemory" {
 
 		// If still no model, silently skip
 		if ( !isObject( useModelInstance ) ) {
-			return this;
+			return unchanged;
 		}
 
 		// Split: messages to summarize vs recent messages to keep intact
@@ -964,9 +1026,12 @@ abstract class implements="IAiMemory" {
 		// Build summarization prompt
 		var summaryPrompt = static.SUMMARY_PROMPT;
 
-		// Include previous summary if exists, for progressive accumulation
-		if ( variables.currentSummary.len() ) {
-			summaryPrompt &= "Previous conversation summary:\n#variables.currentSummary#\n\nNew messages to add to summary:\n";
+		// Include previous summary if exists, for progressive accumulation. A memory that stores its conversations
+		// elsewhere reads it from this conversation's own summary message, never from the object, so one conversation's
+		// summary is never sent to the model while summarizing another, and a new instance still finds it
+		var previousSummary = summaryText( nonSystemMessages )
+		if ( previousSummary.len() ) {
+			summaryPrompt &= "Previous conversation summary:\n#previousSummary#\n\nNew messages to add to summary:\n";
 		} else {
 			summaryPrompt &= "Messages to summarize:\n";
 		}
@@ -985,11 +1050,11 @@ abstract class implements="IAiMemory" {
 
 			// Rebuild message structure
 			var systemMsg = hasSystemMessage( arguments.userId, arguments.conversationId ) ? getSystemMessage( arguments.userId, arguments.conversationId ) : "";
-			variables.messages = [];
+			var rebuilt = [];
 
 			// Re-add system message first
 			if ( systemMsg.len() ) {
-				variables.messages.append( {
+				rebuilt.append( {
 					role: "system",
 					content: systemMsg,
 					timestamp: now()
@@ -997,18 +1062,20 @@ abstract class implements="IAiMemory" {
 			}
 
 			// Add summary as a tagged assistant message
-			variables.messages.append( {
+			rebuilt.append( {
 				role: "assistant",
 				content: "[Previous conversation summary]: #summary#",
 				isSummary: true,
 				timestamp: now()
 			} );
 
-			variables.currentSummary = summary;
-			variables.hasSummary = true;
+			if ( keepsSummaryOnObject() ) {
+				variables.currentSummary = summary;
+				variables.hasSummary = true;
+			}
 
 			// Add back the recent messages
-			variables.messages.append( toKeep, true );
+			rebuilt.append( toKeep, true );
 
 			// Announce summarization event
 			BoxAnnounce( "onAIMemorySummarize", {
@@ -1017,7 +1084,7 @@ abstract class implements="IAiMemory" {
 				type: this.name(),
 				userId: resolveUserId( arguments.userId ),
 				conversationId: resolveConversationId( arguments.conversationId ),
-				messageCount: variables.messages.len(),
+				messageCount: rebuilt.len(),
 				summaryLength: len( summary ),
 				keepRecent: keepRecent,
 				summarizedCount: toSummarize.len()
@@ -1032,20 +1099,20 @@ abstract class implements="IAiMemory" {
 
 			// Fall back to simple truncation: keep only recent messages
 			var systemMsg = hasSystemMessage( arguments.userId, arguments.conversationId ) ? getSystemMessage( arguments.userId, arguments.conversationId ) : "";
-			variables.messages = [];
+			var rebuilt = [];
 
 			if ( systemMsg.len() ) {
-				variables.messages.append( {
+				rebuilt.append( {
 					role: "system",
 					content: systemMsg,
 					timestamp: now()
 				} );
 			}
 
-			variables.messages.append( toKeep, true );
+			rebuilt.append( toKeep, true );
 		}
 
-		return this;
+		return { changed : true, messages : rebuilt };
 	}
 
 	/**

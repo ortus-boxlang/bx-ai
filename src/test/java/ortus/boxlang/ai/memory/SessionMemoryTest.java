@@ -441,4 +441,34 @@ public class SessionMemoryTest extends BaseIntegrationTest {
 		assertThat( msg2.getAsString( Key.of( "content" ) ) ).isEqualTo( "Memory 2 message" );
 	}
 
+	@Test
+	@DisplayName( "Test SessionMemory summarize keeps each conversation's summary to itself" )
+	public void testSummarizeKeepsSummaryPerConversation() {
+		runtime.executeSource( SummarizeScopeScript.of( "aiMemory( \"session\", \"summarize-scope\" )" ), context );
+
+		assertThat( variables.getAsBoolean( Key.of( "bobPromptHasPrevious" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "alicePromptHasPrevious" ) ) ).isTrue();
+		// a summary message and the two kept
+		assertThat( variables.getAsInteger( Key.of( "aliceCount" ) ) ).isEqualTo( 3 );
+		assertThat( variables.getAsInteger( Key.of( "bobCount" ) ) ).isEqualTo( 3 );
+	}
+
+	@Test
+	@DisplayName( "Test SessionMemory summarize finds the earlier summary after the memory is built again" )
+	public void testSummarizeAfterRebuild() {
+		runtime.executeSource(
+		    SummarizeScopeScript.afterRebuild( "aiMemory( memory: \"session\", key: \"summarize-rebuild\", userId: \"alice\", conversationId: \"c1\" )" ),
+		    context );
+
+		assertThat( variables.getAsBoolean( Key.of( "rebuiltPromptHasPrevious" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Test SessionMemory summarize leaves a short conversation of another scope alone" )
+	public void testSummarizeShortConversation() {
+		runtime.executeSource( SummarizeScopeScript.shortConversation( "aiMemory( \"session\", \"summarize-short\" )" ), context );
+
+		assertThat( variables.getAsInteger( Key.of( "shortCount" ) ) ).isEqualTo( 1 );
+	}
+
 }

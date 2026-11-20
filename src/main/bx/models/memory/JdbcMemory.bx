@@ -212,28 +212,29 @@ class extends="BaseMemory" {
 	}
 
 	/**
-	 * AI-summarize older messages and persist the result to database.
-	 * A call for another user or conversation summarizes the row for it, leaving this memory's own messages alone.
+	 * Writes the summarized conversation back to its own row. This memory's own conversation is also held on the
+	 * object, so it is replaced there and saved; another user's or conversation's row is written by its own key.
 	 *
-	 * @config Optional struct with keys: keepRecent, model, provider
-	 * @userId   Optional per-call user identifier
-	 * @conversationId Optional per-call conversation identifier
-	 *
-	 * @return IAiMemory for chaining
+	 * @userId The per-call userId (empty = use instance default)
+	 * @conversationId The per-call conversationId (empty = use instance default)
+	 * @messages The conversation's messages after summarizing
 	 */
-	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
-		// before this, a call for another scope threw JdbcMemory.UnsupportedScope; now it summarizes that scope's row
+	private void function saveSummarized( string userId = "", string conversationId = "", required array messages ) {
 		if ( !isOwnScope( arguments.userId, arguments.conversationId ) ) {
-			return summarizeScope( arguments.config, arguments.userId, arguments.conversationId )
+			writeScope( arguments.userId, arguments.conversationId, arguments.messages )
+			return
 		}
-		var targetUserId = resolveUserId( arguments.userId )
-		var targetConversationId = resolveConversationId( arguments.conversationId )
+		variables.messages = arguments.messages
+		saveToDatabase( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
+	}
 
-		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
-			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
-			saveToDatabase( targetUserId, targetConversationId )
-		}
-		return this
+	/**
+	 * Every conversation's summary is read from its own stored summary message, never kept on the object.
+	 *
+	 * @return False
+	 */
+	private boolean function keepsSummaryOnObject() {
+		return false
 	}
 
 	// ========================================
@@ -508,45 +509,6 @@ class extends="BaseMemory" {
 			params,
 			{ datasource: variables.datasource }
 		)
-	}
-
-	/**
-	 * Summarizes the row for another user or conversation.
-	 *
-	 * doSummarize() reads the messages through getAll() (so from the row) but builds its result in variables.messages,
-	 * variables.currentSummary and variables.hasSummary, which belong to this memory's own scope. They are saved first
-	 * and put back in the finally block, so summarizing another conversation never changes the one this memory holds.
-	 *
-	 * The lock is the one summarize() takes for the own scope: doSummarize() writes into those shared fields, so every
-	 * summarize on this instance has to wait for the others.
-	 */
-	private IAiMemory function summarizeScope( struct config, string userId, string conversationId ) {
-		var uid = resolveUserId( arguments.userId )
-		var cid = resolveConversationId( arguments.conversationId )
-		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
-			var ownMessages = variables.messages
-			var ownSummary = variables.currentSummary
-			var ownHasSummary = variables.hasSummary
-			try {
-				// doSummarize() leaves the old summary message out of the text it sends and adds currentSummary instead, so
-				// the summary already in the row is put back into currentSummary or it would be lost
-				var held = readScope( uid, cid )
-				var earlier = held.filter( m => m.isSummary ?: false )
-				variables.currentSummary = earlier.len() ? earlier.last().content.replace( "[Previous conversation summary]: ", "" ) : ""
-				variables.hasSummary = earlier.len() > 0
-				// doSummarize() returns without touching the messages when there is nothing to summarize (a short
-				// conversation) or no summary model to do it with. What is written back is then these, the row's own,
-				// and never this memory's own messages, which belong to another scope and are usually empty.
-				variables.messages = held
-				doSummarize( arguments.config, uid, cid )
-				writeScope( uid, cid, variables.messages )
-			} finally {
-				variables.messages = ownMessages
-				variables.currentSummary = ownSummary
-				variables.hasSummary = ownHasSummary
-			}
-		}
-		return this
 	}
 
 	// ========================================
