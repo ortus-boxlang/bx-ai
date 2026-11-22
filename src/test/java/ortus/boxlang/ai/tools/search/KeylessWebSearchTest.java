@@ -118,7 +118,8 @@ public class KeylessWebSearchTest extends BaseIntegrationTest {
 		// @formatter:on
 		assertThat( variables.getAsString( Key.of( "count" ) ) ).isEqualTo( "2" );
 		assertThat( variables.getAsString( Key.of( "firstUrl" ) ) ).isEqualTo( "https://en.wikipedia.org/wiki/Java_virtual_machine" );
-		assertThat( variables.getAsString( Key.of( "firstSnippet" ) ) ).isEqualTo( "A Java virtual machine (JVM) is a virtual machine that runs Java programs" );
+		assertThat( variables.getAsString( Key.of( "firstSnippet" ) ) )
+		    .isEqualTo( "A Java virtual machine (JVM) is a virtual machine that runs Java programs" );
 		assertThat( variables.getAsString( Key.of( "secondUrl" ) ) ).isEqualTo( "https://en.wikipedia.org/wiki/AC/DC" );
 		assertThat( variables.getAsString( Key.of( "german" ) ) ).isEqualTo( "https://de.wikipedia.org/wiki/Java_virtual_machine" );
 	}
