@@ -1,0 +1,147 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * DuckDuckGo web provider, no API key.
+ *
+ * Posts the query to DuckDuckGo's HTML results page (https://html.duckduckgo.com/html/) and reads the results with Jsoup.
+ * DuckDuckGo has no official web search API and may answer automated requests with a challenge page; when it does,
+ * the provider returns one result that says so instead of an empty list. Ads are left out, and the redirect links
+ * DuckDuckGo wraps around each result (//duckduckgo.com/l/?uddg=...) are turned back into the real URL.
+ */
+import java:org.jsoup.Jsoup;
+
+class extends="BaseSearch" {
+
+	static {
+		ENDPOINT = "https://html.duckduckgo.com/html/"
+	}
+
+	/**
+	 * Search DuckDuckGo.
+	 *
+	 * @query   The search query string
+	 * @options Optional struct with maxResults, timeout, region (for example "us-en"), etc.
+	 *
+	 * @return  Array of result structs: [{title, url, snippet, ...}]
+	 */
+	function doSearch( required string query, struct options = {} ) {
+		if ( !isNull( arguments.options ) ) {
+			configure( arguments.options )
+		}
+
+		var form = "q=" & encodeSearchQuery( arguments.query )
+		if ( structKeyExists( arguments.options, "region" ) ) {
+			form &= "&kl=" & encodeSearchQuery( arguments.options.region )
+		}
+
+		var response = executeRequest(
+			url    : static.ENDPOINT,
+			method : "POST",
+			headers: {
+				"Content-Type": "application/x-www-form-urlencoded",
+				"Accept"      : "text/html",
+				"User-Agent"  : "bx-ai web search (BoxLang; https://github.com/ortus-boxlang/bx-ai)"
+			},
+			body: form
+		)
+
+		var statusCode = val( listFirst( response.statusCode, " " ) )
+		if ( statusCode >= 400 ) {
+			return [ {
+				title  : "DuckDuckGo Search Error",
+				url    : static.ENDPOINT,
+				snippet: "HTTP #statusCode# from DuckDuckGo. It may be refusing automated requests from this address."
+			} ]
+		}
+
+		return parseResults( response.fileContent, arguments.query )
+	}
+
+	/**
+	 * Read the results out of DuckDuckGo's HTML results page.
+	 *
+	 * @html  The page
+	 * @query The query, for the messages
+	 *
+	 * @return Array of formatted result structs, or one result that explains why there are none
+	 */
+	array function parseResults( required string html, string query = "" ) {
+		if ( isChallenge( arguments.html ) ) {
+			return [ {
+				title  : "DuckDuckGo Search Blocked",
+				url    : static.ENDPOINT,
+				snippet: "DuckDuckGo answered with a challenge page instead of results, so it is refusing automated searches from this address. Use another provider (brave, tavily, exa, google, wikipedia or marginalia)."
+			} ]
+		}
+
+		var doc = Jsoup::parse( arguments.html )
+		var raw = []
+		for ( var block in doc.select( "div.result" ) ) {
+			if ( block.hasClass( "result--ad" ) ) {
+				continue
+			}
+			var link = block.selectFirst( "a.result__a" )
+			if ( isNull( link ) ) {
+				continue
+			}
+			var snippetNode = block.selectFirst( ".result__snippet" )
+			raw.append( {
+				title  : link.text(),
+				url    : realUrl( link.attr( "href" ) ),
+				snippet: isNull( snippetNode ) ? "" : snippetNode.text()
+			} )
+			if ( raw.len() >= variables.maxResults ) {
+				break
+			}
+		}
+
+		if ( !raw.len() ) {
+			return [ {
+				title  : "No Results",
+				url    : "",
+				snippet: "DuckDuckGo returned no results for: #arguments.query#"
+			} ]
+		}
+		return formatResults( raw )
+	}
+
+	/**
+	 * DuckDuckGo's page for automated traffic, instead of results.
+	 *
+	 * @html The page
+	 */
+	boolean function isChallenge( required string html ) {
+		return arguments.html.findNoCase( "anomaly-modal" ) > 0 || arguments.html.findNoCase( "bots use DuckDuckGo too" ) > 0
+	}
+
+	/**
+	 * The URL a result links to. DuckDuckGo wraps them as //duckduckgo.com/l/?uddg=<encoded url>&rut=...
+	 *
+	 * @href The href of the result link
+	 */
+	string function realUrl( required string href ) {
+		var found = reFind( "[?&]uddg=([^&]+)", arguments.href, 1, true )
+		if ( found.pos[ 1 ] ) {
+			return urlDecode( mid( arguments.href, found.pos[ 2 ], found.len[ 2 ] ) )
+		}
+		if ( left( arguments.href, 2 ) == "//" ) {
+			return "https:" & arguments.href
+		}
+		return arguments.href
+	}
+
+}

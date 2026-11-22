@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 Added
 
+- **Web search without an API key: `duckduckgo`, `wikipedia` and `marginalia` providers.** `aiWebSearch( "query", {}, { provider: "wikipedia" } )` and `webSearch@bxai` can now search with nothing to sign up for.
+  - `duckduckgo` posts to DuckDuckGo's HTML results page and reads it with Jsoup: ads are left out and DuckDuckGo's redirect links are turned back into the real URLs. DuckDuckGo has no official API and may answer automated requests with a challenge page; the provider then returns one `DuckDuckGo Search Blocked` result instead of an empty list.
+  - `wikipedia` uses the official MediaWiki search API (Wikipedia articles only), with `language` (default `en`) and the User-Agent Wikimedia asks for.
+  - `marginalia` uses the Marginalia Search API with the shared key `public`, rate limited for everyone; `MARGINALIA_API_KEY` (or `webSearch.marginaliaApiKey`) gives your own limit and `marginaliaBaseUrl` changes the host.
+  - `KeylessWebSearchTest` checks each parser against saved answers in `src/test/resources/search`, and has one live search per provider so CI shows which services still answer automated requests.
+
 - **`discoverySubject` for MCP OAuth.** `withOAuth( { discoverySubject : "alice" } )` (a name, or a function with no arguments) says whose tokens a call with no context uses, such as listing the tools when an agent starts. Before, such a call always used the subject `"default"`, so a server that needs a sign in to list its tools only worked for an agent whose people all shared one sign in.
 
 - **OAuth for MCP clients**: `MCP( url ).withOAuth( { redirectUri: ... } )` signs in to an MCP server that is protected the way the MCP authorization specification describes, and keeps the access token fresh. It reads the server's Protected Resource Metadata and the authorization server's metadata, gets a client id (one you give, a Client ID Metadata Document, or Dynamic Client Registration), signs the person in with PKCE (S256) and the `resource` parameter, checks the `iss` of the callback, and sends `Authorization: Bearer` on every request, refreshing the token before it expires and once more after a `401`. See `src/docs/main-components/mcp-oauth.md`.

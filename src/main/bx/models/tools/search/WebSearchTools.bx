@@ -44,7 +44,11 @@ class {
 			"brave" : "bxModules.bxai.models.tools.search.BraveSearch",
 			"google": "bxModules.bxai.models.tools.search.GoogleSearch",
 			"tavily": "bxModules.bxai.models.tools.search.TavilySearch",
-			"exa"   : "bxModules.bxai.models.tools.search.ExaSearch"
+			"exa"   : "bxModules.bxai.models.tools.search.ExaSearch",
+			// no API key needed
+			"duckduckgo": "bxModules.bxai.models.tools.search.DuckDuckGoSearch",
+			"wikipedia" : "bxModules.bxai.models.tools.search.WikipediaSearch",
+			"marginalia": "bxModules.bxai.models.tools.search.MarginaliaSearch"
 		}
 		DEFAULT_PROVIDER = "http"
 		MODULE_SETTINGS = getModuleInfo( "bxai" ).settings

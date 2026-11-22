@@ -1,0 +1,127 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Wikipedia provider, no API key.
+ *
+ * Uses the official MediaWiki search API (https://<language>.wikipedia.org/w/api.php?action=query&list=search).
+ * It searches Wikipedia's articles only, not the whole web: good for facts and definitions. Wikimedia asks every
+ * client to send a User-Agent that says who it is, which this provider does. The language is "en" unless the
+ * config or the options give `language`.
+ */
+import java:org.jsoup.Jsoup;
+
+class extends="BaseSearch" {
+
+	/**
+	 * The Wikipedia language edition: en, es, de, ...
+	 */
+	property name="language" type="string" default="en";
+
+	/**
+	 * Configure the provider.
+	 *
+	 * @config Struct with language, maxResults, timeout, etc.
+	 * @return This instance for fluent chaining
+	 */
+	function configure( required struct config ) {
+		super.configure( arguments.config )
+		if ( structKeyExists( arguments.config, "language" ) && reFind( "^[a-z][a-z-]{1,11}$", arguments.config.language ) ) {
+			variables.language = arguments.config.language
+		}
+		return this
+	}
+
+	/**
+	 * Search Wikipedia.
+	 *
+	 * @query   The search query string
+	 * @options Optional struct with maxResults, timeout, language, etc.
+	 *
+	 * @return  Array of result structs: [{title, url, snippet, ...}]
+	 */
+	function doSearch( required string query, struct options = {} ) {
+		if ( !isNull( arguments.options ) ) {
+			configure( arguments.options )
+		}
+
+		var searchUrl = "https://#variables.language#.wikipedia.org/w/api.php?action=query&list=search&format=json&utf8=1"
+			& "&srlimit=#variables.maxResults#&srsearch=" & encodeSearchQuery( arguments.query )
+
+		var response = executeRequest(
+			url    : searchUrl,
+			headers: {
+				"Accept"    : "application/json",
+				"User-Agent": "bx-ai web search (BoxLang; https://github.com/ortus-boxlang/bx-ai)"
+			}
+		)
+
+		var statusCode = val( listFirst( response.statusCode, " " ) )
+		if ( statusCode >= 400 ) {
+			return [ {
+				title  : "Wikipedia Search Error",
+				url    : searchUrl,
+				snippet: "HTTP #statusCode# from the Wikipedia API. Response: #left( response.fileContent, 300 )#"
+			} ]
+		}
+
+		return parseResults( response.fileContent, arguments.query )
+	}
+
+	/**
+	 * Read the results out of a MediaWiki search answer.
+	 *
+	 * @json  The answer
+	 * @query The query, for the messages
+	 *
+	 * @return Array of formatted result structs, or one result that explains why there are none
+	 */
+	array function parseResults( required string json, string query = "" ) {
+		try {
+			var data = jsonDeserialize( arguments.json )
+		} catch ( any e ) {
+			return [ {
+				title  : "Wikipedia Search Error",
+				url    : "",
+				snippet: "Failed to parse the Wikipedia answer: #e.message#"
+			} ]
+		}
+
+		var hits = ( data.query ?: {} ).search ?: []
+		if ( !isArray( hits ) || !hits.len() ) {
+			return [ {
+				title  : "No Results",
+				url    : "",
+				snippet: "Wikipedia has no article matching: #arguments.query#"
+			} ]
+		}
+
+		var lang = variables.language
+		return formatResults(
+			hits.map( hit => {
+				return {
+					title        : hit.title,
+					url          : "https://#lang#.wikipedia.org/wiki/" & replace( urlEncodedFormat( replace( hit.title, " ", "_", "all" ) ), "%2F", "/", "all" ),
+					// the snippet marks the matches with <span class="searchmatch">: plain text only
+					snippet      : Jsoup::parse( hit.snippet ?: "" ).text(),
+					publishedDate: hit.timestamp ?: "",
+					language     : lang
+				}
+			} )
+		)
+	}
+
+}

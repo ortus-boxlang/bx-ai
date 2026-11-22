@@ -323,7 +323,7 @@ class {
 			// Web Search Settings — Defaults for aiWebSearch()/aiWebSearchAsync() BIFs and WebSearchTools
 			// --------------------------------------------------------------------------
 			webSearch : {
-				// Default search provider: http, brave, google, tavily, exa
+				// Default search provider: http, brave, google, tavily, exa, or one that needs no key: duckduckgo, wikipedia, marginalia
 				defaultProvider : "http",
 				// Maximum number of results to return per search
 				maxResults : 5,
@@ -335,6 +335,8 @@ class {
 				googleSearchEngineId : "",
 				tavilyApiKey : "",
 				exaApiKey : "",
+				// Marginalia works with the shared key "public"; set your own to get your own rate limit
+				marginaliaApiKey : "",
 				// Logging
 				logRequest : false,
 				logResponse : false
