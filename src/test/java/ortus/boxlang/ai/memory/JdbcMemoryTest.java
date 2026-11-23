@@ -970,4 +970,13 @@ public class JdbcMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsInteger( Key.of( "shortCount" ) ) ).isEqualTo( 1 );
 	}
 
+	@Test
+	@DisplayName( "Test JdbcMemory keeps each user and conversation apart" )
+	public void testConversationIsolation() {
+		runtime.executeSource( ConversationIsolationScript.of( "aiMemory( memory: \"jdbc\", key: \"isolation\", config: { datasource: \"bxai_test\" } )" ),
+		    context );
+
+		ConversationIsolationScript.assertIsolated( variables );
+	}
+
 }

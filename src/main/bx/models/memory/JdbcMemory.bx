@@ -145,8 +145,8 @@ class extends="BaseMemory" {
 	/**
 	 * Export memory state including database-specific fields
 	 *
-	 * @userId   Optional per-call user identifier (ignored — JdbcMemory is an on-object store)
-	 * @conversationId Optional per-call conversation identifier (ignored — JdbcMemory is an on-object
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Struct with memory state and database connection info
 	 */
@@ -195,8 +195,8 @@ class extends="BaseMemory" {
 	/**
 	 * Trim memory and persist changes to database
 	 *
-	 * @userId   Optional per-call user identifier (ignored — JdbcMemory is an on-object store)
-	 * @conversationId Optional per-call conversation identifier (ignored — JdbcMemory is an on-object store)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 */
 	public IAiMemory function trim( string userId = "", string conversationId = "" ) {
 		// BaseMemory.trim() works on variables.messages, which hold only this memory's own scope, so another scope's
@@ -226,15 +226,6 @@ class extends="BaseMemory" {
 		}
 		variables.messages = arguments.messages
 		saveToDatabase( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
-	}
-
-	/**
-	 * Every conversation's summary is read from its own stored summary message, never kept on the object.
-	 *
-	 * @return False
-	 */
-	private boolean function keepsSummaryOnObject() {
-		return false
 	}
 
 	// ========================================
@@ -331,16 +322,6 @@ class extends="BaseMemory" {
 			writeScope( arguments.userId, arguments.conversationId, readScope( arguments.userId, arguments.conversationId ).filter( m => m.role != "system" ) )
 		}
 		return this
-	}
-
-	/**
-	 * A call with no ids resolves to the ids this memory was built with, so it is the own scope. That is why code that
-	 * never passes ids behaves exactly as it did before.
-	 *
-	 * @return True when the call names the user and conversation this memory was built with, or neither
-	 */
-	private boolean function isOwnScope( string userId = "", string conversationId = "" ) {
-		return resolveUserId( arguments.userId ) == variables.userId && resolveConversationId( arguments.conversationId ) == variables.conversationId
 	}
 
 	/**
@@ -607,8 +588,8 @@ class extends="BaseMemory" {
 	/**
 	 * Load data from database if record exists
 	 *
-	 * @userId   Optional per-call user identifier (ignored — JdbcMemory is an on-object store)
-	 * @conversationId Optional per-call conversation identifier (ignored — JdbcMemory is an on-object store)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 */
 	private void function loadFromDatabase( string userId = "", string conversationId = "" ) {
 		var targetUserId = resolveUserId( userId )
@@ -725,8 +706,8 @@ class extends="BaseMemory" {
 	/**
 	 * Save current state to database (INSERT or UPDATE)
 	 *
-	 * @userId   Optional per-call user identifier (ignored — JdbcMemory is an on-object store)
-	 * @conversationId Optional per-call conversation identifier (ignored — JdbcMemory is an on-object store)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 */
 	private void function saveToDatabase( string userId = "", string conversationId = "" ) {
 		var messagesJson = jsonSerialize( variables.messages )
@@ -777,8 +758,8 @@ class extends="BaseMemory" {
 	/**
 	 * Delete record from database
 	 *
-	 * @userId   Optional per-call user identifier (ignored — JdbcMemory is an on-object store)
-	 * @conversationId Optional per-call conversation identifier (ignored — JdbcMemory is an on-object
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 */
 	private void function deleteFromDatabase( string userId = "", string conversationId = "" ) {
 		var params = { key: variables.key };
@@ -804,8 +785,8 @@ class extends="BaseMemory" {
 	/**
 	 * Check if a record exists in the database
 	 *
-	 * @userId   Optional per-call user identifier (ignored — JdbcMemory is an on-object store)
-	 * @conversationId Optional per-call conversation identifier (ignored — JdbcMemory is an on-object store)
+	 * @userId   Optional per-call user identifier (overrides instance default)
+	 * @conversationId Optional per-call conversation identifier (overrides instance default)
 	 *
 	 * @return Boolean
 	 */
