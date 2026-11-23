@@ -167,7 +167,10 @@ class {
 		}
 
 		// Create the service instance
-		var oTargetService = new "#targetClass#"().configure( arguments.options )
+		// The slug lets configure() apply the providers.<slug> module settings
+		var oTargetService = new "#targetClass#"()
+		oTargetService.setProviderSlug( arguments.provider )
+		oTargetService.configure( arguments.options )
 
 		// Announce
 		BoxAnnounce( "onAIProviderCreate", { provider: oTargetService } );

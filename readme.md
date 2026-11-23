@@ -166,7 +166,7 @@ Below is the full reference of every setting you can place under `settings` in `
 | `defaultParams` | `struct` | `{}` | Default request parameters sent to every provider (e.g. `model`, `temperature`, `max_tokens`) |
 | `memory.provider` | `string` | `"window"` | Default memory type: `window`, `cache`, `file`, `session`, `summary`, `jdbc`, `hybrid`, or any vector provider |
 | `memory.config` | `struct` | `{}` | Provider-specific memory configuration (e.g. `maxMessages`, `cacheName`) |
-| `providers` | `struct` | `{}` | Per-provider overrides — keys are provider names, values have `params` and `options` structs |
+| `providers` | `struct` | `{}` | Per-provider overrides — keys are the provider names you pass to `aiService()` (e.g. `openai`, `openai-compatible`), values have `params` and `options` structs. Options passed in the call win over these |
 | `profiles` | `struct` | `{}` | Named combinations of `provider`, `model`, `params`, `options`, `apiKeyEnv` (or `apiKey`) and a `description`. Select with `options.profile` or `profile`. A name cannot be a provider name or `default`. See [Profiles](https://ai.ortusbooks.com/main-components/profiles) |
 | `defaultProfile` | `string` | `""` | Profile used when a call names no provider. Empty means `default`, the top level `provider`, `apiKey` and `defaultParams` |
 | `embeddings` | `struct` | `{}` | `defaultProvider`, `defaultModel` and `defaultApiKey` for `aiEmbed()`. Empty values use the default provider |

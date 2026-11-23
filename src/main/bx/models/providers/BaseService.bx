@@ -42,6 +42,13 @@ abstract class implements="IAiService" {
 	property name="name" default="";
 
 	/**
+	 * The provider slug the service was requested with in aiService() (e.g. "openai-compatible").
+	 * Module settings under providers.<slug> are applied for it, as well as providers.<name>.
+	 * It is set by aiService() before configure() is called.
+	 */
+	property name="providerSlug" default="";
+
+	/**
 	 * The API key to use with the provider
 	 */
 	property name = "apiKey" default = "";
@@ -205,20 +212,44 @@ abstract class implements="IAiService" {
 			variables.params.append( static.MODULE_SETTINGS.defaultParams, false );
 		}
 
-		// Merge provider-specific settings (higher priority - overrides defaults)
-		if( static.MODULE_SETTINGS.keyExists( "providers" ) && static.MODULE_SETTINGS.providers.keyExists( variables.name ) ){
-			var providerSettings = static.MODULE_SETTINGS.providers[ variables.name ]
-			// Merge params with OVERRIDE to let provider-specific params win over defaults
-			if( providerSettings.keyExists( "params" ) ){
-				variables.params.append( providerSettings.params, true )
+		// Merge provider-specific settings (providers.<name> and providers.<slug>)
+		var providerSettings = getProviderSettings()
+		// Merge params with OVERRIDE to let provider-specific params win over defaults
+		variables.params.append( providerSettings.params, true )
+		// Merge options WITHOUT override: the options passed to configure() win, the settings fill the gaps
+		variables.options.append( providerSettings.options, false )
+
+		return this;
+	}
+
+	/**
+	 * Get the module settings for this provider: the params and options of providers.<name>
+	 * (the service name, e.g. "OpenAICompatible") and of providers.<slug> (the slug requested in
+	 * aiService(), e.g. "openai-compatible"). When both exist the slug entry wins.
+	 *
+	 * @return { params : struct, options : struct }
+	 */
+	struct function getProviderSettings(){
+		var resolved     = { params : {}, options : {} }
+		var allProviders = static.MODULE_SETTINGS.providers ?: {}
+		if( !isStruct( allProviders ) ){
+			return resolved
+		}
+
+		for( var settingsKey in [ variables.name, variables.providerSlug ] ){
+			if( !len( settingsKey ) || !isStruct( allProviders[ settingsKey ] ?: "" ) ){
+				continue
 			}
-			// Merge options
-			if( providerSettings.keyExists( "options" ) ){
-				variables.options.append( providerSettings.options, true )
+			var entry = allProviders[ settingsKey ]
+			if( isStruct( entry.params ?: "" ) ){
+				resolved.params.append( entry.params, true )
+			}
+			if( isStruct( entry.options ?: "" ) ){
+				resolved.options.append( entry.options, true )
 			}
 		}
 
-		return this;
+		return resolved
 	}
 
 	/**
