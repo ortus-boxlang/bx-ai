@@ -223,6 +223,16 @@ abstract class implements="IAiService" {
 	}
 
 	/**
+	 * The id aiService() takes for this provider (e.g. "openai-compatible"), not the display name from getName()
+	 * (e.g. "OpenAICompatible"). It is the slug the service was requested with, else the lower cased name.
+	 *
+	 * @return The provider id
+	 */
+	string function getProviderId(){
+		return len( variables.providerSlug ) ? variables.providerSlug : variables.name.lcase()
+	}
+
+	/**
 	 * Get the module settings for this provider: the params and options of providers.<name>
 	 * (the service name, e.g. "OpenAICompatible") and of providers.<slug> (the slug requested in
 	 * aiService(), e.g. "openai-compatible"). When both exist the slug entry wins.

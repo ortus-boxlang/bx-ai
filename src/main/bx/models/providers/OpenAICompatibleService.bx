@@ -74,6 +74,8 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		variables.chatURL = variables.baseURL & "/chat/completions"
 		variables.embeddingsURL = variables.baseURL & "/embeddings"
 		variables.name = "OpenAICompatible"
+		// The id aiService() takes, kept when the service is built without aiService()
+		variables.providerSlug = "openai-compatible"
 
 		defaults( static.DEFAULT_CHAT_PARAMS )
 	}
