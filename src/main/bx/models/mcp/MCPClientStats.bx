@@ -19,8 +19,7 @@
  * Counters use atomic variables for thread-safe increment without locking.
  * Aggregate calculations (avg/min/max) use exclusive locks as they involve array operations.
  */
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
+import java:ortus.boxlang.ai.util.AtomicValues;
 
 class {
 
@@ -74,19 +73,19 @@ class {
 	 */
 	MCPClientStats function reset() {
 		variables.calls = {
-			"total"          : new AtomicInteger( 0 ),
-			"successful"     : new AtomicInteger( 0 ),
-			"failed"         : new AtomicInteger( 0 ),
+			"total"          : AtomicValues::integer( 0 ),
+			"successful"     : AtomicValues::integer( 0 ),
+			"failed"         : AtomicValues::integer( 0 ),
 			"byOperationType": {},
 			"responseTimes"  : [],
 			"avgResponseTime": 0,
 			"minResponseTime": 0,
 			"maxResponseTime": 0,
-			"lastCallAt"     : new AtomicReference( "" )
+			"lastCallAt"     : AtomicValues::reference( "" )
 		}
 
 		variables.tools = {
-			"totalCalls"      : new AtomicInteger( 0 ),
+			"totalCalls"      : AtomicValues::integer( 0 ),
 			"byTool"          : {},
 			"executionTimes"  : [],
 			"avgExecutionTime": 0,
@@ -95,17 +94,17 @@ class {
 		}
 
 		variables.resources = {
-			"totalReads": new AtomicInteger( 0 ),
+			"totalReads": AtomicValues::integer( 0 ),
 			"byUri"     : {}
 		}
 
 		variables.prompts = {
-			"totalGenerations": new AtomicInteger( 0 ),
+			"totalGenerations": AtomicValues::integer( 0 ),
 			"byName"          : {}
 		}
 
 		variables.errors = {
-			"total"    : new AtomicInteger( 0 ),
+			"total"    : AtomicValues::integer( 0 ),
 			"byCode"   : {},
 			"lastError": {}
 		}

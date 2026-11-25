@@ -1,0 +1,142 @@
+/**
+ * Named MCP server registry for one MatchBox VM. The native plugin declares
+ * this service at module startup; JVM BoxLang uses its Java SPI provider.
+ */
+class {
+
+	/**
+	 * Create the live server map on the VM that owns the service.
+	 */
+	function init() {
+		variables.servers = bxAiNativeServerMap()
+		variables.logger  = getBoxRuntime().getLoggingService().getLogger( "ai" )
+		return this
+	}
+
+	/**
+	 * Return the name used by getGlobalService().
+	 */
+	string function getName() {
+		return "aiService"
+	}
+
+	/**
+	 * Return the logger shared by the AI service and its callers.
+	 */
+	function getLogger() {
+		return variables.logger
+	}
+
+	/**
+	 * No configuration is needed for the VM-owned registry.
+	 */
+	void function onConfigurationLoad() {
+	}
+
+	/**
+	 * Log that the registry is available.
+	 */
+	void function onStartup() {
+		variables.logger.debug( "+ AI Service started" )
+	}
+
+	/**
+	 * Release all registered server handles before the module unloads.
+	 *
+	 * @force Whether the runtime requested a forced shutdown. Handles are released in either case.
+	 */
+	void function onShutdown( required boolean force ) {
+		variables.logger.debug( "+ AI Service shutdown requested" )
+		clearAllServers()
+	}
+
+	/**
+	 * Return the live map, not a snapshot of its entries.
+	 */
+	function getAllServers() {
+		return variables.servers
+	}
+
+	/**
+	 * Return the number of registered servers.
+	 */
+	numeric function getServerCount() {
+		return variables.servers.size()
+	}
+
+	/**
+	 * Look up the registered instance, or return null when absent.
+	 *
+	 * @name Case-insensitive server name.
+	 */
+	function getServer( required string name ) {
+		return variables.servers.get( arguments.name )
+	}
+
+	/**
+	 * Check whether the registry contains a server.
+	 *
+	 * @name Case-insensitive server name.
+	 */
+	boolean function hasServer( required string name ) {
+		return variables.servers.containsKey( arguments.name )
+	}
+
+	/**
+	 * Register a server and return the previous instance, or null for a new entry.
+	 *
+	 * @name Case-insensitive server name.
+	 * @serverInstance BoxLang instance to register.
+	 */
+	function putServer( required string name, required any serverInstance ) {
+		assertServerInstance( arguments.serverInstance )
+		return variables.servers.put( arguments.name, arguments.serverInstance )
+	}
+
+	/**
+	 * Return the existing server, or register and return the supplied instance.
+	 *
+	 * @name Case-insensitive server name.
+	 * @serverInstance Instance to use if the name is absent.
+	 */
+	function getOrBuildServer( required string name, required any serverInstance ) {
+		assertServerInstance( arguments.serverInstance )
+		return variables.servers.getOrInsert( arguments.name, arguments.serverInstance )
+	}
+
+	/**
+	 * Reject values that the registry cannot expose as server instances.
+	 *
+	 * @candidate Value supplied for registration.
+	 */
+	private void function assertServerInstance( required any candidate ) {
+		if ( !isInstanceOf( arguments.candidate, "component" ) ) {
+			throw( type: "InvalidArgument", message: "Expected a BoxLang server instance" )
+		}
+	}
+
+	/**
+	 * Remove a server and return whether it was registered.
+	 *
+	 * @name Case-insensitive server name.
+	 */
+	boolean function removeServer( required string name ) {
+		return !isNull( variables.servers.remove( arguments.name ) )
+	}
+
+	/**
+	 * Return the registered names without exposing the stored instances.
+	 */
+	array function getServerNames() {
+		return variables.servers.names()
+	}
+
+	/**
+	 * Empty the live map and release its references to the servers.
+	 */
+	void function clearAllServers() {
+		variables.servers.clear()
+		variables.logger.debug( "All MCP servers cleared" )
+	}
+
+}

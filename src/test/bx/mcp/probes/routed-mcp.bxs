@@ -1,0 +1,19 @@
+import boxlang.web;
+import bxModules.bxai.models.mcp.MCPRequestProcessor;
+
+function registerRecorder() {
+	var history = []
+	mcpServer( "http-probe" ).registerTool( aiTool(
+		name: "record", description: "Append a label and return recorded labels",
+		callable: ( required string label ) => {
+			history.append( label )
+			return history.toList( "," )
+		}, autoRegister: false
+	) )
+}
+registerRecorder()
+app = web.server()
+app.post( "/mcp.bxm", function( event, rc, prc ) {
+	MCPRequestProcessor::processRoutedHttp( event, "http-probe" )
+} )
+app.listen( { host: "127.0.0.1", port: val( getSystemSetting( "PROBE_PORT", "18964" ) ) } )

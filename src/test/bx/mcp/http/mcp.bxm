@@ -1,0 +1,4 @@
+<bx:script>
+import bxModules.bxai.models.mcp.MCPRequestProcessor
+MCPRequestProcessor::processHttp( "http-probe" )
+</bx:script>

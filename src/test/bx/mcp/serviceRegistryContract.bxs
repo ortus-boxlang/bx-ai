@@ -1,0 +1,35 @@
+// The JVM SPI and native module provider must retain the same live BoxLang values.
+function recorder( prefix ) {
+    var labels = []
+    return new bxModules.bxai.models.tools.ClosureTool( "record", "append label", function( label ) {
+        labels.append( prefix & label )
+        return labels.toList( "," )
+    } )
+}
+registry = getBoxRuntime().getGlobalService( "aiService" )
+if ( isNull( registry ) ) throw "aiService was not registered"
+original = recorder( "A" )
+replacement = recorder( "B" )
+probeKey = "RegistryContract"
+view = registry.getAllServers()
+initialSize = registry.getServerCount()
+if ( !isNull( registry.getServer( probeKey ) ) ) throw "unexpected existing probe"
+if ( registry.getOrBuildServer( probeKey, original ) !== original ) throw "first insert lost identity"
+if ( registry.getOrBuildServer( lcase(probeKey), replacement ) !== original ) throw "existing entry replaced"
+if ( view.size() != initialSize + 1 || !registry.hasServer( ucase(probeKey) ) ) throw "map view or lookup is stale"
+if ( registry.getServerNames().findNoCase( probeKey ) == 0 ) throw "name missing"
+if ( registry.getServer( probeKey ).invoke({label:"1"}) != "A1" ) throw "first capture lost"
+if ( getBoxRuntime().getGlobalService("AISERVICE").getServer( probeKey ).invoke({label:"2"}) != "A1,A2" ) throw "second capture lost"
+if ( registry.putServer( ucase(probeKey), replacement ) !== original ) throw "wrong replaced instance"
+if ( registry.getServer( probeKey ) !== replacement ) throw "new instance missing"
+if ( !registry.removeServer( probeKey ) || registry.removeServer( probeKey ) ) throw "incorrect removal result"
+if ( view.size() != initialSize || !isNull( registry.getServer( probeKey ) ) ) throw "entry survived removal"
+invalidRejected = false
+try { registry.putServer( probeKey, "not a server" ) } catch ( any invalid ) { invalidRejected = true }
+if ( !invalidRejected || registry.hasServer( probeKey ) ) throw "invalid entry accepted"
+if ( initialSize == 0 ) {
+    registry.putServer( probeKey, replacement )
+    registry.clearAllServers()
+    if ( view.size() != 0 || registry.hasServer( probeKey ) ) throw "clear left a retained registration"
+}
+println("PASS: aiService registry identity, captured state, replacement and removal")

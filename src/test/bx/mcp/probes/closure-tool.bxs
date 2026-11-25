@@ -1,0 +1,17 @@
+// Diagnostic from build/module as the working directory: real production classes,
+// independent of module startup, the tool registry, and HTTP dispatch.
+function makeRecorder() {
+    var history = [];
+    return new models.tools.ClosureTool("record", "Record a label", function(required string label) {
+        history.append(label);
+        return history.toList(",");
+    });
+}
+recorder = makeRecorder();
+schema = recorder.getSchema();
+if (schema.function.name != "record" || schema.function.parameters.properties.label.type != "string"
+    || schema.function.parameters.required[1] != "label") throw "Incorrect recorder schema";
+if (recorder.invoke({label:"first"}) != "first" || recorder.invoke({label:"second"}) != "first,second") {
+    throw "Recorder did not bind arguments or retain history";
+}
+println("PASS: ClosureTool schema, named argument binding and captured history");

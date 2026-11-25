@@ -45,6 +45,24 @@ public class mcpServerTest extends BaseIntegrationTest {
 	}
 
 	@Test
+	@DisplayName( "Atomic stats preserve in-flight requests across reset" )
+	public void testAtomicStatsContract() {
+		runtime.executeTemplate( Paths.get( "src/test/bx/mcp/atomicStatsContract.bxs" ).toAbsolutePath().toString(), context );
+	}
+
+	@Test
+	@DisplayName( "AI service retains live BoxLang instances by case-insensitive name" )
+	public void testServiceRegistryContract() {
+		runtime.executeTemplate( Paths.get( "src/test/bx/mcp/serviceRegistryContract.bxs" ).toAbsolutePath().toString(), context );
+	}
+
+	@Test
+	@DisplayName( "Named server lookups retain registered tool state" )
+	public void testNamedServerContract() {
+		runtime.executeTemplate( Paths.get( "src/test/bx/mcp/namedServerContract.bxs" ).toAbsolutePath().toString(), context );
+	}
+
+	@Test
 	@DisplayName( "Can create MCP server with default name" )
 	public void testCreateMCPServerDefault() {
 		// @formatter:off

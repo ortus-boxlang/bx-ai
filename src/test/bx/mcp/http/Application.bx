@@ -1,0 +1,16 @@
+class {
+	this.name = "bxaiMcpHttpProbe"
+
+	function onApplicationStart() {
+		var history = []
+		mcpServer( "http-probe" ).registerTool( aiTool(
+			name: "record",
+			description: "Append a label and return the labels recorded so far",
+			callable: ( required string label ) => {
+				history.append( label )
+				return history.toList( "," )
+			},
+			autoRegister: false
+		) )
+	}
+}

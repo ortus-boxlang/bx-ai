@@ -1,0 +1,13 @@
+// aiDocuments() defaults a field on the caller's config, not a variable named "arguments.config.type".
+function applyDefault( required struct config ) {
+	param arguments.config.type = "text"
+}
+
+customConfig = { type: "custom" }
+emptyConfig = {}
+applyDefault( customConfig )
+applyDefault( emptyConfig )
+if ( customConfig.type != "custom" || emptyConfig.type != "text" ) {
+	throw "Dotted param must preserve an existing value and set a missing key on the supplied struct"
+}
+println( "PASS: dotted param updates only the missing config field" )
