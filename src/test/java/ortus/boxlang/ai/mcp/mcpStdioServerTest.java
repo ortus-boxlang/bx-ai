@@ -39,9 +39,9 @@ import ortus.boxlang.ai.BaseIntegrationTest;
  */
 public class mcpStdioServerTest extends BaseIntegrationTest {
 
-	private static String		stdoutText;
-	private static List<String>	stdoutLines;
-	private static String		stderrText;
+	private static String			stdoutText;
+	private static List<String>		stdoutLines;
+	private static String			stderrText;
 
 	// @formatter:off
 	private static final String[] MESSAGES = {
@@ -56,8 +56,9 @@ public class mcpStdioServerTest extends BaseIntegrationTest {
 
 	@BeforeAll
 	public static void runServer() throws Exception {
-		String	java	= Paths.get( System.getProperty( "java.home" ), "bin", "java" ).toString();
-		Process	server	= new ProcessBuilder( java, "-cp", System.getProperty( "java.class.path" ), StdioServerHarness.class.getName() ).start();
+		String						java	= Paths.get( System.getProperty( "java.home" ), "bin", "java" ).toString();
+		Process						server	= new ProcessBuilder( java, "-cp", System.getProperty( "java.class.path" ), StdioServerHarness.class.getName() )
+		    .start();
 
 		CompletableFuture<String>	stdout	= CompletableFuture
 		    .supplyAsync( () -> readAll( server.getInputStream() ) );
