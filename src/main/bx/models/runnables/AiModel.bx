@@ -59,7 +59,7 @@ class extends="AiBaseRunnable" {
 	 */
 
 	/**
-	 * Get model configuration as a struct
+	 * Get model configuration as a struct. <code>provider</code> is the service display name, <code>providerId</code> is the id that aiService() and aiChat() accept.
 	 *
 	 * @return Struct of model configuration
 	 */
@@ -69,7 +69,12 @@ class extends="AiBaseRunnable" {
 			"middlewareCount": variables.middleware.len(),
 			"middleware": listMiddleware(),
 			"name": variables.name,
+			// The display name of the service. Use providerId for aiService()
 			"provider": variables.service.getName(),
+			// The id aiService() takes. A custom service that has no id falls back to its lower cased name
+			"providerId": structKeyExists( variables.service, "getProviderId" )
+				? variables.service.getProviderId()
+				: variables.service.getName().lcase(),
 			"profile": variables.profile,
 			"params": getMergedParams(),
 			"options": getMergedOptions().map( ( key, value ) => {

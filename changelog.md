@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🥊 Added
 
+- **`providerId` in `AiModel.getConfig()`.** `getConfig().provider` is the service display name (`OpenAICompatible`, `DockerModelRunner`), which `aiService()` and `aiChat()` do not accept for those two providers (`openai-compatible` and `docker`). Pass `getConfig().providerId` instead: it is the id every provider is registered under, for all of them. `provider` is unchanged. Services also have a `getProviderId()` method, and `OpenAICompatibleService` and `DockerModelRunnerService` report their id even when built without `aiService()`.
+
 - **`maxConversations` for window and summary memory.** How many other users' and conversations' lists one memory keeps in the process, `1000` by default (`0` for no limit). Past it, the least recently used one is dropped; the memory's own list never is. `aiMemory( memory: "window", config: { maxConversations: 500 } )`.
 
 - **`discoverySubject` for MCP OAuth.** `withOAuth( { discoverySubject : "alice" } )` (a name, or a function with no arguments) says whose tokens a call with no context uses, such as listing the tools when an agent starts. Before, such a call always used the subject `"default"`, so a server that needs a sign in to list its tools only worked for an agent whose people all shared one sign in.
