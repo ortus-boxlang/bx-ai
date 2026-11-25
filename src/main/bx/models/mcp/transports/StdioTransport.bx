@@ -132,6 +132,11 @@ class extends="BaseTransport" {
 	 * Write a JSON-RPC response to STDOUT
 	 */
 	void function writeResponse( required struct response ) {
+		// No content means no message, for example the answer to a notification
+		if ( !len( arguments.response.content ?: "" ) ) {
+			return;
+		}
+
 		try {
 			// For STDIO, we only write the content (JSON-RPC response)
 			// Headers and status codes are ignored
@@ -171,6 +176,34 @@ class extends="BaseTransport" {
 			"headers": {},
 			"statusCode": 200
 		} );
+	}
+
+	/**
+	 * Send console logging to stderr. On STDIO, stdout carries only MCP messages, so a log line written there
+	 * breaks the client. Every logback console appender of the runtime that writes to System.out is moved to System.err,
+	 * file appenders are left alone.
+	 *
+	 * @return The number of console appenders that were moved
+	 */
+	numeric function redirectConsoleLogging() {
+		var moved = 0;
+		var loggerContext = getBoxRuntime().getLoggingService().getLoggerContext();
+
+		for ( var thisLogger in loggerContext.getLoggerList() ) {
+			var appenders = thisLogger.iteratorForAppenders();
+			while ( appenders.hasNext() ) {
+				var appender = appenders.next();
+				if ( appender.getClass().getName() == "ch.qos.logback.core.ConsoleAppender" && appender.getTarget() == "System.out" ) {
+					// The target is read when the appender starts
+					appender.stop();
+					appender.setTarget( "System.err" );
+					appender.start();
+					moved++;
+				}
+			}
+		}
+
+		return moved;
 	}
 
 	/**
