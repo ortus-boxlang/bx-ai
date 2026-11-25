@@ -1515,7 +1515,7 @@ public class mcpServerTest extends BaseIntegrationTest {
 	}
 
 	@Test
-	@DisplayName( "Notification without id does not throw and response omits id" )
+	@DisplayName( "A request without id is a notification and gets no response" )
 	public void testNotificationWithoutId() {
 		// @formatter:off
 		runtime.executeSource(
@@ -1526,15 +1526,102 @@ public class mcpServerTest extends BaseIntegrationTest {
 					"jsonrpc": "2.0",
 					"method": "ping"
 				} )
-				hasId = structKeyExists( result, "id" )
-				hasJsonrpc = structKeyExists( result, "jsonrpc" )
+				isEmptyResult = result.isEmpty()
 			""",
 			context
 		);
 		// @formatter:on
 
-		assertThat( variables.get( Key.of( "hasId" ) ) ).isEqualTo( false );
-		assertThat( variables.get( Key.of( "hasJsonrpc" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "isEmptyResult" ) ) ).isEqualTo( true );
+	}
+
+	@Test
+	@DisplayName( "MCP notifications (initialized, cancelled, unknown ones) get no response, not even an error" )
+	public void testMcpNotificationsGetNoResponse() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "mcpNotificationTest" )
+				initialized = myServer.handleRequest( '{"jsonrpc":"2.0","method":"notifications/initialized"}' )
+				cancelled = myServer.handleRequest( { "jsonrpc": "2.0", "method": "notifications/cancelled", "params": { "requestId": 7 } } )
+				unknownNotice = myServer.handleRequest( { "jsonrpc": "2.0", "method": "notifications/something-new" } )
+				unknownMethod = myServer.handleRequest( { "jsonrpc": "2.0", "method": "no/such/method" } )
+				allEmpty = initialized.isEmpty() && cancelled.isEmpty() && unknownNotice.isEmpty() && unknownMethod.isEmpty()
+				// A request with an id still gets its answer
+				pingAnswer = myServer.handleRequest( { "jsonrpc": "2.0", "method": "ping", "id": 9 } )
+				pingId = pingAnswer.id
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "allEmpty" ) ) ).isEqualTo( true );
+		assertThat( variables.get( Key.of( "pingId" ) ) ).isEqualTo( 9 );
+	}
+
+	@Test
+	@DisplayName( "Over HTTP a notification is answered with 202 and no body" )
+	public void testHttpNotificationIsAccepted() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				import bxModules.bxai.models.mcp.MCPRequestProcessor;
+
+				myServer = mcpServer( "httpNotificationTest" )
+				mockServer = mockRequestNew(
+					method: "POST",
+					path: "/mcp.bxm",
+					body: jsonSerialize( { "jsonrpc": "2.0", "method": "notifications/initialized" } ),
+					headers: {}
+				)
+				mockHttpTransport = MCPRequestProcessor::getHttpTransport()
+				statusCode = 0
+				mockHttpTransport.writeResponse = ( response ) => {
+					statusCode = response.statusCode
+					return response
+				}
+				content = MCPRequestProcessor::processHttp( "httpNotificationTest" )
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "statusCode" ) ) ).isEqualTo( 202 );
+		assertThat( variables.get( Key.of( "content" ) ).toString() ).isEmpty();
+	}
+
+	@Test
+	@DisplayName( "@mcpTool tools list their parameters with type, required and the @param doc hint" )
+	public void testAnnotatedToolInputSchema() {
+		// @formatter:off
+		runtime.executeSource(
+			"""
+				myServer = mcpServer( "annotatedSchemaTest" )
+					.scanClass( "src.test.bx.mcp.SampleMCPTools" )
+				tools = myServer.handleRequest( { "jsonrpc": "2.0", "method": "tools/list", "id": 1 } ).result.tools
+				schema = tools.filter( t => t.name == "setTheme" ).first().inputSchema
+				required = schema.required.toList()
+				themeType = schema.properties.theme.type
+				themeDescription = schema.properties.theme.description
+				darkType = schema.properties.dark.type
+				darkDescription = schema.properties.dark.description
+				answer = myServer.handleRequest( {
+					"jsonrpc": "2.0",
+					"method" : "tools/call",
+					"id"     : 2,
+					"params" : { "name": "setTheme", "arguments": { "theme": "ocean", "dark": true } }
+				} ).result.content[ 1 ].text
+			""",
+			context
+		);
+		// @formatter:on
+
+		assertThat( variables.get( Key.of( "required" ) ) ).isEqualTo( "theme" );
+		assertThat( variables.get( Key.of( "themeType" ) ) ).isEqualTo( "string" );
+		assertThat( variables.get( Key.of( "themeDescription" ) ) ).isEqualTo( "The theme name" );
+		assertThat( variables.get( Key.of( "darkType" ) ) ).isEqualTo( "boolean" );
+		assertThat( variables.get( Key.of( "darkDescription" ) ) ).isEqualTo( "Use the dark variant" );
+		assertThat( variables.get( Key.of( "answer" ) ) ).isEqualTo( "theme is now ocean (dark)" );
 	}
 
 	// ============================================================================

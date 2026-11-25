@@ -89,6 +89,9 @@ class {
 	 * @serverName The MCP server name to use (default: "default")
 	 */
 	static void function processStdio( string serverName = static.DEFAULT_SERVER_NAME ) {
+		// stdout carries only MCP messages, send console logging to stderr before anything logs
+		static.stdioTransport.redirectConsoleLogging();
+
 		// Set default server name for this session
 		static.stdioTransport.defaultServerName = arguments.serverName;
 
@@ -477,8 +480,11 @@ class {
 			// Process the MCP request
 			var mcpResponse = arguments.targetServer.handleRequest( arguments.requestBody );
 
-			// Format response
-			if ( useSSE ) {
+			// A notification gets no response: 202 Accepted with no body over HTTP, nothing at all over STDIO
+			if ( mcpResponse.isEmpty() ) {
+				arguments.response.statusCode = 202;
+				arguments.response.content = "";
+			} else if ( useSSE ) {
 				arguments.response.contentType = "text/event-stream";
 				arguments.response.headers[ "Cache-Control" ] = "no-cache";
 				arguments.response.headers[ "Connection" ] = "keep-alive";
