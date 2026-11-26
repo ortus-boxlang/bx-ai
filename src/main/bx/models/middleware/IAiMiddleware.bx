@@ -137,6 +137,11 @@ interface {
 	 *   result.isDeferred() actually need a decision; the rest already resolved during the
 	 *   per-call pass.
 	 *
+	 *   `toolArgs` is what the tool WILL be invoked with — resolved from beforeToolCall's edits
+	 *   before this hook fires. It is read-only here: mutating `toolCall` or `toolArgs` in
+	 *   afterToolBatch does not reach the invocation (arguments are frozen once beforeToolCall
+	 *   has run for the whole batch).
+	 *
 	 *   To suspend, return AiMiddlewareResult.suspend( yourOwnMetadata ) — the caller (the
 	 *   provider) merges in the replay-needed `assistantMessage` and a positional resume ledger
 	 *   automatically, so implementations only need to supply whatever they want a human/gateway
