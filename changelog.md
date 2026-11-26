@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.8.0] - 2026-11-26
+
 ### ⚠️ Migration
 
 - **A gateway turn is now keyed by user and conversation.** `GatewaySession` ran every turn with only `{ threadId }`, so the agent's memory (keyed by user and conversation) was one shared bucket: every chat on every platform saw every other chat's messages. Each turn now runs with a `conversationId` and, when the platform names the sender, a `userId`. The conversation is the chat namespaced by its gateway (`telegram:42`), plus the platform thread when there is one (`telegram:42:topic-7`), so a Telegram forum topic or a Slack thread is its own conversation. `threadId` still names the run (queueing, cancel, steer, checkpoints). Conversations a gateway kept in the old shared bucket are not found under the new keys. Override the new public `resolveConversationId( message, sourceGateway )` to move a chat to another conversation, or `turnOptions( message, sourceGateway, threadId )` to name the identity another way, for example with a platform-qualified user id.
@@ -41,10 +43,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`@mcpTool` tools lost their parameters.** A tool registered by `scan()`/`scanClass()` was listed with an empty `inputSchema`. It now lists the method's parameters with their type, whether they are required, and the `@paramName` doc hint as the description, as `aiTool()` tools do.
 
 - **Window and summary memory keep their summary when they trim.** The summary message is the oldest message after a summarize, so a window memory dropped it as soon as new messages pushed it out, and the summary was no longer in the messages an agent sends to the model. `trim()` now keeps it next to the system message (it still counts toward `maxMessages`). Every memory now reads a conversation's earlier summary from that conversation's own summary message, so window and summary memory work like the others: `getCurrentSummary()` and `getHasSummary()` report the memory's own conversation, and a summary imported without its summary message is still kept. `SummaryMemory.clear()` for another user or conversation no longer resets the memory's own summary.
+
 - **`providers.<name>` settings now apply to every provider.** `BaseService.configure()` looked up `providers[ variables.name ]`, the service's display name, so a provider whose name differs from the slug you pass to `aiService()` never got its settings: `providers[ "openai-compatible" ]` (service name `OpenAICompatible`) and `providers.docker` (`DockerModelRunner`) were ignored, and `openai-compatible` fell back to `http://localhost:8080/v1`. `aiService()` now gives the service its slug, and settings under both `providers.<slug>` and `providers.<service name>` are applied (the slug wins when both exist). The new `BaseService.getProviderSettings()` returns the merged `{ params, options }`.
   - **Options passed to `aiService()` (or in a profile) now win over `providers.<name>.options`.** The settings only fill the gaps, as the documented order says. Before, a module-wide option such as `baseURL` replaced the one passed in the call.
   - **`defaultParams` and `providers.<name>.params` now win over a provider's built-in chat defaults** for OpenAI and every provider that uses its `chat()` without seeding its own defaults first (such as `openai-compatible`). `chat()` and `chatStream()` merged the built-in `model` (`gpt-5.6-luna`) into the request before the service params, so `defaultParams.model` was never sent. Call params still win over all of them.
+
 - **Summarizing keeps every conversation to itself on `cache`, `file`, `session` and `jdbc` memory.** One memory serves all of an agent's users through the `userId` and `conversationId` of each call, but `summarize()` still worked as if the memory held one conversation:
+
   - **Another conversation's summary was sent to the model.** The "Previous conversation summary" part of the prompt came from the memory's own `currentSummary`, which the last summarize had set for whichever user or conversation it was. Summarizing Bob's conversation after Alice's sent Alice's summary to the model (`cache`, `file`, `session`).
   - **A short conversation was emptied.** Summarizing a conversation with fewer messages than `keepRecent`, or with no summary model, wrote the memory's own messages (usually none) over it (`cache`, `file`, `session`; `jdbc` was fixed before).
   - **The earlier summary was lost on a new instance.** `currentSummary` lives on the object and was never stored, so after a restart, or on another server, the next summary started from nothing (all four).
@@ -871,7 +876,8 @@ One of our biggest library updates yet! This release introduces a powerful new d
 
 - First iteration of this module
 
-[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.7.0...HEAD
+[unreleased]: https://github.com/ortus-boxlang/bx-ai/compare/v3.8.0...HEAD
+[3.8.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.7.0...v3.8.0
 [3.7.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.6.0...v3.7.0
 [3.6.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.5.0...v3.6.0
 [3.5.0]: https://github.com/ortus-boxlang/bx-ai/compare/v3.4.0...v3.5.0
