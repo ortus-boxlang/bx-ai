@@ -1,12 +1,8 @@
 name: Pull Requests
 
 on:
-  push:
-    branches-ignore:
-      - "main"
-      - "master"
-      - "development"
-      - "releases/v*"
+  # Only pull requests. A push trigger as well started a second run for every push to a PR branch,
+  # which the concurrency group then cancelled. Merges into development are tested by snapshot.yml.
   pull_request:
     branches:
       - "releases/v*"
@@ -14,8 +10,7 @@ on:
     # labeled: adding the run-inference-tests label runs the paid provider tests
     types: [opened, synchronize, reopened, labeled]
 
-# Pushing to a PR branch fires both the push and pull_request triggers.
-# Group them by branch so only one run is active, and cancel stale runs on new pushes.
+# One run per PR branch: a new push cancels the run of the previous one.
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true

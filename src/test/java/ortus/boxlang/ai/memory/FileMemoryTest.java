@@ -551,4 +551,50 @@ public class FileMemoryTest extends BaseIntegrationTest {
 		assertThat( stateY.getAsString( Key.of( "owner" ) ) ).isEqualTo( "bob" );
 	}
 
+	@Test
+	@DisplayName( "Test FileMemory summarize keeps each conversation's summary to itself" )
+	public void testSummarizeKeepsSummaryPerConversation() {
+		runtime.executeSource(
+		    SummarizeScopeScript
+		        .of( "aiMemory( memory: \"file\", key: \"summarize-scope\", config: { directoryPath: \"" + tempDir.toString().replace( "\\", "/" ) + "\" } )" ),
+		    context );
+
+		assertThat( variables.getAsBoolean( Key.of( "bobPromptHasPrevious" ) ) ).isFalse();
+		assertThat( variables.getAsBoolean( Key.of( "alicePromptHasPrevious" ) ) ).isTrue();
+		// a summary message and the two kept
+		assertThat( variables.getAsInteger( Key.of( "aliceCount" ) ) ).isEqualTo( 3 );
+		assertThat( variables.getAsInteger( Key.of( "bobCount" ) ) ).isEqualTo( 3 );
+	}
+
+	@Test
+	@DisplayName( "Test FileMemory summarize finds the earlier summary after the memory is built again" )
+	public void testSummarizeAfterRebuild() {
+		runtime.executeSource( SummarizeScopeScript
+		    .afterRebuild( "aiMemory( memory: \"file\", key: \"summarize-rebuild\", userId: \"alice\", conversationId: \"c1\", config: { directoryPath: \""
+		        + tempDir.toString().replace( "\\", "/" ) + "\" } )" ),
+		    context );
+
+		assertThat( variables.getAsBoolean( Key.of( "rebuiltPromptHasPrevious" ) ) ).isTrue();
+	}
+
+	@Test
+	@DisplayName( "Test FileMemory summarize leaves a short conversation of another scope alone" )
+	public void testSummarizeShortConversation() {
+		runtime.executeSource(
+		    SummarizeScopeScript.shortConversation(
+		        "aiMemory( memory: \"file\", key: \"summarize-short\", config: { directoryPath: \"" + tempDir.toString().replace( "\\", "/" ) + "\" } )" ),
+		    context );
+
+		assertThat( variables.getAsInteger( Key.of( "shortCount" ) ) ).isEqualTo( 1 );
+	}
+
+	@Test
+	@DisplayName( "Test FileMemory keeps each user and conversation apart" )
+	public void testConversationIsolation() {
+		runtime.executeSource( ConversationIsolationScript.of(
+		    "aiMemory( memory: \"file\", key: \"isolation\", config: { directoryPath: \"" + tempDir.toString().replace( "\\", "/" ) + "\" } )" ), context );
+
+		ConversationIsolationScript.assertIsolated( variables );
+	}
+
 }

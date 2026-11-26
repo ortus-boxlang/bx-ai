@@ -23,7 +23,8 @@ import ortus.boxlang.runtime.context.ScriptingRequestBoxContext;
 
 /**
  * A JVM that runs bx-ai's own MCP server on stdin/stdout (MCPRequestProcessor::processStdio), the server side of the stdio transport.
- * mcpStdioClientTest launches it as the child process of an MCPStdioClient to prove that the client and the server agree.
+ * mcpStdioClientTest launches it as the child process of an MCPStdioClient to prove that the client and the server agree,
+ * mcpStdioServerTest drives its stdin and stdout directly.
  * Not a test itself.
  */
 public class StdioServerHarness extends BaseIntegrationTest {
@@ -37,6 +38,7 @@ public class StdioServerHarness extends BaseIntegrationTest {
 				import bxModules.bxai.models.mcp.MCPRequestProcessor;
 				MCPServer( "default" )
 					.registerTool( aiTool( "echo", "Echo the message back", ( message ) => "echo: " & message ) )
+					.scan( new src.test.bx.mcp.SampleMCPTools() )
 				MCPRequestProcessor::processStdio( "default" )
 			""",
 			context

@@ -74,6 +74,8 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		variables.chatURL = variables.baseURL & "/chat/completions"
 		variables.embeddingsURL = variables.baseURL & "/embeddings"
 		variables.name = "OpenAICompatible"
+		// The id aiService() takes, kept when the service is built without aiService()
+		variables.providerSlug = "openai-compatible"
 
 		defaults( static.DEFAULT_CHAT_PARAMS )
 	}
@@ -103,21 +105,27 @@ class extends="OpenAIService" implements="IAiChatService, IAiEmbeddingsService" 
 		// Delegate to parent for standard configuration (handles apiKey, model extraction to params)
 		super.configure( arguments.options )
 
+		// A simple value is only an API key, there are no URL options to apply
+		if ( !isStruct( arguments.options ) ) {
+			return this
+		}
+
+		// variables.options holds the passed options merged with the module's providers.<slug>.options
+		var mergedOptions = variables.options
+
 		// Store baseURL for reference if provided
-		if ( isStruct( arguments.options ) && arguments.options.keyExists( "baseURL" ) && len( arguments.options.baseURL ) ) {
-			variables.baseURL = arguments.options.baseURL.trim()
+		if ( len( mergedOptions.baseURL ?: "" ) ) {
+			variables.baseURL = mergedOptions.baseURL.trim()
 			variables.chatURL = variables.baseURL & "/chat/completions"
 			variables.embeddingsURL = variables.baseURL & "/embeddings"
 		}
 
 		// Allow direct URL overrides
-		if ( isStruct( arguments.options ) ) {
-			if ( arguments.options.keyExists( "chatURL" ) && len( arguments.options.chatURL ) ) {
-				variables.chatURL = arguments.options.chatURL.trim()
-			}
-			if ( arguments.options.keyExists( "embeddingsURL" ) && len( arguments.options.embeddingsURL ) ) {
-				variables.embeddingsURL = arguments.options.embeddingsURL.trim()
-			}
+		if ( len( mergedOptions.chatURL ?: "" ) ) {
+			variables.chatURL = mergedOptions.chatURL.trim()
+		}
+		if ( len( mergedOptions.embeddingsURL ?: "" ) ) {
+			variables.embeddingsURL = mergedOptions.embeddingsURL.trim()
 		}
 
 		return this

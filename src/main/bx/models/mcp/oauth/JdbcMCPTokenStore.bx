@@ -1,0 +1,154 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Keeps MCP OAuth state in a database table, so tokens survive restarts and are shared by every server that
+ * uses the same database. The table is created when it is missing.
+ *
+ * The record is stored as JSON text in a VARCHAR(8000) column, which holds the tokens providers issue today.
+ * The values are plain text: protect the table, or write a store that encrypts.
+ *
+ * @since 3.8.0
+ */
+class implements="IMCPTokenStore" {
+
+	property name="datasource" type="string";
+
+	property name="table" type="string";
+
+	static {
+		final DEFAULT_TABLE = "bx_ai_mcp_oauth"
+	}
+
+	/**
+	 * @datasource The name of the datasource to use
+	 * @table      The table to keep the records in
+	 */
+	function init( required string datasource, string table = static.DEFAULT_TABLE ) {
+		if ( !len( arguments.datasource ) ) {
+			throw( type: "JdbcMCPTokenStore.MissingDatasource", message: "Datasource is required for JdbcMCPTokenStore." )
+		}
+		if ( !reFind( "^[A-Za-z_][A-Za-z0-9_]*$", arguments.table ) ) {
+			throw( type: "JdbcMCPTokenStore.InvalidTable", message: "The table name [#arguments.table#] is not a plain identifier." )
+		}
+		variables.datasource = arguments.datasource
+		variables.table      = arguments.table
+		ensureTable()
+		return this
+	}
+
+	/**
+	 * Read one record from the table.
+	 *
+	 * @key The key it was saved under
+	 *
+	 * @return The saved struct, or an empty struct when there is none, it cannot be read or it has expired
+	 */
+	struct function get( required string key ) {
+		var rows = queryExecute(
+			"SELECT store_value, expires_at FROM #variables.table# WHERE store_key = :key",
+			{ key: arguments.key },
+			{ datasource: variables.datasource, returntype: "array" }
+		)
+		if ( rows.isEmpty() ) {
+			return {}
+		}
+		if ( rows[ 1 ].expires_at > 0 && epochMillis() >= rows[ 1 ].expires_at ) {
+			remove( arguments.key )
+			return {}
+		}
+		try {
+			var value = jsonDeserialize( rows[ 1 ].store_value )
+		} catch ( any e ) {
+			return {}
+		}
+		return isStruct( value ) ? value : {}
+	}
+
+	/**
+	 * Save one record in the table, replacing what is there.
+	 *
+	 * @key        The key to save it under
+	 * @value      The record. Its JSON must fit in 8000 characters
+	 * @ttlSeconds Seconds after which the record expires, 0 for never
+	 *
+	 * @throws JdbcMCPTokenStore.TooLarge when the record does not fit
+	 */
+	void function set( required string key, required struct value, numeric ttlSeconds = 0 ) {
+		var serialized = jsonSerialize( arguments.value )
+		if ( len( serialized ) > 8000 ) {
+			throw( type: "JdbcMCPTokenStore.TooLarge", message: "The record is #len( serialized )# characters, the column holds 8000." )
+		}
+		remove( arguments.key )
+		queryExecute(
+			"INSERT INTO #variables.table# ( store_key, store_value, expires_at ) VALUES ( :key, :value, :expiresAt )",
+			{
+				key      : arguments.key,
+				value    : serialized,
+				expiresAt: { value: arguments.ttlSeconds > 0 ? epochMillis() + ( arguments.ttlSeconds * 1000 ) : 0, cfsqltype: "bigint" }
+			},
+			{ datasource: variables.datasource }
+		)
+	}
+
+	/**
+	 * Delete one record from the table. Nothing happens when there is none.
+	 *
+	 * @key The key to delete
+	 */
+	void function remove( required string key ) {
+		queryExecute(
+			"DELETE FROM #variables.table# WHERE store_key = :key",
+			{ key: arguments.key },
+			{ datasource: variables.datasource }
+		)
+	}
+
+	// -------------------------------------------------------------------------
+	// Private Helpers
+	// -------------------------------------------------------------------------
+
+	/**
+	 * @return The current time as milliseconds since 1970
+	 */
+	private numeric function epochMillis() {
+		return createObject( "java", "java.lang.System" ).currentTimeMillis()
+	}
+
+	/**
+	 * Create the table when the datasource does not have it yet.
+	 */
+	private void function ensureTable() {
+		bx:dbinfo
+			name="tables"
+			type="tables"
+			datasource="#variables.datasource#" {}
+
+		for ( var tableInfo in tables ) {
+			if ( tableInfo.table_name.toLowerCase() == variables.table.toLowerCase() ) {
+				return
+			}
+		}
+
+		queryExecute(
+			"CREATE TABLE #variables.table# (
+				store_key VARCHAR(512) PRIMARY KEY,
+				store_value VARCHAR(8000) NOT NULL,
+				expires_at BIGINT NOT NULL
+			)",
+			{},
+			{ datasource: variables.datasource }
+		)
+	}
+
+}

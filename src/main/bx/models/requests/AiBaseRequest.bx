@@ -110,6 +110,16 @@ abstract class{
 	property name="userId" type="string" default="";
 
 	/**
+	 * The conversationId this request runs in, threaded down from AiAgent.run()/stream()'s
+	 * `options.conversationId` (the same identifier already used for memory correlation).
+	 * Lives on the request for the same reason userId does: tools and middleware only see
+	 * `chatRequest`, never the agent. The sub-agent delegate tool reads it so a delegated
+	 * task keeps the parent's user and conversation, and therefore the sub-agent's own
+	 * memory is scoped to the same person and conversation as the parent's.
+	 */
+	property name="conversationId" type="string" default="";
+
+	/**
 	 * The threadId this individual request belongs to, threaded down from
 	 * AiAgent.run()/stream()'s `options.threadId`. Lives on the request — not just on the
 	 * agent — for the same reason userId does: it's the request object, not the agent, that

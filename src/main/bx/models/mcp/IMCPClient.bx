@@ -89,10 +89,11 @@ interface {
 	 *
 	 * @tool Name of the tool
 	 * @args Arguments of the tool
+	 * @context Who and what the call is for (for example { chatRequest }), passed to what decides whose credentials to use. Empty when there is none.
 	 *
 	 * @return MCPResponse with the result of the tool
 	 */
-	function send( required string tool, struct args = {} );
+	function send( required string tool, struct args = {}, struct context = {} );
 
 	/**
 	 * Read a resource of the server

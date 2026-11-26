@@ -403,4 +403,92 @@ public class WindowMemoryTest extends BaseIntegrationTest {
 		assertThat( variables.getAsString( Key.of( "summaryConvId" ) ) ).isEqualTo( "ticket-123" );
 	}
 
+	@Test
+	@DisplayName( "Test WindowMemory keeps each user and conversation apart" )
+	public void testConversationIsolation() {
+		runtime.executeSource( ConversationIsolationScript.of( "aiMemory( \"window\", \"isolation\" )" ), context );
+
+		ConversationIsolationScript.assertIsolated( variables );
+	}
+
+	@Test
+	@DisplayName( "Test WindowMemory drops the least recently used conversation past maxConversations" )
+	public void testMaxConversations() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "window", key: "capped", config: { maxConversations: 2 } )
+		    memory.add( "mine" )
+		    memory.add( "one", "alice", "c1" )
+		    memory.add( "two", "alice", "c2" )
+		    // reading c1 makes c2 the least recently used
+		    memory.getAll( "alice", "c1" )
+		    memory.add( "three", "alice", "c3" )
+		    c1 = memory.getAll( "alice", "c1" ).len()
+		    c2 = memory.getAll( "alice", "c2" ).len()
+		    c3 = memory.getAll( "alice", "c3" ).len()
+		    own = memory.getAll().len()
+		    maxConversations = memory.getMaxConversations()
+		    defaultMax = aiMemory( "window" ).getMaxConversations()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "c1" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "c2" ) ) ).isEqualTo( 0 );
+		assertThat( variables.getAsInteger( Key.of( "c3" ) ) ).isEqualTo( 1 );
+		// the memory's own conversation is never dropped
+		assertThat( variables.getAsInteger( Key.of( "own" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "maxConversations" ) ) ).isEqualTo( 2 );
+		assertThat( variables.getAsInteger( Key.of( "defaultMax" ) ) ).isEqualTo( 1000 );
+	}
+
+	@Test
+	@DisplayName( "Test WindowMemory trim keeps the summary message" )
+	public void testTrimKeepsSummary() {
+		runtime.executeSource(
+		    """
+		    memory = aiMemory( memory: "window", key: "pinned", config: { maxMessages: 3 } )
+		    for ( i = 1; i <= 5; i++ ) {
+		        memory.add( "m-#i#", "alice", "c1" )
+		    }
+		    memory.summarize( { provider : "mock", model : "mock-model", keepRecent : 1 }, "alice", "c1" )
+		    for ( i = 6; i <= 9; i++ ) {
+		        memory.add( "m-#i#", "alice", "c1" )
+		    }
+		    held = memory.getAll( "alice", "c1" )
+		    summaries = held.filter( m => m.isSummary ?: false ).len()
+		    total = held.len()
+		    newest = held.last().content
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsInteger( Key.of( "summaries" ) ) ).isEqualTo( 1 );
+		assertThat( variables.getAsInteger( Key.of( "total" ) ) ).isEqualTo( 3 );
+		assertThat( variables.getAsString( Key.of( "newest" ) ) ).isEqualTo( "m-9" );
+	}
+
+	@Test
+	@DisplayName( "Test an agent on the default memory keeps each user apart" )
+	public void testDefaultAgentKeepsUsersApart() {
+		runtime.executeSource(
+		    """
+		    agent = aiAgent(
+		        name  : "isolation-agent",
+		        model : aiModel( provider : "mock", options : { providerOptions : { responses : [ "ok" ] } } ).withParams( { model : "mock-model" } )
+		    )
+		    memoryType = agent.getMemories().first().name()
+		    agent.run( "alice secret", {}, { userId : "alice", conversationId : "c1" } )
+		    agent.run( "bob hello", {}, { userId : "bob", conversationId : "c2" } )
+		    bobSeesAlice = agent.getMemoryMessages( "bob", "c2" ).some( m => m.content contains "alice" )
+		    bobCount = agent.getMemoryMessages( "bob", "c2" ).len()
+		    """,
+		    context
+		);
+
+		assertThat( variables.getAsString( Key.of( "memoryType" ) ) ).isEqualTo( "WindowMemory" );
+		assertThat( variables.getAsBoolean( Key.of( "bobSeesAlice" ) ) ).isFalse();
+		assertThat( variables.getAsInteger( Key.of( "bobCount" ) ) ).isEqualTo( 2 );
+	}
+
 }

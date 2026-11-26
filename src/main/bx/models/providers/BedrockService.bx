@@ -203,8 +203,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 		} else if ( isStruct( arguments.options ) ) {
 			// Snapshot the caller's own options BEFORE delegating: BaseService.configure() does
 			// `variables.options = arguments.options` and then appends providers.Bedrock.options
-			// with override=true, which mutates the caller's struct IN PLACE — so after the call
-			// there is no longer any record of what the caller actually asked for.
+			// into it, which mutates the caller's struct IN PLACE — so after the call there is no
+			// longer any record of what the caller actually asked for.
 			var callerOptions = duplicate( arguments.options );
 
 			// Delegate to BaseService for the module-settings merges (defaultParams,
@@ -213,10 +213,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 
 			// Start from the merged struct so module-level provider options (region, baseURL,
 			// bearerToken, credentials) take effect at all, then re-apply the caller's OWN struct
-			// on top. BaseService.configure() appends providers.Bedrock.options with override=true,
-			// which otherwise lets a module-wide region silently beat an explicit per-call one and
-			// send the request to the wrong region. Explicit arguments win; module settings fill
-			// the gaps. Copied rather than mutated in place because BaseService appends into the
+			// on top, so a module-wide region can never beat an explicit per-call one and send the
+			// request to the wrong region. Explicit arguments win; module settings fill the gaps. Copied rather than mutated in place because BaseService appends into the
 			// caller's own struct by reference.
 			var resolvedOptions = duplicate( variables.options );
 			resolvedOptions.append( callerOptions, true );
@@ -233,18 +231,8 @@ class extends = "BaseService" implements="IAiChatService, IAiEmbeddingsService" 
 			// it for every provider), so it ranks below provider-specific settings, which in turn
 			// rank below what this call stated explicitly.
 			// ------------------------------------------------------------------------------------
-			// Read module settings the way BaseService does: `static.` resolves to THIS class's own
-			// static scope, so BaseService's MODULE_SETTINGS is not reachable through it.
-			var providerOptions = {};
-			var moduleSettings  = getModuleInfo( "bxai" ).settings ?: {};
-			if (
-				isStruct( moduleSettings )
-				&& isStruct( moduleSettings.providers ?: "" )
-				&& isStruct( moduleSettings.providers[ variables.name ] ?: "" )
-				&& isStruct( ( moduleSettings.providers[ variables.name ].options ?: "" ) )
-			) {
-				providerOptions = moduleSettings.providers[ variables.name ].options;
-			}
+			// providers.Bedrock.options (and providers.<slug>.options), resolved by BaseService
+			var providerOptions = getProviderSettings().options;
 
 			var nestedApiKey      = ( isStruct( resolvedOptions.apiKey ?: "" ) ) ? resolvedOptions.apiKey : {};
 			var credentialSources = [ callerOptions, providerOptions, nestedApiKey ];

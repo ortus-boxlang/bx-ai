@@ -87,7 +87,8 @@ class extends="BaseTool"{
 	public any function doInvoke( required struct args, AiChatRequest chatRequest ) {
 		// Strip internal agent key before forwarding to MCP server
 		var mcpArgs  = arguments.args.filter( ( k, v ) => k != "_chatRequest" );
-		var response = variables.mcpClient.send( variables.remoteName, mcpArgs );
+		// The chat request says who is asking, so a client that signs in per person can use that person's tokens
+		var response = variables.mcpClient.send( variables.remoteName, mcpArgs, { "chatRequest": arguments.chatRequest } );
 
 		if ( response.isSuccess() ) {
 			var data = response.getData();

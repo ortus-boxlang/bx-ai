@@ -71,6 +71,8 @@ class extends = "OpenAICompatibleService" implements="IAiChatService, IAiEmbeddi
 		variables.chatURL       = variables.baseURL & "/chat/completions"
 		variables.embeddingsURL = variables.baseURL & "/embeddings"
 		variables.name          = "DockerModelRunner"
+		// The id aiService() takes, kept when the service is built without aiService()
+		variables.providerSlug  = "docker"
 
 		defaults( static.DEFAULT_CHAT_PARAMS )
 	}

@@ -83,6 +83,8 @@ class extends="AiBaseRequest"{
 
 		// The identity this request runs as (see AiBaseRequest.userId doc comment)
 		variables.userId = options.userId ?: "";
+		// The conversation this request runs in (see AiBaseRequest.conversationId doc comment)
+		variables.conversationId = options.conversationId ?: "";
 
 		// The thread this request belongs to, and its optional cancel/steer handle (see
 		// AiBaseRequest.threadId/cancellationToken doc comments)

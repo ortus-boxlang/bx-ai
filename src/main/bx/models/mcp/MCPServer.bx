@@ -616,11 +616,11 @@ class {
 		}
 		// else: @mcpTool with no arguments - uses defaults (name from method, description from hint)
 
-		// Build argument descriptions from function parameters
+		// Build argument descriptions from function parameters: the @paramName doc hint, then a hint attribute, then the name
 		var argDescriptions = {}
 		var parameters = arguments.functionMetadata.parameters ?: []
 		parameters.each( param => {
-			argDescriptions[ param.name ] = param.hint ?: param.name
+			argDescriptions[ param.name ] = param.documentation?.hint ?: param.hint ?: param.name
 		} )
 
 		// Capture class reference; strings use lazy createObject(), instances are used directly
@@ -635,6 +635,13 @@ class {
 
 		// Create and register the tool
 		var tool = aiTool( toolName, toolDescription, callable )
+
+		// The callable is a wrapper with no parameters, give the tool the method's real ones so its input schema lists them
+		tool.setMethodParameters( parameters.map( param => ( {
+			name    : param.name,
+			type    : param.type ?: "any",
+			required: param.required ?: false
+		} ) ) )
 
 		// Add argument descriptions
 		argDescriptions.each( ( argName, argDesc ) => {
@@ -1767,13 +1774,37 @@ class {
 	 * @return Struct containing the JSON-RPC response
 	 */
 	struct function handleRequest( required any requestBody ) {
-		var startTime = getTickCount()
 		var thisRequest = isStruct( arguments.requestBody )
 			? arguments.requestBody
 			: jsonDeserialize( arguments.requestBody )
-		var requestId = thisRequest?.id ?: ""
-		var method = thisRequest.method ?: ""
-		var params = thisRequest.params ?: {}
+
+		// A message without an id is a JSON-RPC notification: it never gets a response, an empty struct means "write nothing".
+		// MCP notifications (notifications/initialized, notifications/cancelled, ...) need no work from this server.
+		if ( isNull( thisRequest.id ) ) {
+			var method = thisRequest.method ?: ""
+			if ( method.trim().startsWith( "notifications/" ) ) {
+				variables.stats.recordRequest( method: method, responseTime: 0, success: true )
+			} else {
+				processRequest( thisRequest )
+			}
+			return {}
+		}
+
+		return processRequest( thisRequest )
+	}
+
+	/**
+	 * Run a JSON-RPC request and build its response
+	 *
+	 * @thisRequest The deserialized JSON-RPC request
+	 *
+	 * @return Struct containing the JSON-RPC response
+	 */
+	private struct function processRequest( required struct thisRequest ) {
+		var startTime = getTickCount()
+		var requestId = arguments.thisRequest?.id ?: ""
+		var method = arguments.thisRequest.method ?: ""
+		var params = arguments.thisRequest.params ?: {}
 
 		// Reject all non-ping requests while paused
 		if ( variables.paused && method.trim() != "ping" ) {

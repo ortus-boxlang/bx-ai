@@ -1,0 +1,56 @@
+/**
+ * [BoxLang]
+ *
+ * Copyright [2023] [Ortus Solutions, Corp]
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the
+ * License. You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS"
+ * BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language
+ * governing permissions and limitations under the License.
+ * ----------------------------------------------------------------------------------
+ * Where the OAuth state of an MCP client is kept: access and refresh tokens, the client registration the
+ * authorization server gave us, and the short lived record of a sign-in that is waiting for its callback.
+ *
+ * The contract is three methods on purpose, so that a store of your own is easy to write. A store that
+ * encrypts what it keeps is a store whose set() seals the struct and whose get() opens it.
+ *
+ * What a store holds are credentials. The cache store keeps them in memory, the file and JDBC stores keep
+ * them as plain text. Use your own store (or protect the folder or table) when that is not enough.
+ *
+ * Keys are strings the client builds ("token:", "client:" and "flow:" prefixes). A store must treat them as
+ * opaque and must not assume anything about their length beyond a few hundred characters.
+ *
+ * @since 3.8.0
+ */
+interface {
+
+	/**
+	 * Read one record.
+	 *
+	 * @key The key it was saved under
+	 *
+	 * @return The struct that was saved, or an empty struct when there is none or it has expired
+	 */
+	struct function get( required string key );
+
+	/**
+	 * Save one record, replacing what is there.
+	 *
+	 * @key        The key to save it under
+	 * @value      The record
+	 * @ttlSeconds Seconds after which the record may be forgotten, 0 for never
+	 */
+	void function set( required string key, required struct value, numeric ttlSeconds = 0 );
+
+	/**
+	 * Delete one record. Nothing happens when there is none.
+	 *
+	 * @key The key to delete
+	 */
+	void function remove( required string key );
+
+}

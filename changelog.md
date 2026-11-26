@@ -9,6 +9,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ⚠️ Migration
+
+- **A gateway turn is now keyed by user and conversation.** `GatewaySession` ran every turn with only `{ threadId }`, so the agent's memory (keyed by user and conversation) was one shared bucket: every chat on every platform saw every other chat's messages. Each turn now runs with a `conversationId` and, when the platform names the sender, a `userId`. The conversation is the chat namespaced by its gateway (`telegram:42`), plus the platform thread when there is one (`telegram:42:topic-7`), so a Telegram forum topic or a Slack thread is its own conversation. `threadId` still names the run (queueing, cancel, steer, checkpoints). Conversations a gateway kept in the old shared bucket are not found under the new keys. Override the new public `resolveConversationId( message, sourceGateway )` to move a chat to another conversation, or `turnOptions( message, sourceGateway, threadId )` to name the identity another way, for example with a platform-qualified user id.
+
+- **Jdbc memory now keeps each user and conversation in a row of its own.** The `userId` and `conversationId` you pass to `add()`, `getAll()`, `clear()`, `trim()`, `summarize()` and the other memory calls were ignored by `jdbc` memory: it held one row, so every user and conversation of an agent shared one bucket (`cache`, `file` and `session` memory already separated them). A call that names another scope now reads and writes the row for it, with `memory_key` set to `<key>::<userId>::<conversationId>` and `user_id` and `conversation_id` filled, so no table change is needed (`memory_key` stays the primary key). The row is read afresh on every call, so two processes on one database see each other's messages. A call with no ids, or with the ids the memory was built with, is answered by the memory itself, as before. Messages an agent kept in the old single row are still there under the memory's own key, and are no longer returned for a call that names a user or a conversation. `JdbcMemory.summarize()` for another scope no longer throws `JdbcMemory.UnsupportedScope`: it summarizes that scope. `window` and `summary` memory are not changed.
+
+- **Window and summary memory now keep each user and conversation apart.** They held one list of messages, so the `userId` and `conversationId` of a call were ignored and every user of a memory shared it. `window` is the default memory, so an agent built with `aiAgent()` and run with `{ userId, conversationId }` (as a gateway does) showed Bob all of Alice's messages, and sent them to the model in his turns. Now a call that names another user or conversation reads and writes a list of its own; `hybrid` memory, whose recent messages are a window memory, follows. A call with no ids, or with the ids the memory was built with, uses the memory's own list, as before. These lists live in the process, as the messages always did: they are lost on a restart and are not shared between servers (use `cache` or `jdbc` memory for that). Messages a memory gathered under the per-call ids before this are in its own list and are no longer returned for those ids.
+
+### 🥊 Added
+
+- **`providerId` in `AiModel.getConfig()`.** `getConfig().provider` is the service display name (`OpenAICompatible`, `DockerModelRunner`), which `aiService()` and `aiChat()` do not accept for those two providers (`openai-compatible` and `docker`). Pass `getConfig().providerId` instead: it is the id every provider is registered under, for all of them. `provider` is unchanged. Services also have a `getProviderId()` method, and `OpenAICompatibleService` and `DockerModelRunnerService` report their id even when built without `aiService()`.
+
+- **`maxConversations` for window and summary memory.** How many other users' and conversations' lists one memory keeps in the process, `1000` by default (`0` for no limit). Past it, the least recently used one is dropped; the memory's own list never is. `aiMemory( memory: "window", config: { maxConversations: 500 } )`.
+
+- **`discoverySubject` for MCP OAuth.** `withOAuth( { discoverySubject : "alice" } )` (a name, or a function with no arguments) says whose tokens a call with no context uses, such as listing the tools when an agent starts. Before, such a call always used the subject `"default"`, so a server that needs a sign in to list its tools only worked for an agent whose people all shared one sign in.
+
+- **OAuth for MCP clients**: `MCP( url ).withOAuth( { redirectUri: ... } )` signs in to an MCP server that is protected the way the MCP authorization specification describes, and keeps the access token fresh. It reads the server's Protected Resource Metadata and the authorization server's metadata, gets a client id (one you give, a Client ID Metadata Document, or Dynamic Client Registration), signs the person in with PKCE (S256) and the `resource` parameter, checks the `iss` of the callback, and sends `Authorization: Bearer` on every request, refreshing the token before it expires and once more after a `401`. See `src/docs/main-components/mcp-oauth.md`.
+  - `mcpClient.startAuthorization( subject )` returns `{ authorizationUrl, state }`, `mcpClient.completeAuthorization( code, state, issuer )` finishes it at your callback route, `isAuthorized( subject )` and `revokeAuthorization( subject )` tell and forget. A call with no usable tokens fails without reaching the server and fires the new `onMCPAuthorizationRequired` event (`reason`: `no_token`, `unauthorized`, `insufficient_scope`).
+  - **Per person**: the `subject` option is a name or a function `( context ) => string`. `send( tool, args, context )` has a new optional `context`; `MCPTool` passes `{ chatRequest }`, so `( context ) => context.chatRequest.getUserId()` gives each person their own tokens (and, with `withHandshake( true )`, their own MCP session) on one shared client.
+  - **Token stores**: tokens, the client registration and pending sign ins live in an `IMCPTokenStore`, three methods (`get`, `set`, `remove`) so it is easy to write one that encrypts. `CacheMCPTokenStore` (default, a BoxLang cache), `FileMCPTokenStore` and `JdbcMCPTokenStore` ship; pick with `store: "cache" | "file" | "jdbc" | "my.Class" | instance` and `storeOptions`. The file and JDBC stores keep plain text.
+  - `oauth: { ... }` is accepted in the config of `withMCPServer()` and in an agent's `mcpServers` entries.
+  - Every address in the flow must be `https` (plain `http` only for `localhost`), and an authorization server that does not list PKCE `S256` is refused.
+
+### 🐛 Fixed
+
+- **MCP server on STDIO wrote its logs to stdout.** Lines like `[INFO ] [MCP] Starting STDIO transport` went to stdout between the JSON-RPC messages, which breaks a client (the MCP stdio transport allows only MCP messages there). `MCPRequestProcessor::processStdio()` now moves the runtime's console log appenders to stderr before it logs anything. File logging is unchanged.
+
+- **MCP server answered notifications.** A message without an `id`, such as `notifications/initialized` or `notifications/cancelled`, got a `Method not found` error. A JSON-RPC notification never gets a response: `MCPServer.handleRequest()` returns an empty struct for one, STDIO writes nothing, and HTTP answers `202 Accepted` with no body.
+
+- **`@mcpTool` tools lost their parameters.** A tool registered by `scan()`/`scanClass()` was listed with an empty `inputSchema`. It now lists the method's parameters with their type, whether they are required, and the `@paramName` doc hint as the description, as `aiTool()` tools do.
+
+- **Window and summary memory keep their summary when they trim.** The summary message is the oldest message after a summarize, so a window memory dropped it as soon as new messages pushed it out, and the summary was no longer in the messages an agent sends to the model. `trim()` now keeps it next to the system message (it still counts toward `maxMessages`). Every memory now reads a conversation's earlier summary from that conversation's own summary message, so window and summary memory work like the others: `getCurrentSummary()` and `getHasSummary()` report the memory's own conversation, and a summary imported without its summary message is still kept. `SummaryMemory.clear()` for another user or conversation no longer resets the memory's own summary.
+- **`providers.<name>` settings now apply to every provider.** `BaseService.configure()` looked up `providers[ variables.name ]`, the service's display name, so a provider whose name differs from the slug you pass to `aiService()` never got its settings: `providers[ "openai-compatible" ]` (service name `OpenAICompatible`) and `providers.docker` (`DockerModelRunner`) were ignored, and `openai-compatible` fell back to `http://localhost:8080/v1`. `aiService()` now gives the service its slug, and settings under both `providers.<slug>` and `providers.<service name>` are applied (the slug wins when both exist). The new `BaseService.getProviderSettings()` returns the merged `{ params, options }`.
+  - **Options passed to `aiService()` (or in a profile) now win over `providers.<name>.options`.** The settings only fill the gaps, as the documented order says. Before, a module-wide option such as `baseURL` replaced the one passed in the call.
+  - **`defaultParams` and `providers.<name>.params` now win over a provider's built-in chat defaults** for OpenAI and every provider that uses its `chat()` without seeding its own defaults first (such as `openai-compatible`). `chat()` and `chatStream()` merged the built-in `model` (`gpt-5.6-luna`) into the request before the service params, so `defaultParams.model` was never sent. Call params still win over all of them.
+- **Summarizing keeps every conversation to itself on `cache`, `file`, `session` and `jdbc` memory.** One memory serves all of an agent's users through the `userId` and `conversationId` of each call, but `summarize()` still worked as if the memory held one conversation:
+  - **Another conversation's summary was sent to the model.** The "Previous conversation summary" part of the prompt came from the memory's own `currentSummary`, which the last summarize had set for whichever user or conversation it was. Summarizing Bob's conversation after Alice's sent Alice's summary to the model (`cache`, `file`, `session`).
+  - **A short conversation was emptied.** Summarizing a conversation with fewer messages than `keepRecent`, or with no summary model, wrote the memory's own messages (usually none) over it (`cache`, `file`, `session`; `jdbc` was fixed before).
+  - **The earlier summary was lost on a new instance.** `currentSummary` lives on the object and was never stored, so after a restart, or on another server, the next summary started from nothing (all four).
+
+  Now the earlier summary of any conversation is read from that conversation's own stored summary message (`isSummary`), and nothing is written when there is nothing to summarize. `getSummary()` and `export()` report the summary the same way. There is one `summarize()`, in `BaseMemory`, which saves through a `saveSummarized()` hook each memory implements, so `CacheMemory`, `FileMemory`, `SessionMemory` and `JdbcMemory` no longer have their own `summarize()`, and `JdbcMemory.summarizeScope()` is gone. `window` and `summary` memory keep one set of messages, and their summary, on the object for every user and conversation, so they are not changed.
+
+- **Summarizing a short conversation no longer empties it.** `summarize()` on jdbc memory for a given user and conversation wrote the memory's own messages over that conversation's row when there was nothing to summarize (fewer messages than `keepRecent`) or no summary model to do it with, because `doSummarize()` returns without touching the messages in those cases. A conversation of a few messages became a conversation of none. The row's own messages are now what is written back unless a summary replaced them.
+
+- **Jdbc memory keeps every message when several threads add to one conversation at once.** Two adds to a conversation that had no row yet both inserted it, and one failed with a primary key error, which a served agent returned as a failed turn. Adds, `setSystemMessage()` and `removeSystemMessage()` for another user or conversation also read the row, changed it and wrote it back without anything between them, so a second thread overwrote the first one's message: six simultaneous turns on one conversation kept 7 of 12 messages. Now those three take a lock named for the datasource, table, key, user and conversation, so every memory in the process that reaches the same row waits for the others, and an insert that loses the race to another process falls back to an update. Two processes writing to the same conversation at the same instant can still lose a message, as before.
+
+- **A sub-agent now runs for the same user and conversation as its parent.** The delegate tool called `subAgent.run( task )` with no ids, so every sub-agent with its own memory used the empty user and conversation: with jdbc memory, one row shared by everyone who ever delegated to it. The delegate tool now reads `userId` and `conversationId` from the parent's request and passes them on. With none set, nothing changes. `AiBaseRequest` has a new `conversationId` property and `getConversationId()`, next to `userId`.
+
+- **MCP OAuth in a web request.** The token request of a sign in was sent with an empty body when the app ran as a web server, because the form fields were held in an argument called `form`, which is a reserved scope there. It is renamed, so signing in works under CommandBox and the MiniServer, not only in a script.
+
 ## [3.7.0] - 2026-11-04
 
 ### ⚠️ Migration
@@ -437,29 +487,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Docker Service issues with interface upgrades from previous version.
 
 ## [3.0.0] - 2026-04-02
-
-## [2.4.0] - 2026-02-20
-
-## [2.3.0] - 2026-02-18
-
-### Added
-
-- **Pipeline `_input` System Variable**: Auto-inject previous stage output into message templates via `${_input}`. For struct outputs, individual fields are flattened as `${_input_fieldName}` for template access. Enables clean, composable multi-stage AI pipelines without manual transformation steps.
-- `aiTransform()` needd to process instances of `AiTransformRunnable` and `BaseTransformer` classes, allowing for more flexible and reusable transformation logic.
-- Stricter and more defensive code when doing tool calling, to prevent errors when tools are called with invalid arguments or when the tool execution fails.
-
-### Fixed
-
-- Tool calling with streaming was not working because the tools were being executed in a different context that didn't have access to the request. Now the request is properly passed to the tool execution context, allowing tools to be called and executed correctly during streaming.
-- Agent stream() was not passing tools the correct request, now it does.
-- scoping issue on Agent streaming
-- fixed BaseMemory getRecent() where limit was not being used
-- SummaryMemory was not trimming messages when the summary threshold  was exceeded, and it was recursing forever on summary. Now it properly trims messages until it gets under the threshold, then summarizes and adds the summary message back in.
-- BaseTransformer was missing it's internal constructor
-- Default for `config` on all `BaseTransformer` classes was missing.
-- Fixed a bug where if the `aiTransform()` BIF was called with a non-string or closure, the `throw()` was invalid.
-
-## [2.2.0] - 2026-02-16
 
 ### Added
 

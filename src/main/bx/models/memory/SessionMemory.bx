@@ -316,22 +316,28 @@ class extends="WindowMemory" {
 	}
 
 	/**
-	 * AI-summarize older messages and persist the result to session storage.
+	 * The messages of one user and conversation: its own session entry.
 	 *
-	 * @config Optional struct with keys: keepRecent, model, provider
-	 * @userId   Optional per-call user identifier (overrides instance default)
-	 * @conversationId Optional per-call conversation identifier (overrides instance default)
+	 * @userId The per-call userId (empty = use instance default)
+	 * @conversationId The per-call conversationId (empty = use instance default)
 	 *
-	 * @return IAiMemory for chaining
+	 * @return The conversation's messages
 	 */
-	public IAiMemory function summarize( struct config = {}, string userId = "", string conversationId = "" ) {
-		lock name="#buildSummarizeLockName()#" type="exclusive" timeout="10" {
-			doSummarize( arguments.config, arguments.userId, arguments.conversationId )
-			var sessionKey = buildSessionKey( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
-			ensureSessionStorage( sessionKey )
-			session[ sessionKey ].messages = variables.messages
-		}
-		return this
+	private array function readMessages( string userId = "", string conversationId = "" ) {
+		return getAll( arguments.userId, arguments.conversationId )
+	}
+
+	/**
+	 * Replaces the messages of one user and conversation in its own session entry.
+	 *
+	 * @userId The per-call userId (empty = use instance default)
+	 * @conversationId The per-call conversationId (empty = use instance default)
+	 * @messages The conversation's messages
+	 */
+	private void function writeMessages( string userId = "", string conversationId = "", required array messages ) {
+		var sessionKey = buildSessionKey( resolveUserId( arguments.userId ), resolveConversationId( arguments.conversationId ) )
+		ensureSessionStorage( sessionKey )
+		session[ sessionKey ].messages = arguments.messages
 	}
 
 	/**

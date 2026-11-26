@@ -104,12 +104,13 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 	public function chat( required AiChatRequest chatRequest, numeric interactionCount = 0 ){
 		// Apply service-level params and headers, allowing the chatRequest to override them if set
 		arguments.chatRequest
-			// Seed the chat request with defaults
-			.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 			// Model Selection if not set, use the default in the service, which should always be set
 			.setModelIfEmpty( variables.params.model ?: "" )
 			.setApiKeyIfEmpty( getAPIKey() )
+			// Service params (defaultParams, providers.<name>.params) before the built-in defaults, so they win
 			.mergeServiceParams( variables.params )
+			// Then fill the gaps with the built-in defaults
+			.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 			.mergeServiceHeaders( variables.headers )
 
 		// -------------------------------------------------------------------------------------------
@@ -593,13 +594,14 @@ class extends="BaseService" implements="IAiChatService, IAiEmbeddingsService, IA
 	 */
 	@override
 	public function chatStream( required AiChatRequest chatRequest, required function callback, numeric interactionCount = 0 ){
-		// Seed the chat request with defaults
 		arguments.chatRequest
-			.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 			// Model Selection if not set, use the default in the service, which should always be set
 			.setModelIfEmpty( variables.params.model ?: "" )
 			.setApiKeyIfEmpty( getAPIKey() )
+			// Service params (defaultParams, providers.<name>.params) before the built-in defaults, so they win
 			.mergeServiceParams( variables.params )
+			// Then fill the gaps with the built-in defaults
+			.mergeServiceParams( static.DEFAULT_CHAT_PARAMS )
 			.mergeServiceHeaders( variables.headers )
 			.setStream( true )
 

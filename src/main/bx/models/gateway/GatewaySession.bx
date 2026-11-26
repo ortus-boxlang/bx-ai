@@ -362,6 +362,49 @@ class {
 	}
 
 	/**
+	 * Which conversation a message belongs to: the thing the agent's memory is keyed by, next to the user. It is the
+	 * chat, namespaced by its gateway so two platforms with the same raw id never meet, plus the platform thread when
+	 * there is one (a Telegram forum topic, a Slack thread), since those are separate conversations in one chat.
+	 *
+	 * Not the thread id of resolveThreadId(): that names a run (queueing, cancel, steer, checkpoints) and its own
+	 * rules decide it. Public and pure, like resolveThreadId(), so a subclass can move a chat to another
+	 * conversation (a "/new" command) by overriding just this.
+	 *
+	 * @message The inbound message
+	 * @sourceGateway The gateway it arrived on
+	 */
+	string function resolveConversationId( required GatewayMessage message, required IGateway sourceGateway ) {
+		var context = arguments.message.getContext()
+		var chat    = "#arguments.sourceGateway.getName()#:#context.getConversationID()#"
+		return len( context.getThreadID() ) ? "#chat#:#context.getThreadID()#" : chat
+	}
+
+	/**
+	 * The options one turn runs with. The agent keys its memory by ( userId, conversationId ), so a turn that names
+	 * neither lands in the one shared bucket: every chat on every platform would see every other chat's messages.
+	 * Each turn therefore names its conversation and, when the platform says who is writing, that user. Public so a
+	 * subclass can name the identity its own way (a platform-qualified user id, say) and still use everything else
+	 * here unchanged.
+	 *
+	 * @message The inbound message the turn answers
+	 * @sourceGateway The gateway it arrived on
+	 * @threadId The resolved thread (the run's id)
+	 *
+	 * @return The options handed to agent.stream(): threadId, conversationId, and userId when the message has one
+	 */
+	struct function turnOptions( required GatewayMessage message, required IGateway sourceGateway, required string threadId ) {
+		var options = {
+			threadId       : arguments.threadId,
+			conversationId : resolveConversationId( arguments.message, arguments.sourceGateway )
+		}
+		var userId = arguments.message.getContext().getUserID()
+		if ( len( userId ) ) {
+			options[ "userId" ] = userId
+		}
+		return options
+	}
+
+	/**
 	 * Runs one turn to completion, relaying output back through sourceGateway — streamed
 	 * chunk-by-chunk if it declares "streaming" support, buffered into one final delivery
 	 * otherwise (true of every core gateway today). Blocking by design: agent.stream() is
@@ -389,7 +432,7 @@ class {
 			},
 			arguments.message.getText(),
 			{},
-			{ threadId: arguments.threadId }
+			turnOptions( arguments.message, arguments.sourceGateway, arguments.threadId )
 		)
 
 		if ( supportsStreaming ) {

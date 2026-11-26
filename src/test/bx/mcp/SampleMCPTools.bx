@@ -16,6 +16,17 @@ class {
 	}
 
 	/**
+	 * Switch the theme.
+	 *
+	 * @theme The theme name
+	 * @dark Use the dark variant
+	 */
+	@mcpTool( "Switch the theme" )
+	function setTheme( required string theme, boolean dark = false ) {
+		return "theme is now " & arguments.theme & ( arguments.dark ? " (dark)" : "" )
+	}
+
+	/**
 	 * Return current status information.
 	 */
 	@mcpResource( { uri: "test://status", name: "Status", description: "Current status info" } )
